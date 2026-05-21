@@ -1,0 +1,66 @@
+site_name: alphaPhos
+site_description: Phosphoproteomics analysis toolkit
+repo_url: https://github.com/oliinyk/alphaPhos
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.indexes
+    - content.code.copy
+    - search.suggest
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: [src]
+          options:
+            show_source: true
+            show_root_heading: true
+            docstring_style: google
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Design:
+    - PhosphoExperiment schema: design/phosphoexperiment.md
+  - API:
+    - alphaphos.io: api/io.md
+    - alphaphos.preprocess: api/preprocess.md
+    - alphaphos.ptm: api/ptm.md
+    - alphaphos.stats: api/stats.md
+    - alphaphos.ksea: api/ksea.md
+    - alphaphos.enrichment: api/enrichment.md
+    - alphaphos.acquisition: api/acquisition.md
+    - alphaphos.viz: api/viz.md
+    - alphaphos.qc: api/qc.md

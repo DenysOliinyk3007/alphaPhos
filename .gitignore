@@ -1,0 +1,95 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+.installed.cfg
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.env
+
+# Conda environments (do not commit installed envs; only .yml files in envs/)
+**/*-env/
+**/*_env/
+**/CurveCuratorEnv/
+
+# Testing
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+
+# Type checking
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.pytype/
+
+# Jupyter
+.ipynb_checkpoints/
+*-checkpoint.ipynb
+
+# Docs build
+site/
+docs/_build/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# MS data — never commit raw or large derived files
+*.raw
+*.d/
+*.wiff
+*.wiff.scan
+*.mzML
+*.mzXML
+*.mgf
+*.dia
+*.tdf
+*.tdf_bin
+
+# Search engine outputs that are large / regeneratable
+**/combined/txt/
+**/proteinGroups.txt
+**/Phospho (STY)Sites.txt
+**/report.tsv
+*.parquet
+
+# Study data — committed by exception only
+studies/*/data/
+studies/*/raw/
+studies/*/output/
+
+# Manuscript figure outputs (regeneratable)
+manuscripts/*/figures/
+manuscripts/*/output/
+
+# Spectral libraries & FASTAs are pointed at, not committed
+resources/spectral_libraries/*.speclib
+resources/spectral_libraries/*.tsv
+resources/fastas/*.fasta
