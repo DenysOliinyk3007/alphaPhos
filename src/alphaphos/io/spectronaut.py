@@ -132,6 +132,7 @@ def read_psm(
     drop_non_phospho: bool = False,
     eg_qvalue_max: float | None = None,
     pg_qvalue_max: float | None = None,
+    top_n_attribution: bool = True,
 ) -> pd.DataFrame:
     """Read a Spectronaut Normal-report PSM file (Parquet or TSV).
 
@@ -165,6 +166,16 @@ def read_psm(
     eg_qvalue_max, pg_qvalue_max
         Optional q-value cutoffs. If set, rows above the threshold are
         dropped. q-value columns are coerced to float first if needed.
+    top_n_attribution
+        If True (default), apply the top-N attribution filter (Spectronaut
+        over-export dedup; see ``alphaphos.preprocess.filter_to_top_n_positions``)
+        immediately after loading. This is the validated correct behavior:
+        agreement with Spectronaut native PTM site report is r=0.98 with the
+        filter on vs. r=0.93 (with a long right tail) without it. Pass
+        ``False`` only when you specifically need the raw per-candidate-
+        position rows (e.g. for advanced fragment-level work). The filter is
+        silently skipped when ``EG.PTMLocalizationProbabilities`` is absent
+        from the report (the column it needs to evaluate top-N).
 
     Returns
     -------
@@ -172,7 +183,8 @@ def read_psm(
         Normalized PSM table with dotted column names. The chosen quant
         is in ``EG.TotalQuantity (Settings)``. The frame carries a
         ``.attrs`` dict recording: ``source_path``, ``alphaphos_quant_level``,
-        ``alphaphos_quant_column``, ``n_rows_loaded``, ``n_rows_returned``.
+        ``alphaphos_quant_column``, ``n_rows_loaded``, ``n_rows_returned``,
+        ``top_n_attribution_applied``, ``n_rows_after_top_n``.
     """
     p = Path(path)
     if p.suffix.lower() == ".parquet":
@@ -214,9 +226,27 @@ def read_psm(
 
     df = df.reset_index(drop=True)
 
+    # Top-N attribution dedup (Spectronaut over-exports the same peptide
+    # measurement as multiple candidate-position rows; this filter keeps only
+    # the rows whose PrecId-encoded positions match the top-N by per-row loc
+    # probability). Validated against Spectronaut native PTM site report
+    # (Pearson r=0.98) and the canonical R consolidate() (r=1.000).
+    n_before_top_n = len(df)
+    attribution_applied = False
+    if top_n_attribution:
+        if "EG.PTMLocalizationProbabilities" in df.columns:
+            # Local import: keeps io <- preprocess directional dep explicit and
+            # avoids any chance of circular import at package-load time.
+            from alphaphos.preprocess.attribution import filter_to_top_n_positions
+
+            df = filter_to_top_n_positions(df)
+            attribution_applied = True
+
     df.attrs["source_path"] = str(p)
     df.attrs["alphaphos_quant_level"] = quant_level
     df.attrs["alphaphos_quant_column"] = quant_col
     df.attrs["n_rows_loaded"] = n_loaded
     df.attrs["n_rows_returned"] = len(df)
+    df.attrs["top_n_attribution_applied"] = attribution_applied
+    df.attrs["n_rows_after_top_n"] = len(df) if attribution_applied else n_before_top_n
     return df
