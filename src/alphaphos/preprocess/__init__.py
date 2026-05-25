@@ -10,6 +10,7 @@ from alphaphos.preprocess.classify import (
     META_COLS,
     apply_condition_aware_classI_mask,
 )
+from alphaphos.preprocess.anndata import to_anndata
 from alphaphos.preprocess.collapse import PeptideCollapse, collapse_sites
 
 __all__ = [
@@ -24,4 +25,6 @@ __all__ = [
     # Condition-aware Class I masking (per-condition majority rule)
     "apply_condition_aware_classI_mask",
     "META_COLS",
+    # AnnData export (for scverse / alphapepttools downstream)
+    "to_anndata",
 ]
