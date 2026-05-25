@@ -11,6 +11,113 @@ import numpy as np
 import pandas as pd
 
 
+def collapse_sites(
+    data: pd.DataFrame,
+    *,
+    cutoff: float = 0.75,
+    collapse_level: str = "PG",
+    aggregation_method: str = "median",
+    localization_strategy: str = "per_run",
+    noise_floor_filter: bool = True,
+    add_kinase_sequences: bool = False,
+    fasta_path: Optional[str] = None,
+    kinase_window_size: int = 6,
+    verbose: bool = False,
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """One-call peptide → site collapse.
+
+    Runs the canonical Hogrebe pipeline (sequence parsing, per-site explosion,
+    precursor-to-site aggregation, optional Class-I masking, log2, noise floor)
+    and returns both the collapsed site matrix and the per-(site, run)
+    localization probability matrix in one shot — the latter is what the
+    downstream ``apply_condition_aware_classI_mask`` needs.
+
+    Parameters
+    ----------
+    data
+        Spectronaut PSM-level DataFrame, typically from
+        ``alphaphos.io.read_spectronaut``. Required columns: ``R.FileName``,
+        ``EG.PrecursorId``, ``EG.TotalQuantity (Settings)``,
+        ``PEP.PeptidePosition``, ``EG.PTMAssayProbability``, ``PG.Genes``,
+        ``PG.ProteinGroups``.
+    cutoff
+        Localization probability cutoff (0–1). Sites failing this are dropped
+        (``global_max``) or have their per-run cells masked (``per_run``).
+        Use ``0.0`` when you intend to apply a downstream condition-aware
+        mask, ``0.75`` for the standard Class-I cutoff.
+    collapse_level
+        ``"PG"`` (protein-group level — default) or ``"P"`` (protein-resolved,
+        explodes multi-protein groups).
+    aggregation_method
+        How to combine multiple precursor rows per site:
+        ``"median"`` (default, Dublin convention), ``"mean"``, ``"sum"``, or
+        ``"consolidate"`` (canonical Hogrebe ratio-imputation + sum).
+    localization_strategy
+        ``"per_run"`` (per-cell mask, strict) or ``"global_max"`` (dataset-wide
+        max loc per site, permissive — pair with a downstream condition-aware
+        mask).
+    noise_floor_filter
+        Replace log2 values of 0 or 1 with NaN (Spectronaut noise-floor heuristic).
+    add_kinase_sequences
+        Annotate each site with a ±N-residue window around the modified residue.
+        Requires ``fasta_path``.
+    fasta_path
+        FASTA file for kinase-sequence annotation. Header format must be
+        ``>db|UniProtID|...``.
+    kinase_window_size
+        Half-window size for kinase sequences (default 6 → 13-mer including
+        the modified residue).
+    verbose
+        Print progress.
+
+    Returns
+    -------
+    sites
+        Wide DataFrame of collapsed phospho-sites. Each row is one
+        ``PTM_Collapse_key`` (``{ProteinGroup}~{Gene}_{S|T|Y}{position}_M{multiplicity}``);
+        each sample column holds the log2 site intensity.
+    loc_per_run
+        ``(sites × samples)`` DataFrame of per-(site, run) localization
+        probabilities. Needed by ``apply_condition_aware_classI_mask``.
+
+    Examples
+    --------
+    >>> from alphaphos.io import read_spectronaut
+    >>> from alphaphos.preprocess import (
+    ...     filter_to_top_n_positions, collapse_sites,
+    ...     apply_condition_aware_classI_mask,
+    ... )
+    >>> df = read_spectronaut("report.parquet", quant_level="MS2",
+    ...                       drop_decoys=True, pg_qvalue_max=0.01)
+    >>> df = filter_to_top_n_positions(df)
+    >>> sites, loc_per_run = collapse_sites(
+    ...     df, cutoff=0.0, collapse_level="PG",
+    ...     aggregation_method="median", localization_strategy="global_max",
+    ...     noise_floor_filter=True,
+    ... )
+    >>> sites_classI, decision = apply_condition_aware_classI_mask(
+    ...     sites, loc_per_run, sample_to_condition,
+    ...     classI_cutoff=0.75, condition_threshold=0.50,
+    ...     drop_all_nan=True, return_decision_table=True,
+    ... )
+    """
+    pc = PeptideCollapse(verbose=verbose)
+    sites = pc.process_complete_pipeline(
+        data,
+        cutoff=cutoff,
+        collapse_level=collapse_level,
+        aggregation_method=aggregation_method,
+        return_both=False,
+        fasta_path=fasta_path,
+        add_kinase_sequences=add_kinase_sequences,
+        kinase_window_size=kinase_window_size,
+        noise_floor_filter=noise_floor_filter,
+        localization_strategy=localization_strategy,
+    )
+    loc_per_run = pc.site_localization_per_run
+    return sites, loc_per_run
+
+
 class PeptideCollapse:
 
     logger = logging.getLogger("PeptideCollapse")
