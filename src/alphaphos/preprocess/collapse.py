@@ -22,15 +22,21 @@ def collapse_sites(
     add_kinase_sequences: bool = False,
     fasta_path: Optional[str] = None,
     kinase_window_size: int = 6,
+    # Condition-aware Class-I masking (only used when localization_strategy='condition')
+    condition_df: Optional[pd.DataFrame] = None,
+    classI_cutoff: float = 0.75,
+    condition_threshold: float = 0.50,
+    drop_all_nan: bool = True,
+    return_decision_table: bool = False,
     verbose: bool = False,
-) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    """One-call peptide → site collapse.
+):
+    """One-call peptide → site collapse, with optional condition-aware masking.
 
     Runs the canonical Hogrebe pipeline (sequence parsing, per-site explosion,
-    precursor-to-site aggregation, optional Class-I masking, log2, noise floor)
-    and returns both the collapsed site matrix and the per-(site, run)
-    localization probability matrix in one shot — the latter is what the
-    downstream ``apply_condition_aware_classI_mask`` needs.
+    precursor-to-site aggregation, log2, noise floor) and returns both the
+    collapsed site matrix and the per-(site, run) localization probability
+    matrix. When ``localization_strategy='condition'``, also applies the
+    condition-aware Class-I mask in one shot.
 
     Parameters
     ----------
@@ -41,70 +47,121 @@ def collapse_sites(
         ``PEP.PeptidePosition``, ``EG.PTMAssayProbability``, ``PG.Genes``,
         ``PG.ProteinGroups``.
     cutoff
-        Localization probability cutoff (0–1). Sites failing this are dropped
-        (``global_max``) or have their per-run cells masked (``per_run``).
-        Use ``0.0`` when you intend to apply a downstream condition-aware
-        mask, ``0.75`` for the standard Class-I cutoff.
+        Localization probability cutoff (0–1). Used by ``per_run`` and
+        ``global_max`` strategies only. With ``localization_strategy='condition'``
+        this is ignored — the collapse runs with cutoff=0 + global_max, and
+        ``classI_cutoff`` drives the downstream mask instead.
     collapse_level
         ``"PG"`` (protein-group level — default) or ``"P"`` (protein-resolved,
         explodes multi-protein groups).
     aggregation_method
         How to combine multiple precursor rows per site:
-        ``"median"`` (default, Dublin convention), ``"mean"``, ``"sum"``, or
+        ``"median"`` (default), ``"mean"``, ``"sum"``, or
         ``"consolidate"`` (canonical Hogrebe ratio-imputation + sum).
     localization_strategy
-        ``"per_run"`` (per-cell mask, strict) or ``"global_max"`` (dataset-wide
-        max loc per site, permissive — pair with a downstream condition-aware
-        mask).
+        One of:
+
+        - ``"per_run"`` — per-cell mask (strict; loc must be >= cutoff in each run)
+        - ``"global_max"`` — dataset-wide max loc per site (permissive)
+        - ``"condition"`` — runs ``global_max`` upstream then applies the
+          per-condition majority-rule Class-I mask. Requires ``condition_df``.
     noise_floor_filter
-        Replace log2 values of 0 or 1 with NaN (Spectronaut noise-floor heuristic).
-    add_kinase_sequences
-        Annotate each site with a ±N-residue window around the modified residue.
-        Requires ``fasta_path``.
-    fasta_path
-        FASTA file for kinase-sequence annotation. Header format must be
-        ``>db|UniProtID|...``.
-    kinase_window_size
-        Half-window size for kinase sequences (default 6 → 13-mer including
-        the modified residue).
+        Replace log2 values of 0 or 1 with NaN.
+    add_kinase_sequences, fasta_path, kinase_window_size
+        FASTA-based annotation of a ±N residue window around each modified
+        residue. Requires ``fasta_path``.
+    condition_df
+        **Required when ``localization_strategy='condition'``.** DataFrame with
+        at least two columns: ``'sample'`` (sample names matching ``R.FileName``
+        / collapsed column names) and ``'condition'`` (condition labels grouping
+        replicates). Extra columns are silently ignored. Errors out if missing.
+    classI_cutoff
+        Localization-probability cutoff used by the condition-aware mask (only
+        when ``localization_strategy='condition'``). Default 0.75.
+    condition_threshold
+        Fraction of replicates per condition that must be Class-I for the
+        mask to keep ALL cells in that condition (else only Class-I cells are
+        kept). Default 0.50 (majority rule).
+    drop_all_nan
+        Drop sites whose entire row is NaN after the condition-aware mask.
+        Default True. Only relevant for ``localization_strategy='condition'``.
+    return_decision_table
+        If True, return a third element: the per-(site, condition) Class-I
+        fraction matrix used by the condition-aware mask. ``None`` for
+        non-``condition`` strategies. Default False.
     verbose
         Print progress.
 
     Returns
     -------
+    Tuple of (sites, loc_per_run), or (sites, loc_per_run, decision_table)
+    when ``return_decision_table=True``.
+
     sites
         Wide DataFrame of collapsed phospho-sites. Each row is one
         ``PTM_Collapse_key`` (``{ProteinGroup}~{Gene}_{S|T|Y}{position}_M{multiplicity}``);
         each sample column holds the log2 site intensity.
     loc_per_run
         ``(sites × samples)`` DataFrame of per-(site, run) localization
-        probabilities. Needed by ``apply_condition_aware_classI_mask``.
+        probabilities.
+    decision_table
+        ``(sites × conditions)`` DataFrame of Class-I fractions
+        (``localization_strategy='condition'`` only; ``None`` otherwise).
 
     Examples
     --------
+    Permissive collapse + condition-aware mask, in one call:
+
+    >>> import pandas as pd
     >>> from alphaphos.io import read_spectronaut
-    >>> from alphaphos.preprocess import (
-    ...     filter_to_top_n_positions, collapse_sites,
-    ...     apply_condition_aware_classI_mask,
-    ... )
+    >>> from alphaphos.preprocess import filter_to_top_n_positions, collapse_sites
     >>> df = read_spectronaut("report.parquet", quant_level="MS2",
     ...                       drop_decoys=True, pg_qvalue_max=0.01)
     >>> df = filter_to_top_n_positions(df)
+    >>> condition_df = pd.DataFrame({
+    ...     "sample":    [...],   # must match R.FileName values
+    ...     "condition": [...],   # replicates of one biological state share a label
+    ... })
     >>> sites, loc_per_run = collapse_sites(
-    ...     df, cutoff=0.0, collapse_level="PG",
-    ...     aggregation_method="median", localization_strategy="global_max",
-    ...     noise_floor_filter=True,
-    ... )
-    >>> sites_classI, decision = apply_condition_aware_classI_mask(
-    ...     sites, loc_per_run, sample_to_condition,
-    ...     classI_cutoff=0.75, condition_threshold=0.50,
-    ...     drop_all_nan=True, return_decision_table=True,
+    ...     df,
+    ...     localization_strategy="condition",
+    ...     condition_df=condition_df,
+    ...     aggregation_method="median",
     ... )
     """
+    valid_strategies = ("per_run", "global_max", "condition")
+    if localization_strategy not in valid_strategies:
+        raise ValueError(
+            f"localization_strategy must be one of {valid_strategies}; "
+            f"got {localization_strategy!r}"
+        )
+
+    if localization_strategy == "condition":
+        if condition_df is None:
+            raise ValueError(
+                "localization_strategy='condition' requires condition_df. "
+                "Pass a DataFrame with at least 'sample' and 'condition' columns:\n"
+                "    condition_df = pd.DataFrame({'sample': [...], "
+                "'condition': [...]})\n"
+                "Then re-call collapse_sites(..., condition_df=condition_df)."
+            )
+        required = {"sample", "condition"}
+        missing = required - set(condition_df.columns)
+        if missing:
+            raise ValueError(
+                f"condition_df must contain columns {sorted(required)}; "
+                f"missing: {sorted(missing)}. Extra columns are allowed and ignored."
+            )
+        pc_strategy = "global_max"
+        pc_cutoff = 0.0
+    else:
+        pc_strategy = localization_strategy
+        pc_cutoff = cutoff
+
     pc = PeptideCollapse(verbose=verbose)
     sites = pc.process_complete_pipeline(
         data,
-        cutoff=cutoff,
+        cutoff=pc_cutoff,
         collapse_level=collapse_level,
         aggregation_method=aggregation_method,
         return_both=False,
@@ -112,9 +169,27 @@ def collapse_sites(
         add_kinase_sequences=add_kinase_sequences,
         kinase_window_size=kinase_window_size,
         noise_floor_filter=noise_floor_filter,
-        localization_strategy=localization_strategy,
+        localization_strategy=pc_strategy,
     )
     loc_per_run = pc.site_localization_per_run
+
+    decision_table = None
+    if localization_strategy == "condition":
+        # Local import avoids a circular import at module load time
+        from alphaphos.preprocess.classify import apply_condition_aware_classI_mask
+
+        sites, decision_table = apply_condition_aware_classI_mask(
+            df_sites=sites,
+            loc_per_run=loc_per_run,
+            sample_to_condition=condition_df,
+            classI_cutoff=classI_cutoff,
+            condition_threshold=condition_threshold,
+            drop_all_nan=drop_all_nan,
+            return_decision_table=True,
+        )
+
+    if return_decision_table:
+        return sites, loc_per_run, decision_table
     return sites, loc_per_run
 
 
