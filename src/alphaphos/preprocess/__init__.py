@@ -1,1 +1,26 @@
 """Peptide collapse, normalization, filtering, imputation, class I/II/III handling."""
+
+from alphaphos.preprocess.attribution import (
+    filter_to_top_n_positions,
+    parse_loc_dict,
+    parse_precid_phospho_positions,
+    top_n_positions,
+)
+from alphaphos.preprocess.classify import (
+    META_COLS,
+    apply_condition_aware_classI_mask,
+)
+from alphaphos.preprocess.collapse import PeptideCollapse
+
+__all__ = [
+    # Top-N attribution (peptide -> site dedup, Spectronaut over-export fix)
+    "filter_to_top_n_positions",
+    "parse_loc_dict",
+    "parse_precid_phospho_positions",
+    "top_n_positions",
+    # Site-level collapse (Hogrebe consolidate ported to Python)
+    "PeptideCollapse",
+    # Condition-aware Class I masking (per-condition majority rule)
+    "apply_condition_aware_classI_mask",
+    "META_COLS",
+]

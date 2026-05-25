@@ -93,3 +93,20 @@ manuscripts/*/output/
 resources/spectral_libraries/*.speclib
 resources/spectral_libraries/*.tsv
 resources/fastas/*.fasta
+
+# Design-time validation outputs (regeneratable from the scripts in docs/design/)
+docs/design/*_output/
+docs/design/*_output_*/
+docs/design/*_out/
+docs/design/minibinder_data/
+docs/design/__pycache__/
+PeptideCollapse.log
+**/PeptideCollapse.log
+
+# Third-party proprietary material (Biognosys; do not redistribute)
+docs/PluginPeptideCollapse.dll
+docs/Spectronaut-20-Manual.pdf
+# Decompiled R script extracted from PluginPeptideCollapse.dll — legally
+# ambiguous to redistribute (Biognosys-licensed binary); keep local-only.
+# Re-extract via docs/decompiled/extract_rscript.py if needed.
+docs/decompiled/
