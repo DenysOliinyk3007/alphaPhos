@@ -69,6 +69,13 @@ select = [
 ]
 ignore = [
     "E501",          # line length handled by formatter
+    "RUF002",        # ambiguous unicode in docstrings (× / – are intentional in math notation)
+    "RUF003",        # ambiguous unicode in comments (same)
+    "RUF015",        # next(...) vs [0]: stylistic, [0] is clearer for known-nonempty
+    "RUF022",        # __all__ ordering: we order by export logical groups, not alphabet
+    "RUF043",        # pytest match= regex flag: only matters with metacharacters
+    "SIM102",        # nested if: sometimes clearer than `and`-chain
+    "SIM108",        # ternary vs if-else: ternary not always clearer
 ]
 
 [tool.ruff.lint.per-file-ignores]

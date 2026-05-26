@@ -1,5 +1,6 @@
 """Peptide collapse, normalization, filtering, imputation, class I/II/III handling."""
 
+from alphaphos.preprocess.anndata import to_anndata
 from alphaphos.preprocess.attribution import (
     filter_to_top_n_positions,
     parse_loc_dict,
@@ -10,7 +11,6 @@ from alphaphos.preprocess.classify import (
     META_COLS,
     apply_condition_aware_classI_mask,
 )
-from alphaphos.preprocess.anndata import to_anndata
 from alphaphos.preprocess.collapse import PeptideCollapse, collapse_sites
 
 __all__ = [
@@ -20,8 +20,8 @@ __all__ = [
     "parse_precid_phospho_positions",
     "top_n_positions",
     # Site-level collapse (Hogrebe consolidate ported to Python)
-    "collapse_sites",       # one-call function — returns (sites, loc_per_run)
-    "PeptideCollapse",      # class form — for fine-grained access to stats etc.
+    "collapse_sites",  # one-call function — returns (sites, loc_per_run)
+    "PeptideCollapse",  # class form — for fine-grained access to stats etc.
     # Condition-aware Class I masking (per-condition majority rule)
     "apply_condition_aware_classI_mask",
     "META_COLS",

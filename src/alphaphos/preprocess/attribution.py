@@ -173,5 +173,5 @@ def filter_to_top_n_positions(
             return False
         return top_n_positions(loc, n) == precid_pos
 
-    keep = [_is_top_n(loc, pp) for loc, pp in zip(loc_dicts, precid_positions)]
+    keep = [_is_top_n(loc, pp) for loc, pp in zip(loc_dicts, precid_positions, strict=True)]
     return df.loc[keep].reset_index(drop=True)

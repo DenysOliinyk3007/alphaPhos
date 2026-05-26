@@ -22,10 +22,10 @@ from alphaphos.preprocess.attribution import (
     top_n_positions,
 )
 
-
 # ============================================================================
 # parse_loc_dict
 # ============================================================================
+
 
 class TestParseLocDict:
     def test_single_phospho(self):
@@ -85,14 +85,13 @@ class TestParseLocDict:
 # parse_precid_phospho_positions
 # ============================================================================
 
+
 class TestParsePrecidPhosphoPositions:
     def test_single_phospho(self):
         assert parse_precid_phospho_positions("_PEPS[Phospho (STY)]TIDE_.2") == (4,)
 
     def test_two_phosphos(self):
-        assert parse_precid_phospho_positions(
-            "_S[Phospho (STY)]TS[Phospho (STY)]K_.3"
-        ) == (1, 3)
+        assert parse_precid_phospho_positions("_S[Phospho (STY)]TS[Phospho (STY)]K_.3") == (1, 3)
 
     def test_three_phosphos(self):
         assert parse_precid_phospho_positions(
@@ -115,9 +114,7 @@ class TestParsePrecidPhosphoPositions:
         assert parse_precid_phospho_positions("_PEPTIDE_.2") == ()
 
     def test_only_other_modification(self):
-        assert parse_precid_phospho_positions(
-            "_C[Carbamidomethyl (C)]PEPTIDE_.2"
-        ) == ()
+        assert parse_precid_phospho_positions("_C[Carbamidomethyl (C)]PEPTIDE_.2") == ()
 
     def test_none_returns_empty(self):
         assert parse_precid_phospho_positions(None) == ()
@@ -128,15 +125,14 @@ class TestParsePrecidPhosphoPositions:
     def test_positions_returned_sorted(self):
         # Even if encoded out of order, we sort
         # (in practice they're always in order, but the contract guarantees sort)
-        result = parse_precid_phospho_positions(
-            "_S[Phospho (STY)]TS[Phospho (STY)]K_.3"
-        )
+        result = parse_precid_phospho_positions("_S[Phospho (STY)]TS[Phospho (STY)]K_.3")
         assert list(result) == sorted(result)
 
 
 # ============================================================================
 # top_n_positions
 # ============================================================================
+
 
 class TestTopNPositions:
     def test_top_1_clear_winner(self):
@@ -176,6 +172,7 @@ class TestTopNPositions:
 # filter_to_top_n_positions — synthetic end-to-end cases
 # ============================================================================
 
+
 def _row(
     precid: str,
     loc_string: str,
@@ -196,9 +193,8 @@ def _row(
         "EG.PTMAssayProbability": 0.99,
         "EG.TotalQuantity (Settings)": qty,
         "PEP.PeptidePosition": pep_pos,
-        "PEP.StrippedSequence": pep or precid.strip("_*. ").translate(
-            str.maketrans("", "", "[]")
-        ).replace("Phospho (STY)", ""),
+        "PEP.StrippedSequence": pep
+        or precid.strip("_*. ").translate(str.maketrans("", "", "[]")).replace("Phospho (STY)", ""),
         "PG.Genes": genes,
         "PG.ProteinGroups": prots,
         "FG.Charge": charge,
@@ -208,10 +204,14 @@ def _row(
 class TestFilterEndToEnd:
     def test_single_unambiguous_phospho_kept(self):
         # One row, one phospho with 99% loc — must pass
-        df = pd.DataFrame([_row(
-            "_PEPS[Phospho (STY)]TIDE_.2",
-            "_PEPS[Phospho (STY): 99.0%]TIDE_",
-        )])
+        df = pd.DataFrame(
+            [
+                _row(
+                    "_PEPS[Phospho (STY)]TIDE_.2",
+                    "_PEPS[Phospho (STY): 99.0%]TIDE_",
+                )
+            ]
+        )
         out = filter_to_top_n_positions(df)
         assert len(out) == 1
 
@@ -220,23 +220,26 @@ class TestFilterEndToEnd:
         # loc string says S322 is the top-1. Only the row with PrecId at S322 survives.
         loc = "_PRS[Phospho (STY): 1.0%]PS[Phospho (STY): 98.0%]K[Phospho (STY): 1.0%]_"
         rows = [
-            _row("_PRS[Phospho (STY)]PSK_.2", loc),         # phospho at pos 3 -- non-top
-            _row("_PRSPS[Phospho (STY)]K_.2", loc),         # phospho at pos 5 -- TOP
-            _row("_PRSPSK[Phospho (STY)]_.2", loc),         # phospho at pos 6 -- non-top
+            _row("_PRS[Phospho (STY)]PSK_.2", loc),  # phospho at pos 3 -- non-top
+            _row("_PRSPS[Phospho (STY)]K_.2", loc),  # phospho at pos 5 -- TOP
+            _row("_PRSPSK[Phospho (STY)]_.2", loc),  # phospho at pos 6 -- non-top
         ]
         df = pd.DataFrame(rows)
         out = filter_to_top_n_positions(df)
         assert len(out) == 1
-        assert out["EG.PrecursorId"].iloc[0] == "_PRSPS[Phospho (STY)]PSK_.2".replace(
-            "PS[Phospho (STY)]PS", "PS[Phospho (STY)]K_.2".replace("K_.2", "K")
-        ) or out["EG.PrecursorId"].iloc[0] == "_PRSPS[Phospho (STY)]K_.2"
+        assert (
+            out["EG.PrecursorId"].iloc[0]
+            == "_PRSPS[Phospho (STY)]PSK_.2".replace(
+                "PS[Phospho (STY)]PS", "PS[Phospho (STY)]K_.2".replace("K_.2", "K")
+            )
+            or out["EG.PrecursorId"].iloc[0] == "_PRSPS[Phospho (STY)]K_.2"
+        )
         # Simpler assertion
         assert out["EG.PrecursorId"].iloc[0] == "_PRSPS[Phospho (STY)]K_.2"
 
     def test_multi_phospho_M2_top_2_match_kept(self):
         # M2 peptide. Loc string says positions 1 and 3 are the top 2.
-        loc = ("_S[Phospho (STY): 99.0%]TS[Phospho (STY): 99.0%]"
-               "VS[Phospho (STY): 1.0%]K_")
+        loc = "_S[Phospho (STY): 99.0%]TS[Phospho (STY): 99.0%]VS[Phospho (STY): 1.0%]K_"
         rows = [
             # PrecId puts phospho at positions 1 and 3 — TOP
             _row("_S[Phospho (STY)]TS[Phospho (STY)]VSK_.3", loc),
@@ -252,8 +255,7 @@ class TestFilterEndToEnd:
 
     def test_multi_phospho_M3_top_3_match_kept(self):
         # M3 peptide — all three positions confident; PrecId must match exactly.
-        loc = ("_S[Phospho (STY): 99.0%]TS[Phospho (STY): 99.0%]"
-               "VS[Phospho (STY): 99.0%]K_")
+        loc = "_S[Phospho (STY): 99.0%]TS[Phospho (STY): 99.0%]VS[Phospho (STY): 99.0%]K_"
         rows = [
             _row("_S[Phospho (STY)]TS[Phospho (STY)]VS[Phospho (STY)]K_.3", loc),
         ]
@@ -315,9 +317,7 @@ class TestFilterEndToEnd:
         assert len(out) == 2
 
     def test_empty_dataframe_returns_empty(self):
-        df = pd.DataFrame(columns=[
-            "EG.PrecursorId", "EG.PTMLocalizationProbabilities"
-        ])
+        df = pd.DataFrame(columns=["EG.PrecursorId", "EG.PTMLocalizationProbabilities"])
         out = filter_to_top_n_positions(df)
         assert len(out) == 0
 
@@ -337,18 +337,19 @@ class TestFilterEndToEnd:
 # Invariants / properties (manual property-style assertions, no hypothesis lib)
 # ============================================================================
 
+
 class TestFilterInvariants:
     def _sample_dataset(self) -> pd.DataFrame:
         """A mid-sized synthetic dataset mixing all the scenarios."""
         loc_clear = "_PEPS[Phospho (STY): 99.0%]TIDE_"
         loc_ambig = "_PRS[Phospho (STY): 50.0%]PS[Phospho (STY): 50.0%]K_"
-        loc_M2 = ("_S[Phospho (STY): 99.0%]TS[Phospho (STY): 99.0%]"
-                  "VSK_")
+        loc_M2 = "_S[Phospho (STY): 99.0%]TS[Phospho (STY): 99.0%]VSK_"
         rows = []
         # 10 unambiguous phospho rows (should all survive)
         for i in range(10):
-            rows.append(_row("_PEPS[Phospho (STY)]TIDE_.2", loc_clear,
-                             qty=1000 + i, sample=f"s{i % 3 + 1}"))
+            rows.append(
+                _row("_PEPS[Phospho (STY)]TIDE_.2", loc_clear, qty=1000 + i, sample=f"s{i % 3 + 1}")
+            )
         # 6 ambiguous (3 candidate positions x 2 samples) - only 2 should survive
         for sample in ["s1", "s2"]:
             for pos in [3, 5]:
@@ -361,18 +362,15 @@ class TestFilterInvariants:
             # with our tie-break, position 3 wins; so the pos=5 row drops
         # 4 M2 rows: 2 correct, 2 wrong
         for sample in ["s1", "s2"]:
-            rows.append(_row(
-                "_S[Phospho (STY)]TS[Phospho (STY)]VSK_.3", loc_M2, sample=sample
-            ))  # top-2 = (1, 3) — kept
-            rows.append(_row(
-                "_S[Phospho (STY)]TSVS[Phospho (STY)]K_.3", loc_M2, sample=sample
-            ))  # top-2 wrong — dropped
+            rows.append(
+                _row("_S[Phospho (STY)]TS[Phospho (STY)]VSK_.3", loc_M2, sample=sample)
+            )  # top-2 = (1, 3) — kept
+            rows.append(
+                _row("_S[Phospho (STY)]TSVS[Phospho (STY)]K_.3", loc_M2, sample=sample)
+            )  # top-2 wrong — dropped
         # 3 non-phospho passthrough
         for i in range(3):
-            rows.append(_row(
-                "_C[Carbamidomethyl (C)]PEPTIDE_.2", "_PEPTIDE_",
-                sample=f"s{i + 1}"
-            ))
+            rows.append(_row("_C[Carbamidomethyl (C)]PEPTIDE_.2", "_PEPTIDE_", sample=f"s{i + 1}"))
         return pd.DataFrame(rows)
 
     def test_idempotent(self):
@@ -409,24 +407,21 @@ class TestFilterInvariants:
         # For AMBIGUOUS phospho peptides (multiple candidate-position rows for
         # the same chromatographic measurement), after filtering exactly ONE
         # candidate-position row should survive per (peptide, charge, sample).
-        loc_ambig = ("_PRS[Phospho (STY): 1.0%]PS[Phospho (STY): 98.0%]"
-                     "K[Phospho (STY): 1.0%]_")
+        loc_ambig = "_PRS[Phospho (STY): 1.0%]PS[Phospho (STY): 98.0%]K[Phospho (STY): 1.0%]_"
         rows = []
         # 3 candidate-position rows x 2 samples = 6 input rows.
         # Only the position-5 (top-1) row per sample should survive.
         for sample in ["s1", "s2"]:
             for precid in [
-                "_PRS[Phospho (STY)]PSK_.2",   # phospho at position 3 — non-top
-                "_PRSPS[Phospho (STY)]K_.2",   # phospho at position 5 — TOP
-                "_PRSPSK[Phospho (STY)]_.2",   # phospho at position 6 — non-top
+                "_PRS[Phospho (STY)]PSK_.2",  # phospho at position 3 — non-top
+                "_PRSPS[Phospho (STY)]K_.2",  # phospho at position 5 — TOP
+                "_PRSPSK[Phospho (STY)]_.2",  # phospho at position 6 — non-top
             ]:
                 rows.append(_row(precid, loc_ambig, sample=sample))
         df = pd.DataFrame(rows)
         out = filter_to_top_n_positions(df)
         # Group only the ambiguous phospho survivors
-        grp = out.groupby(
-            ["PEP.StrippedSequence", "FG.Charge", "R.FileName"]
-        ).size()
+        grp = out.groupby(["PEP.StrippedSequence", "FG.Charge", "R.FileName"]).size()
         assert (grp == 1).all(), (
             f"each (pep, charge, sample) ambiguous group should yield exactly 1 row; got {grp.to_dict()}"
         )

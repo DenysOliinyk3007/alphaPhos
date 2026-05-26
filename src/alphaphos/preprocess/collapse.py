@@ -1,11 +1,8 @@
+import hashlib
+import logging
 import re
 import sys
 import time
-import logging
-import hashlib
-import warnings
-from typing import Dict, List, Optional, Tuple, Union
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -20,10 +17,10 @@ def collapse_sites(
     localization_strategy: str = "condition",
     noise_floor_filter: bool = True,
     add_kinase_sequences: bool = False,
-    fasta_path: Optional[str] = None,
+    fasta_path: str | None = None,
     kinase_window_size: int = 6,
     # Condition-aware Class-I masking (only used when localization_strategy='condition')
-    condition_df: Optional[pd.DataFrame] = None,
+    condition_df: pd.DataFrame | None = None,
     classI_cutoff: float = 0.75,
     condition_threshold: float = 0.50,
     drop_all_nan: bool = True,
@@ -196,7 +193,6 @@ def collapse_sites(
 
 
 class PeptideCollapse:
-
     logger = logging.getLogger("PeptideCollapse")
 
     def __init__(self, verbose: bool = True):
@@ -227,25 +223,25 @@ class PeptideCollapse:
         self.site_localization_per_run = None
 
         self.processing_stats = {
-            'initial_rows': 0,
-            'phospho_rows': 0,
-            'final_peptides': 0,
-            'final_sites': 0,
-            'processing_time': 0,
-            'per_site_localization_used': False,
-            'per_site_localization_fallback_pct': 0.0,
-            'noise_floor_filter': False,
-            'noise_floor_removed': 0,
-            'aggregation_method': '',
-            'localization_strategy': '',
-            'per_run_cells_masked': 0,
-            'per_run_cells_total': 0,
-            'sites_dropped_all_nan': 0,
-            'n_samples': 0,
-            'completeness_pct': 0.0,
-            'localization_cutoff': 0.0,
-            'sites_before_cutoff': 0,
-            'sites_after_cutoff': 0,
+            "initial_rows": 0,
+            "phospho_rows": 0,
+            "final_peptides": 0,
+            "final_sites": 0,
+            "processing_time": 0,
+            "per_site_localization_used": False,
+            "per_site_localization_fallback_pct": 0.0,
+            "noise_floor_filter": False,
+            "noise_floor_removed": 0,
+            "aggregation_method": "",
+            "localization_strategy": "",
+            "per_run_cells_masked": 0,
+            "per_run_cells_total": 0,
+            "sites_dropped_all_nan": 0,
+            "n_samples": 0,
+            "completeness_pct": 0.0,
+            "localization_cutoff": 0.0,
+            "sites_before_cutoff": 0,
+            "sites_after_cutoff": 0,
         }
 
         self.verbose = verbose
@@ -273,9 +269,7 @@ class PeptideCollapse:
         # Console only when verbose
         if self.verbose:
             console_handler = logging.StreamHandler()
-            console_formatter = logging.Formatter(
-                "[%(levelname)s] %(name)s: %(message)s"
-            )
+            console_formatter = logging.Formatter("[%(levelname)s] %(name)s: %(message)s")
             console_handler.setFormatter(console_formatter)
             console_handler.setLevel(logging.INFO)
             self.logger.addHandler(console_handler)
@@ -285,7 +279,7 @@ class PeptideCollapse:
     def load_data(self, data: pd.DataFrame, validate: bool = True) -> None:
 
         self.data = data.copy()
-        self.processing_stats['initial_rows'] = len(self.data)
+        self.processing_stats["initial_rows"] = len(self.data)
 
         self.logger.info("Loaded %d rows", len(self.data))
 
@@ -293,8 +287,8 @@ class PeptideCollapse:
         self.logger.info("Total rows loaded: %d", len(self.data))
 
         # Sample count report
-        n_samples = self.data['R.FileName'].nunique()
-        self.processing_stats['n_samples'] = n_samples
+        n_samples = self.data["R.FileName"].nunique()
+        self.processing_stats["n_samples"] = n_samples
         self.logger.info("Unique samples (R.FileName): %d", n_samples)
 
         # Duplicate raw file check
@@ -303,17 +297,16 @@ class PeptideCollapse:
         if validate:
             self._validate_input_data()
 
-
     def _check_duplicate_raw_files(self) -> None:
         """Check if any R.FileName values map to identical data patterns."""
         file_hashes = {}
-        for fname in self.data['R.FileName'].unique():
-            subset = self.data.loc[self.data['R.FileName'] == fname, 'EG.PrecursorId']
+        for fname in self.data["R.FileName"].unique():
+            subset = self.data.loc[self.data["R.FileName"] == fname, "EG.PrecursorId"]
             sorted_precursors = sorted(subset.dropna().astype(str).tolist())[:100]
             h = hashlib.md5("||".join(sorted_precursors).encode()).hexdigest()
             file_hashes.setdefault(h, []).append(fname)
 
-        for h, fnames in file_hashes.items():
+        for _h, fnames in file_hashes.items():
             if len(fnames) > 1:
                 self.logger.warning(
                     "Potential file duplication detected: %s share identical "
@@ -321,12 +314,10 @@ class PeptideCollapse:
                     fnames,
                 )
 
-
     def load_fasta(self, fasta_path: str) -> None:
 
         self.fasta_dict = self._load_fasta_to_dict(fasta_path)
         self.logger.info("Loaded FASTA with %d protein entries", len(self.fasta_dict))
-
 
     def preprocess_data(self) -> None:
 
@@ -356,11 +347,12 @@ class PeptideCollapse:
 
         self.logger.info(
             "Preprocessing: %d rows remaining after phospho filter, %d non-phospho removed",
-            len(df), removed_non_phospho,
+            len(df),
+            removed_non_phospho,
         )
 
-        df["peptide_start_position"] = df["PEP.PeptidePosition"].astype(str).apply(
-            self._extract_first_valid_position
+        df["peptide_start_position"] = (
+            df["PEP.PeptidePosition"].astype(str).apply(self._extract_first_valid_position)
         )
 
         initial_with_phospho = len(df)
@@ -376,10 +368,9 @@ class PeptideCollapse:
         df["phospho_multiplicity"] = df["phospho_count"].apply(lambda x: min(x, 3))
 
         self.processed_data = df
-        self.processing_stats['phospho_rows'] = len(df)
+        self.processing_stats["phospho_rows"] = len(df)
 
         self.logger.info("Preprocessing complete: %d phospho rows retained", len(df))
-
 
     def collapse_to_peptides(
         self,
@@ -389,27 +380,37 @@ class PeptideCollapse:
         exclude_carbamidomethyl: bool = True,
         add_kinase_sequences: bool = False,
         kinase_window_size: int = 6,
-        noise_floor_filter: bool = True
+        noise_floor_filter: bool = True,
     ) -> pd.DataFrame:
 
         if self.processed_data is None:
             self.preprocess_data()
 
-        self.logger.info("Starting peptide-level collapse (aggregation=%s, cutoff=%.2f)", aggregation_method, cutoff)
+        self.logger.info(
+            "Starting peptide-level collapse (aggregation=%s, cutoff=%.2f)",
+            aggregation_method,
+            cutoff,
+        )
 
         self.peptide_data = self._create_peptide_level_collapse(
-            self.processed_data, cutoff, collapse_level, aggregation_method,
-            exclude_carbamidomethyl, noise_floor_filter
+            self.processed_data,
+            cutoff,
+            collapse_level,
+            aggregation_method,
+            exclude_carbamidomethyl,
+            noise_floor_filter,
         )
 
         if add_kinase_sequences:
             if self.fasta_dict is None:
-                raise ValueError("FASTA data required for kinase sequences. Use load_fasta() first.")
+                raise ValueError(
+                    "FASTA data required for kinase sequences. Use load_fasta() first."
+                )
             self.peptide_data = self._generate_kinase_sequences(
                 self.peptide_data, kinase_window_size
             )
 
-        self.processing_stats['final_peptides'] = len(self.peptide_data)
+        self.processing_stats["final_peptides"] = len(self.peptide_data)
         self.logger.info("Peptide-level collapse complete: %d peptides", len(self.peptide_data))
 
         return self.peptide_data
@@ -422,7 +423,7 @@ class PeptideCollapse:
         add_kinase_sequences: bool = True,
         kinase_window_size: int = 6,
         noise_floor_filter: bool = True,
-        localization_strategy: str = "per_run"
+        localization_strategy: str = "per_run",
     ) -> pd.DataFrame:
         """Collapse precursor-level data to phosphosite-level matrix.
 
@@ -461,22 +462,28 @@ class PeptideCollapse:
 
         self.logger.info(
             "Starting site-level collapse (aggregation=%s, cutoff=%.2f, strategy=%s)",
-            aggregation_method, cutoff, localization_strategy,
+            aggregation_method,
+            cutoff,
+            localization_strategy,
         )
 
         self.site_data = self._create_site_level_collapse(
-            self.processed_data, cutoff, collapse_level, aggregation_method,
-            noise_floor_filter, localization_strategy
+            self.processed_data,
+            cutoff,
+            collapse_level,
+            aggregation_method,
+            noise_floor_filter,
+            localization_strategy,
         )
 
         if add_kinase_sequences:
             if self.fasta_dict is None:
-                raise ValueError("FASTA data required for kinase sequences. Use load_fasta() first.")
-            self.site_data = self._generate_kinase_sequences(
-                self.site_data, kinase_window_size
-            )
+                raise ValueError(
+                    "FASTA data required for kinase sequences. Use load_fasta() first."
+                )
+            self.site_data = self._generate_kinase_sequences(self.site_data, kinase_window_size)
 
-        self.processing_stats['final_sites'] = len(self.site_data)
+        self.processing_stats["final_sites"] = len(self.site_data)
         self.logger.info("Site-level collapse complete: %d sites", len(self.site_data))
         return self.site_data
 
@@ -488,12 +495,12 @@ class PeptideCollapse:
         aggregation_method: str = "sum",
         return_both: bool = False,
         exclude_carbamidomethyl: bool = True,
-        fasta_path: Optional[str] = None,
+        fasta_path: str | None = None,
         add_kinase_sequences: bool = True,
         kinase_window_size: int = 6,
         noise_floor_filter: bool = True,
-        localization_strategy: str = "per_run"
-    ) -> Union[pd.DataFrame, Tuple[pd.DataFrame, pd.DataFrame]]:
+        localization_strategy: str = "per_run",
+    ) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
 
         start_time = time.time()
 
@@ -501,41 +508,56 @@ class PeptideCollapse:
 
         self.load_data(data)
 
-
         if add_kinase_sequences and fasta_path:
             self.load_fasta(fasta_path)
-
 
         self.preprocess_data()
 
         if return_both:
             # Create both levels
             peptide_data = self.collapse_to_peptides(
-                cutoff, collapse_level, aggregation_method, exclude_carbamidomethyl,
-                add_kinase_sequences, kinase_window_size, noise_floor_filter
+                cutoff,
+                collapse_level,
+                aggregation_method,
+                exclude_carbamidomethyl,
+                add_kinase_sequences,
+                kinase_window_size,
+                noise_floor_filter,
             )
             site_data = self.collapse_to_sites(
-                cutoff, collapse_level, aggregation_method,
-                add_kinase_sequences, kinase_window_size, noise_floor_filter,
-                localization_strategy
+                cutoff,
+                collapse_level,
+                aggregation_method,
+                add_kinase_sequences,
+                kinase_window_size,
+                noise_floor_filter,
+                localization_strategy,
             )
 
-            self.processing_stats['processing_time'] = time.time() - start_time
-            self.logger.info("Pipeline complete in %.2f seconds", self.processing_stats['processing_time'])
+            self.processing_stats["processing_time"] = time.time() - start_time
+            self.logger.info(
+                "Pipeline complete in %.2f seconds", self.processing_stats["processing_time"]
+            )
             return peptide_data, site_data
         else:
             # Site-level only
             site_data = self.collapse_to_sites(
-                cutoff, collapse_level, aggregation_method,
-                add_kinase_sequences, kinase_window_size, noise_floor_filter,
-                localization_strategy
+                cutoff,
+                collapse_level,
+                aggregation_method,
+                add_kinase_sequences,
+                kinase_window_size,
+                noise_floor_filter,
+                localization_strategy,
             )
 
-            self.processing_stats['processing_time'] = time.time() - start_time
-            self.logger.info("Pipeline complete in %.2f seconds", self.processing_stats['processing_time'])
+            self.processing_stats["processing_time"] = time.time() - start_time
+            self.logger.info(
+                "Pipeline complete in %.2f seconds", self.processing_stats["processing_time"]
+            )
             return site_data
 
-    def reformat_for_analysis(self, data: Optional[pd.DataFrame] = None) -> pd.DataFrame:
+    def reformat_for_analysis(self, data: pd.DataFrame | None = None) -> pd.DataFrame:
 
         if data is None:
             if self.site_data is None:
@@ -550,12 +572,12 @@ class PeptideCollapse:
 
     def get_quant_sample_data(self) -> list:
 
-        return self.data['R.FileName'].unique().tolist()
+        return self.data["R.FileName"].unique().tolist()
 
     def get_precursor_condition_dataset(self) -> pd.DataFrame:
-        return pd.DataFrame({'Sample': self.get_quant_sample_data(), 'Condition': np.nan})
+        return pd.DataFrame({"Sample": self.get_quant_sample_data(), "Condition": np.nan})
 
-    def calculate_selectivity(self, data: Optional[pd.DataFrame] = None) -> pd.DataFrame:
+    def calculate_selectivity(self, data: pd.DataFrame | None = None) -> pd.DataFrame:
         """Calculate per-sample phosphopeptide enrichment selectivity from raw data.
 
         Returns a DataFrame with columns: Sample, total_precursors,
@@ -566,27 +588,27 @@ class PeptideCollapse:
         elif self.data is None:
             raise ValueError("No data loaded. Pass a DataFrame or use load_data() first.")
 
-        df = self.data[['R.FileName', 'EG.PrecursorId']].drop_duplicates()
+        df = self.data[["R.FileName", "EG.PrecursorId"]].drop_duplicates()
         df = df.copy()
-        df['is_phospho'] = df['EG.PrecursorId'].str.contains(
-            r'\[Phospho \(STY\)\]', regex=True, na=False
+        df["is_phospho"] = df["EG.PrecursorId"].str.contains(
+            r"\[Phospho \(STY\)\]", regex=True, na=False
         )
 
         summary = (
-            df.groupby('R.FileName')
+            df.groupby("R.FileName")
             .agg(
-                total_precursors=('EG.PrecursorId', 'count'),
-                phospho_precursors=('is_phospho', 'sum'),
+                total_precursors=("EG.PrecursorId", "count"),
+                phospho_precursors=("is_phospho", "sum"),
             )
             .reset_index()
-            .rename(columns={'R.FileName': 'Sample'})
+            .rename(columns={"R.FileName": "Sample"})
         )
-        summary['selectivity_pct'] = (
-            summary['phospho_precursors'] / summary['total_precursors'] * 100
+        summary["selectivity_pct"] = (
+            summary["phospho_precursors"] / summary["total_precursors"] * 100
         ).round(2)
         return summary
 
-    def validate_output(self, data: Optional[pd.DataFrame] = None) -> dict:
+    def validate_output(self, data: pd.DataFrame | None = None) -> dict:
         """Validate the output DataFrame for data integrity issues.
 
         Parameters
@@ -601,16 +623,28 @@ class PeptideCollapse:
         if data is None:
             data = self.site_data
         if data is None:
-            raise ValueError("No data to validate. Run a collapse method first or pass a DataFrame.")
+            raise ValueError(
+                "No data to validate. Run a collapse method first or pass a DataFrame."
+            )
 
         issues = []
 
         # Determine sample columns (everything that is not metadata)
         metadata_cols = {
-            "UPD_seq", "PTM_localization", "Protein_group", "Gene_group",
-            "PTM_Collapse_key", "kinase_sequence", "Protein_Collapse_key",
-            "PG.Genes", "PG.ProteinGroups", "clean_sequence", "all_modifications",
-            "phospho_count", "EG.PTMAssayProbability", "peptide_collapse_key",
+            "UPD_seq",
+            "PTM_localization",
+            "Protein_group",
+            "Gene_group",
+            "PTM_Collapse_key",
+            "kinase_sequence",
+            "Protein_Collapse_key",
+            "PG.Genes",
+            "PG.ProteinGroups",
+            "clean_sequence",
+            "all_modifications",
+            "phospho_count",
+            "EG.PTMAssayProbability",
+            "peptide_collapse_key",
         }
         sample_cols = [c for c in data.columns if c not in metadata_cols]
 
@@ -635,7 +669,7 @@ class PeptideCollapse:
                 self.logger.info("No duplicate PTM_Collapse_key values")
 
             # 3. PTM_Collapse_key format check: ProteinGroup~Gene_AAsitepos_Mmult
-            pattern = re.compile(r'^[^~]+~[^_]+_[A-Za-z]\d+_M\d+$')
+            pattern = re.compile(r"^[^~]+~[^_]+_[A-Za-z]\d+_M\d+$")
             bad_keys = data["PTM_Collapse_key"].apply(lambda k: not bool(pattern.match(str(k))))
             bad_count = bad_keys.sum()
             if bad_count > 0:
@@ -681,7 +715,12 @@ class PeptideCollapse:
         total_cells = numeric_sample.size
         nan_cells = numeric_sample.isna().sum().sum()
         completeness = ((total_cells - nan_cells) / total_cells * 100) if total_cells > 0 else 0.0
-        self.logger.info("Output completeness: %.1f%% (%d/%d cells)", completeness, total_cells - nan_cells, total_cells)
+        self.logger.info(
+            "Output completeness: %.1f%% (%d/%d cells)",
+            completeness,
+            total_cells - nan_cells,
+            total_cells,
+        )
 
         return {
             "valid": len(issues) == 0,
@@ -720,19 +759,24 @@ class PeptideCollapse:
 
         quant = self.site_data.set_index("PTM_Collapse_key", drop=False)
         metadata = {
-            "UPD_seq", "PTM_localization", "Protein_group", "Gene_group",
-            "PTM_Collapse_key", "kinase_sequence", "Protein_Collapse_key",
-            "PG.Genes", "PG.ProteinGroups",
+            "UPD_seq",
+            "PTM_localization",
+            "Protein_group",
+            "Gene_group",
+            "PTM_Collapse_key",
+            "kinase_sequence",
+            "Protein_Collapse_key",
+            "PG.Genes",
+            "PG.ProteinGroups",
         }
         sample_cols = [
-            c for c in quant.columns
+            c
+            for c in quant.columns
             if c not in metadata and pd.api.types.is_numeric_dtype(quant[c])
         ]
         quant_samples = quant[sample_cols]
 
-        loc = self.site_localization_per_run.reindex(
-            index=quant_samples.index, columns=sample_cols
-        )
+        loc = self.site_localization_per_run.reindex(index=quant_samples.index, columns=sample_cols)
 
         class_I = quant_samples.notna() & (loc >= cutoff)
         return class_I.sum(axis=0).rename("class_I_count")
@@ -743,7 +787,7 @@ class PeptideCollapse:
 
         missing_columns = []
         present_columns = []
-        required_columns = self.required_columns['essential']
+        required_columns = self.required_columns["essential"]
 
         for column in required_columns:
             if column in self.data.columns:
@@ -761,7 +805,7 @@ class PeptideCollapse:
             )
             sys.exit("Function stopped due to missing required columns")
 
-    def _extract_sequence_modifications(self, sequence: str) -> Dict[str, Union[List[int], str, int]]:
+    def _extract_sequence_modifications(self, sequence: str) -> dict[str, list[int] | str | int]:
 
         base_sequence = sequence
 
@@ -775,9 +819,7 @@ class PeptideCollapse:
                 base_sequence = base_sequence.split(".*")[0]
             elif "._" in base_sequence:
                 base_sequence = base_sequence.split("._")[0]
-            elif base_sequence.endswith("*"):
-                base_sequence = base_sequence[:-1]
-            elif base_sequence.endswith("_"):
+            elif base_sequence.endswith("*") or base_sequence.endswith("_"):
                 base_sequence = base_sequence[:-1]
 
             parts = base_sequence.split(".")
@@ -805,7 +847,7 @@ class PeptideCollapse:
             "base_sequence": base_sequence,
         }
 
-    def _calculate_phospho_positions(self, phospho_sequence: str) -> List[int]:
+    def _calculate_phospho_positions(self, phospho_sequence: str) -> list[int]:
 
         if "[Phospho (STY)]" not in phospho_sequence:
             return []
@@ -819,7 +861,7 @@ class PeptideCollapse:
             positions.append(current_pos)
         return positions
 
-    def _extract_first_valid_position(self, position_str: str) -> Optional[int]:
+    def _extract_first_valid_position(self, position_str: str) -> int | None:
 
         if pd.isna(position_str) or position_str == "None" or position_str == "":
             return None
@@ -835,9 +877,13 @@ class PeptideCollapse:
         return None
 
     def _create_peptide_level_collapse(
-        self, data: pd.DataFrame, cutoff: float, collapse_level: str,
-        aggregation_method: str, exclude_carbamidomethyl: bool,
-        noise_floor_filter: bool = True
+        self,
+        data: pd.DataFrame,
+        cutoff: float,
+        collapse_level: str,
+        aggregation_method: str,
+        exclude_carbamidomethyl: bool,
+        noise_floor_filter: bool = True,
     ) -> pd.DataFrame:
         df = data.copy()
 
@@ -854,7 +900,9 @@ class PeptideCollapse:
 
         self.logger.info(
             "Peptide collapse preprocessing: %d rows remaining, %d phospho, %d non-phospho removed",
-            len(df), len(df), removed_non_phospho,
+            len(df),
+            len(df),
+            removed_non_phospho,
         )
 
         if len(df) == 0:
@@ -863,7 +911,8 @@ class PeptideCollapse:
 
         df["genes_processed"] = df["PG.Genes"].astype(str).str.replace("#", "_", regex=False)
         df["peptide_collapse_key"] = df.apply(
-            lambda row: self._create_peptide_key(row, collapse_level, exclude_carbamidomethyl), axis=1
+            lambda row: self._create_peptide_key(row, collapse_level, exclude_carbamidomethyl),
+            axis=1,
         )
 
         error_keys = df["peptide_collapse_key"].str.startswith("Error_")
@@ -872,7 +921,9 @@ class PeptideCollapse:
             df = df[~error_keys].copy()
 
         if len(df) == 0:
-            self.logger.warning("No rows remaining after error key removal; returning empty DataFrame")
+            self.logger.warning(
+                "No rows remaining after error key removal; returning empty DataFrame"
+            )
             return pd.DataFrame()
 
         quant_pivot = df.pivot_table(
@@ -885,7 +936,8 @@ class PeptideCollapse:
 
         self.logger.info(
             "Peptide pivot: %d keys x %d samples, NaN count: %d, zero count: %d",
-            quant_pivot.shape[0], quant_pivot.shape[1],
+            quant_pivot.shape[0],
+            quant_pivot.shape[1],
             int(quant_pivot.isna().sum().sum()),
             int((quant_pivot == 0).sum().sum()),
         )
@@ -899,7 +951,13 @@ class PeptideCollapse:
         loc_pivot = loc_pivot.fillna(-1)
         loc_pivot = pd.DataFrame({"EG.PTMAssayProbability": loc_pivot.apply(max, axis=1)})
 
-        metadata_cols = ["PG.Genes", "PG.ProteinGroups", "clean_sequence", "all_modifications", "phospho_count"]
+        metadata_cols = [
+            "PG.Genes",
+            "PG.ProteinGroups",
+            "clean_sequence",
+            "all_modifications",
+            "phospho_count",
+        ]
         available_metadata_cols = [col for col in metadata_cols if col in df.columns]
 
         if available_metadata_cols:
@@ -911,10 +969,12 @@ class PeptideCollapse:
 
         _pept_sample_cols = [c for c in quant_pivot.columns if c not in ("peptide_collapse_key",)]
 
-        self.processing_stats['aggregation_method'] = aggregation_method
+        self.processing_stats["aggregation_method"] = aggregation_method
 
         if aggregation_method == "consolidate":
-            _pept_grouped = quant_pivot.reset_index().groupby("peptide_collapse_key")[_pept_sample_cols]
+            _pept_grouped = quant_pivot.reset_index().groupby("peptide_collapse_key")[
+                _pept_sample_cols
+            ]
             quant_final = _pept_grouped.apply(
                 lambda g: pd.Series(
                     self._consolidate(g.values),
@@ -930,7 +990,8 @@ class PeptideCollapse:
 
         self.logger.info(
             "Peptide aggregation: %d collapse keys, NaN count in aggregated matrix: %d",
-            len(quant_final), int(quant_final.isna().sum().sum()),
+            len(quant_final),
+            int(quant_final.isna().sum().sum()),
         )
 
         # Log2 transform after consolidation (matching OG pipeline)
@@ -942,13 +1003,15 @@ class PeptideCollapse:
         else:
             self.logger.debug("Log2 transform: no -inf values produced")
 
-        self.processing_stats['noise_floor_filter'] = noise_floor_filter
+        self.processing_stats["noise_floor_filter"] = noise_floor_filter
         if noise_floor_filter:
             before_nf = int(quant_final.notna().sum().sum())
             quant_final = quant_final.replace(0, np.nan).replace(1, np.nan)
             after_nf = int(quant_final.notna().sum().sum())
             nf_removed = before_nf - after_nf
-            self.processing_stats['noise_floor_removed'] = self.processing_stats.get('noise_floor_removed', 0) + nf_removed
+            self.processing_stats["noise_floor_removed"] = (
+                self.processing_stats.get("noise_floor_removed", 0) + nf_removed
+            )
             self.logger.info("Noise floor filter removed %d values", nf_removed)
 
         quant_final = quant_final.replace("Filtered", np.nan)
@@ -963,7 +1026,10 @@ class PeptideCollapse:
 
         self.logger.info(
             "Peptide localization cutoff (%.2f): %d before, %d after, %d removed",
-            cutoff, pre_filter_count, len(result), pre_filter_count - len(result),
+            cutoff,
+            pre_filter_count,
+            len(result),
+            pre_filter_count - len(result),
         )
 
         new_columns = []
@@ -978,22 +1044,35 @@ class PeptideCollapse:
             result["PG.Genes"] = result["PG.Genes"].astype(str).str.replace("#", "_", regex=False)
 
         # Final output summary
-        sample_result_cols = [c for c in result.columns if c not in metadata_cols and c != "peptide_collapse_key" and c != "EG.PTMAssayProbability"]
+        sample_result_cols = [
+            c
+            for c in result.columns
+            if c not in metadata_cols
+            and c != "peptide_collapse_key"
+            and c != "EG.PTMAssayProbability"
+        ]
         numeric_result = result[sample_result_cols].select_dtypes(include=[np.number])
         total_cells = numeric_result.size
         nan_cells = int(numeric_result.isna().sum().sum())
         completeness = ((total_cells - nan_cells) / total_cells * 100) if total_cells > 0 else 0.0
         self.logger.info(
             "Peptide final output: %d peptides, %d samples, completeness %.1f%%, NaN %.1f%%",
-            len(result), len(numeric_result.columns), completeness, 100.0 - completeness,
+            len(result),
+            len(numeric_result.columns),
+            completeness,
+            100.0 - completeness,
         )
 
         return result
 
     def _create_site_level_collapse(
-        self, data: pd.DataFrame, cutoff: float, collapse_level: str,
-        aggregation_method: str, noise_floor_filter: bool = True,
-        localization_strategy: str = "per_run"
+        self,
+        data: pd.DataFrame,
+        cutoff: float,
+        collapse_level: str,
+        aggregation_method: str,
+        noise_floor_filter: bool = True,
+        localization_strategy: str = "per_run",
     ) -> pd.DataFrame:
         """Create site-level collapsed data."""
         df = data.copy()
@@ -1010,14 +1089,16 @@ class PeptideCollapse:
 
         self.logger.info(
             "Site collapse preprocessing: %d rows remaining, %d phospho, %d non-phospho removed",
-            len(df), len(df), removed_non_phospho,
+            len(df),
+            len(df),
+            removed_non_phospho,
         )
 
         # Per-site localization: parse EG.PTMLocalizationProbabilities for per-site
         # probabilities. Positions are kept from EG.PrecursorId to ensure consistency
         # across charge states and avoid data fragmentation across nearby sites.
         _use_loc_string = "EG.PTMLocalizationProbabilities" in df.columns
-        self.processing_stats['per_site_localization_used'] = _use_loc_string
+        self.processing_stats["per_site_localization_used"] = _use_loc_string
 
         if _use_loc_string:
             _loc_dicts = df["EG.PTMLocalizationProbabilities"].apply(
@@ -1041,49 +1122,60 @@ class PeptideCollapse:
             # Look up per-site probability from the stored parsed dict
             df["PTM_localization"] = [
                 d.get(int(pos), np.nan) if d else np.nan
-                for d, pos in zip(df["_loc_dict"], df["PTM_0_pos_val"])
+                for d, pos in zip(df["_loc_dict"], df["PTM_0_pos_val"], strict=True)
             ]
             df = df.drop(columns=["_loc_dict"])
             # Fall back to joint probability where per-site parsing failed
             _fallback = df["PTM_localization"].isna()
-            df.loc[_fallback, "PTM_localization"] = (
-                df.loc[_fallback, "EG.PTMAssayProbability"].astype(np.float64)
-            )
+            df.loc[_fallback, "PTM_localization"] = df.loc[
+                _fallback, "EG.PTMAssayProbability"
+            ].astype(np.float64)
 
             n_per_site = int((~_fallback).sum())
             n_fallback = int(_fallback.sum())
             total_loc = n_per_site + n_fallback
             fallback_pct = (n_fallback / total_loc * 100) if total_loc > 0 else 0.0
-            self.processing_stats['per_site_localization_fallback_pct'] = round(fallback_pct, 2)
+            self.processing_stats["per_site_localization_fallback_pct"] = round(fallback_pct, 2)
 
             self.logger.info(
                 "Per-site localization: %d rows got per-site prob, %d fell back to joint prob (%.1f%% fallback)",
-                n_per_site, n_fallback, fallback_pct,
+                n_per_site,
+                n_fallback,
+                fallback_pct,
             )
         else:
             df["PTM_localization"] = df["EG.PTMAssayProbability"].astype(np.float64)
-            self.processing_stats['per_site_localization_fallback_pct'] = 100.0
-            self.logger.info("Per-site localization column not available; using joint EG.PTMAssayProbability for all rows")
+            self.processing_stats["per_site_localization_fallback_pct"] = 100.0
+            self.logger.info(
+                "Per-site localization column not available; using joint EG.PTMAssayProbability for all rows"
+            )
 
         fine_names = list(data["R.FileName"].unique())
-        self.processing_stats['n_samples'] = len(fine_names)
+        self.processing_stats["n_samples"] = len(fine_names)
 
         df2 = pd.pivot_table(
-            df, index=["PTM_group", "PTM_0_pos_val"], columns=["R.FileName"],
-            values=["EG.TotalQuantity (Settings)"], aggfunc="sum"
+            df,
+            index=["PTM_group", "PTM_0_pos_val"],
+            columns=["R.FileName"],
+            values=["EG.TotalQuantity (Settings)"],
+            aggfunc="sum",
         )
         df2 = df2.replace(0, np.nan)
 
         self.logger.info(
             "Site pivot: %d keys x %d samples, NaN count: %d, zero count: %d",
-            df2.shape[0], df2.shape[1],
+            df2.shape[0],
+            df2.shape[1],
             int(df2.isna().sum().sum()),
             int((df2 == 0).sum().sum()),
         )
 
         df3 = pd.pivot_table(
-            df, index=["PTM_group", "PTM_0_pos_val"], columns=["R.FileName"],
-            values=["PTM_localization"], aggfunc="first"
+            df,
+            index=["PTM_group", "PTM_0_pos_val"],
+            columns=["R.FileName"],
+            values=["PTM_localization"],
+            aggfunc="first",
         )
         df3 = df3.fillna(-1)
         df3 = pd.DataFrame({"PTM_localization": df3.apply(max, axis=1)})
@@ -1099,11 +1191,13 @@ class PeptideCollapse:
 
         data_combined["PTM_Genprot"] = data_combined["PG.Genes"].astype(str)
         data_combined["PTM_pep_pos"] = (
-            data_combined["PEP.PeptidePosition"].astype(str)
+            data_combined["PEP.PeptidePosition"]
+            .astype(str)
             .apply(lambda row: list(filter(None, row.split(";")))[0])
         )
         data_combined["PTM_pep_pos"] = (
-            data_combined["PTM_pep_pos"].astype(str)
+            data_combined["PTM_pep_pos"]
+            .astype(str)
             .apply(lambda row: list(filter(None, row.split(",")))[0])
         )
         data_combined = data_combined[data_combined["PTM_pep_pos"] != "None"]
@@ -1114,16 +1208,23 @@ class PeptideCollapse:
 
         data_combined["PTM_Collapse_key"] = data_combined.apply(
             lambda x: self._create_collapse_key(
-                x["PG.ProteinGroups"], x["PTM_Genprot"], x["PTM_0_aa"],
-                x["PTM_0_pos_val"], x["PTM_pep_pos"], x["PTM_mult123"]
-            ), axis=1
+                x["PG.ProteinGroups"],
+                x["PTM_Genprot"],
+                x["PTM_0_aa"],
+                x["PTM_0_pos_val"],
+                x["PTM_pep_pos"],
+                x["PTM_mult123"],
+            ),
+            axis=1,
         )
 
         # Per-(site, run) localization matrix at PTM_Collapse_key resolution.
         # For each (site, run) cell we take the strongest per-precursor loc prob
         # observed for that site in that run — i.e. evidence from any precursor
         # mapping to the site is sufficient to localize it in that run.
-        _key_map = data_combined[["PTM_group", "PTM_0_pos_val", "PTM_Collapse_key"]].drop_duplicates()
+        _key_map = data_combined[
+            ["PTM_group", "PTM_0_pos_val", "PTM_Collapse_key"]
+        ].drop_duplicates()
         _df_keyed = df.reset_index(drop=False).merge(
             _key_map, on=["PTM_group", "PTM_0_pos_val"], how="inner"
         )
@@ -1138,8 +1239,11 @@ class PeptideCollapse:
         self.site_localization_per_run = loc_per_run
         self.logger.info(
             "Per-(site, run) localization matrix built: %d sites x %d runs (%.1f%% non-NaN)",
-            loc_per_run.shape[0], loc_per_run.shape[1],
-            100.0 * loc_per_run.notna().sum().sum() / loc_per_run.size if loc_per_run.size > 0 else 0,
+            loc_per_run.shape[0],
+            loc_per_run.shape[1],
+            100.0 * loc_per_run.notna().sum().sum() / loc_per_run.size
+            if loc_per_run.size > 0
+            else 0,
         )
 
         cols = []
@@ -1151,7 +1255,7 @@ class PeptideCollapse:
 
         sample_cols = [c for c in df2_agg.columns if c != "PTM_Collapse_key"]
 
-        self.processing_stats['aggregation_method'] = aggregation_method
+        self.processing_stats["aggregation_method"] = aggregation_method
 
         if aggregation_method == "consolidate":
             # OG-style ratio-based imputation + sum (in linear intensity space)
@@ -1172,25 +1276,23 @@ class PeptideCollapse:
 
         self.logger.info(
             "Site aggregation: %d collapse keys, NaN count in aggregated matrix: %d",
-            len(df3_agg), int(df3_agg.isna().sum().sum()),
+            len(df3_agg),
+            int(df3_agg.isna().sum().sum()),
         )
 
         # Per-(site, run) localization mask. Applied in linear space before log2
         # so masked cells become NaN naturally through the log2 step. Mask granularity
         # is (PTM_Collapse_key x R.FileName) — i.e. for each site, each run is judged
         # independently against the cutoff. NaN per-run loc is treated as below cutoff.
-        self.processing_stats['localization_strategy'] = localization_strategy
+        self.processing_stats["localization_strategy"] = localization_strategy
         if localization_strategy == "per_run":
             # df3_agg columns are tuples like ('EG.TotalQuantity (Settings)', '<filename>')
             # — pull the filename for alignment with loc_per_run, then restore.
             _fname_for_col = {
-                c: (c[1] if isinstance(c, tuple) and len(c) > 1 else c)
-                for c in df3_agg.columns
+                c: (c[1] if isinstance(c, tuple) and len(c) > 1 else c) for c in df3_agg.columns
             }
             _ordered_fnames = [_fname_for_col[c] for c in df3_agg.columns]
-            _loc_aligned = loc_per_run.reindex(
-                index=df3_agg.index, columns=_ordered_fnames
-            )
+            _loc_aligned = loc_per_run.reindex(index=df3_agg.index, columns=_ordered_fnames)
             _loc_aligned.columns = list(df3_agg.columns)
             # mask=True -> keep, mask=False -> NaN. NaN loc compares False, so masked.
             _keep_mask = _loc_aligned >= cutoff
@@ -1198,11 +1300,13 @@ class PeptideCollapse:
             df3_agg = df3_agg.where(_keep_mask, np.nan)
             n_post = int(df3_agg.notna().sum().sum())
             n_masked = n_pre - n_post
-            self.processing_stats['per_run_cells_masked'] = n_masked
-            self.processing_stats['per_run_cells_total'] = n_pre
+            self.processing_stats["per_run_cells_masked"] = n_masked
+            self.processing_stats["per_run_cells_total"] = n_pre
             self.logger.info(
                 "Per-run localization mask (cutoff=%.2f): %d/%d quant cells masked (%.1f%%)",
-                cutoff, n_masked, n_pre,
+                cutoff,
+                n_masked,
+                n_pre,
                 100.0 * n_masked / n_pre if n_pre > 0 else 0.0,
             )
 
@@ -1215,13 +1319,15 @@ class PeptideCollapse:
         else:
             self.logger.debug("Log2 transform: no -inf values produced")
 
-        self.processing_stats['noise_floor_filter'] = noise_floor_filter
+        self.processing_stats["noise_floor_filter"] = noise_floor_filter
         if noise_floor_filter:
             before_nf = int(df3_agg.notna().sum().sum())
             df3_agg = df3_agg.replace(0, np.nan).replace(1, np.nan)
             after_nf = int(df3_agg.notna().sum().sum())
             nf_removed = before_nf - after_nf
-            self.processing_stats['noise_floor_removed'] = self.processing_stats.get('noise_floor_removed', 0) + nf_removed
+            self.processing_stats["noise_floor_removed"] = (
+                self.processing_stats.get("noise_floor_removed", 0) + nf_removed
+            )
             self.logger.info("Noise floor filter removed %d values", nf_removed)
 
         df3_agg = df3_agg.replace("Filtered", np.nan)
@@ -1238,8 +1344,8 @@ class PeptideCollapse:
         result["PTM_localization"] = result["PTM_localization"].replace(-1, np.nan)
 
         sites_before_cutoff = len(result)
-        self.processing_stats['localization_cutoff'] = cutoff
-        self.processing_stats['sites_before_cutoff'] = sites_before_cutoff
+        self.processing_stats["localization_cutoff"] = cutoff
+        self.processing_stats["sites_before_cutoff"] = sites_before_cutoff
 
         if localization_strategy == "per_run":
             # Per-run masking already removed all unconfident (site, run) cells.
@@ -1247,14 +1353,25 @@ class PeptideCollapse:
             # the row is not entirely NaN across sample columns. This replaces
             # the legacy global cross-file max filter.
             _result_sample_cols = [
-                c for c in result.columns
-                if c not in ("PTM_Collapse_key", "PTM_localization", "PG.Genes",
-                             "PG.ProteinGroups", "UPD_seq")
+                c
+                for c in result.columns
+                if c
+                not in (
+                    "PTM_Collapse_key",
+                    "PTM_localization",
+                    "PG.Genes",
+                    "PG.ProteinGroups",
+                    "UPD_seq",
+                )
             ]
             _quant_block = result[_result_sample_cols].select_dtypes(include=[np.number])
-            _all_nan = _quant_block.isna().all(axis=1) if _quant_block.shape[1] > 0 else pd.Series(False, index=result.index)
+            _all_nan = (
+                _quant_block.isna().all(axis=1)
+                if _quant_block.shape[1] > 0
+                else pd.Series(False, index=result.index)
+            )
             n_drop = int(_all_nan.sum())
-            self.processing_stats['sites_dropped_all_nan'] = n_drop
+            self.processing_stats["sites_dropped_all_nan"] = n_drop
             result = result[~_all_nan]
             self.logger.info(
                 "Per-run mode: dropped %d sites with no remaining quant after masking",
@@ -1266,17 +1383,20 @@ class PeptideCollapse:
             result = result[result["PTM_localization"] >= cutoff]
 
         sites_after_cutoff = len(result)
-        self.processing_stats['sites_after_cutoff'] = sites_after_cutoff
+        self.processing_stats["sites_after_cutoff"] = sites_after_cutoff
 
         self.logger.info(
             "Site filtering (strategy=%s, cutoff=%.2f): %d before, %d after, %d removed",
-            localization_strategy, cutoff, sites_before_cutoff, sites_after_cutoff,
+            localization_strategy,
+            cutoff,
+            sites_before_cutoff,
+            sites_after_cutoff,
             sites_before_cutoff - sites_after_cutoff,
         )
 
         cols = []
         for c in list(result.columns):
-            if type(c) == tuple:
+            if isinstance(c, tuple):
                 cols.append(c[1])
             else:
                 cols.append(c)
@@ -1285,24 +1405,39 @@ class PeptideCollapse:
         final_result = self._finalize_collapsed_output(result, collapse_level)
 
         # Final output summary
-        _meta_set = {"UPD_seq", "PTM_localization", "Protein_group", "Gene_group",
-                      "PTM_Collapse_key", "kinase_sequence", "Protein_Collapse_key",
-                      "PG.Genes", "PG.ProteinGroups"}
+        _meta_set = {
+            "UPD_seq",
+            "PTM_localization",
+            "Protein_group",
+            "Gene_group",
+            "PTM_Collapse_key",
+            "kinase_sequence",
+            "Protein_Collapse_key",
+            "PG.Genes",
+            "PG.ProteinGroups",
+        }
         _sample_cols_final = [c for c in final_result.columns if c not in _meta_set]
         _numeric_final = final_result[_sample_cols_final].select_dtypes(include=[np.number])
         _total_cells = _numeric_final.size
         _nan_cells = int(_numeric_final.isna().sum().sum())
-        _completeness = ((_total_cells - _nan_cells) / _total_cells * 100) if _total_cells > 0 else 0.0
-        self.processing_stats['completeness_pct'] = round(_completeness, 2)
+        _completeness = (
+            ((_total_cells - _nan_cells) / _total_cells * 100) if _total_cells > 0 else 0.0
+        )
+        self.processing_stats["completeness_pct"] = round(_completeness, 2)
 
         self.logger.info(
             "Site final output: %d sites, %d samples, completeness %.1f%%, NaN %.1f%%",
-            len(final_result), len(_numeric_final.columns), _completeness, 100.0 - _completeness,
+            len(final_result),
+            len(_numeric_final.columns),
+            _completeness,
+            100.0 - _completeness,
         )
 
         return final_result
 
-    def _create_peptide_key(self, row: pd.Series, collapse_level: str, exclude_carbamidomethyl: bool) -> str:
+    def _create_peptide_key(
+        self, row: pd.Series, collapse_level: str, exclude_carbamidomethyl: bool
+    ) -> str:
 
         try:
             protein_groups = row["PG.ProteinGroups"]
@@ -1337,7 +1472,8 @@ class PeptideCollapse:
                         filtered_mods = all_mods
                         if exclude_carbamidomethyl:
                             filtered_mods = [
-                                mod for mod in all_mods
+                                mod
+                                for mod in all_mods
                                 if not (isinstance(mod, str) and "Carbamidomethyl" in mod)
                             ]
 
@@ -1359,7 +1495,7 @@ class PeptideCollapse:
             key = f"{protein_part}~{gene_part}_{sequence_part}_{position_part}_{mod_part}"
             return key
 
-        except Exception as e:
+        except Exception:
             return "Error_peptide_key"
 
     def _create_collapse_key(self, entry0, entry1, entry2, entry3, entry4, entry5) -> str:
@@ -1367,8 +1503,14 @@ class PeptideCollapse:
         try:
             absolute_position = int(entry3 + entry4 - 1)
             result = (
-                str(entry0) + "~" + str(entry1) + "_" + str(entry2) +
-                str(absolute_position) + "_M" + str(int(entry5))
+                str(entry0)
+                + "~"
+                + str(entry1)
+                + "_"
+                + str(entry2)
+                + str(absolute_position)
+                + "_M"
+                + str(int(entry5))
             )
             return result
         except Exception:
@@ -1381,8 +1523,10 @@ class PeptideCollapse:
 
         pos_idx = phospho_position - 1
         modified_seq = (
-            clean_sequence[:pos_idx] + clean_sequence[pos_idx].lower() + "*" +
-            clean_sequence[pos_idx + 1:]
+            clean_sequence[:pos_idx]
+            + clean_sequence[pos_idx].lower()
+            + "*"
+            + clean_sequence[pos_idx + 1 :]
         )
         return modified_seq
 
@@ -1497,8 +1641,8 @@ class PeptideCollapse:
         return result
 
     def _rank_select_positions(
-        self, loc_dict: Dict[int, float], n: int
-    ) -> Tuple[List[int], List[float]]:
+        self, loc_dict: dict[int, float], n: int
+    ) -> tuple[list[int], list[float]]:
         """Rank-select top N positions by probability from parsed localization dict.
 
         Returns (positions, probabilities) sorted by descending probability,
@@ -1513,7 +1657,7 @@ class PeptideCollapse:
         probabilities = [prob for _, prob in top_n]
         return positions, probabilities
 
-    def _parse_localization_probabilities(self, loc_string: str) -> Dict[int, float]:
+    def _parse_localization_probabilities(self, loc_string: str) -> dict[int, float]:
         """Parse EG.PTMLocalizationProbabilities into {peptide_position: probability}.
 
         Example input:
@@ -1524,17 +1668,17 @@ class PeptideCollapse:
         if pd.isna(loc_string) or not isinstance(loc_string, str):
             return {}
 
-        s = loc_string.strip("_.*  ")
+        s = loc_string.strip("_.* ")
         result = {}
-        pos = 0   # current amino-acid position (1-indexed)
-        i = 0     # string cursor
+        pos = 0  # current amino-acid position (1-indexed)
+        i = 0  # string cursor
 
         while i < len(s):
-            if s[i] == '[':
-                end = s.index(']', i)
-                bracket_content = s[i + 1:end]
-                if bracket_content.startswith('Phospho (STY)'):
-                    match = re.search(r':\s*([\d.]+)%', bracket_content)
+            if s[i] == "[":
+                end = s.index("]", i)
+                bracket_content = s[i + 1 : end]
+                if bracket_content.startswith("Phospho (STY)"):
+                    match = re.search(r":\s*([\d.]+)%", bracket_content)
                     if match:
                         result[pos] = float(match.group(1)) / 100.0
                 i = end + 1
@@ -1568,14 +1712,28 @@ class PeptideCollapse:
         data["Gene_name"] = data["Gene_name"].str.split(";")
         data["Gene_group"] = data["Gene_name"].apply(lambda row: row[0])
 
-        data = data.drop(["Gene_name", "PTM", "PTM_Collapse_key", "PG.Genes", "PG.ProteinGroups"], axis=1)
+        data = data.drop(
+            ["Gene_name", "PTM", "PTM_Collapse_key", "PG.Genes", "PG.ProteinGroups"], axis=1
+        )
         data = data.explode("Protein_name", ignore_index=True)
 
         data["PTM_Collapse_key"] = (
-            data["Protein_group"] + "~" + data["Gene_group"] + "_" + data["Site"] + "_" + data["Mult"]
+            data["Protein_group"]
+            + "~"
+            + data["Gene_group"]
+            + "_"
+            + data["Site"]
+            + "_"
+            + data["Mult"]
         )
         data["Protein_Collapse_key"] = (
-            data["Protein_name"] + "~" + data["Gene_group"] + "_" + data["Site"] + "_" + data["Mult"]
+            data["Protein_name"]
+            + "~"
+            + data["Gene_group"]
+            + "_"
+            + data["Site"]
+            + "_"
+            + data["Mult"]
         )
 
         data = data.drop(["Site", "Mult"], axis=1)
@@ -1595,12 +1753,25 @@ class PeptideCollapse:
         data["Gene_group"] = data["Gene_name"].apply(lambda row: row[0])
 
         data = data.drop(
-            ["Gene_name", "Protein_name", "PTM", "PTM_Collapse_key", "PG.Genes", "PG.ProteinGroups"],
-            axis=1
+            [
+                "Gene_name",
+                "Protein_name",
+                "PTM",
+                "PTM_Collapse_key",
+                "PG.Genes",
+                "PG.ProteinGroups",
+            ],
+            axis=1,
         )
 
         data["PTM_Collapse_key"] = (
-            data["Protein_group"] + "~" + data["Gene_group"] + "_" + data["Site"] + "_" + data["Mult"]
+            data["Protein_group"]
+            + "~"
+            + data["Gene_group"]
+            + "_"
+            + data["Site"]
+            + "_"
+            + data["Mult"]
         )
 
         data = data.drop(["Site", "Mult"], axis=1)
@@ -1611,7 +1782,7 @@ class PeptideCollapse:
     def _load_fasta_to_dict(self, fasta_path: str) -> dict:
 
         try:
-            with open(fasta_path, "r") as file:
+            with open(fasta_path) as file:
                 fasta_dict = {}
                 current_id = None
                 current_sequence = []
@@ -1644,9 +1815,9 @@ class PeptideCollapse:
                 return fasta_dict
 
         except FileNotFoundError:
-            raise FileNotFoundError(f"FASTA file not found: {fasta_path}")
+            raise FileNotFoundError(f"FASTA file not found: {fasta_path}") from None
         except Exception as e:
-            raise ValueError(f"Error reading FASTA file: {e}")
+            raise ValueError(f"Error reading FASTA file: {e}") from e
 
     def _generate_kinase_sequences(self, data: pd.DataFrame, window_size: int = 6) -> pd.DataFrame:
         result_data = data.copy()
@@ -1681,7 +1852,7 @@ class PeptideCollapse:
                 kinase_sequences.append(kinase_seq)
 
             except Exception as e:
-                error_msg = f"PARSING_ERROR: Row {index} - {str(e)}"
+                error_msg = f"PARSING_ERROR: Row {index} - {e!s}"
                 kinase_sequences.append(error_msg)
                 error_count += 1
 
@@ -1689,12 +1860,16 @@ class PeptideCollapse:
 
         self.logger.info(
             "Kinase sequences: %d success, %d errors (%d mismatches)",
-            success_count, error_count, mismatch_count,
+            success_count,
+            error_count,
+            mismatch_count,
         )
 
         return result_data
 
-    def _create_kinase_sequence(self, protein_id: str, position: int, amino_acid: str, window_size: int = 6) -> str:
+    def _create_kinase_sequence(
+        self, protein_id: str, position: int, amino_acid: str, window_size: int = 6
+    ) -> str:
         if protein_id not in self.fasta_dict:
             warning_msg = f"FASTA_ERROR: Protein '{protein_id}' not found in FASTA dictionary"
             self.logger.warning(warning_msg)
@@ -1740,8 +1915,12 @@ class PeptideCollapse:
 
     def _clean_and_reformat_phospho_data(self, df: pd.DataFrame) -> pd.DataFrame:
         metadata_cols = [
-            "UPD_seq", "PTM_localization", "Protein_group", "Gene_group",
-            "PTM_Collapse_key", "kinase_sequence"
+            "UPD_seq",
+            "PTM_localization",
+            "Protein_group",
+            "Gene_group",
+            "PTM_Collapse_key",
+            "kinase_sequence",
         ]
         sample_cols = [col for col in df.columns if col not in metadata_cols]
 

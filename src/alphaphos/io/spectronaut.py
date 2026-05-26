@@ -22,12 +22,12 @@ work unchanged regardless of which level the caller requested.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, Literal
+from typing import Literal
 
 import numpy as np
 import pandas as pd
-
 
 REQUIRED_DOTTED: tuple[str, ...] = (
     "R.FileName",
@@ -192,9 +192,7 @@ def read_psm(
     elif p.suffix.lower() in (".tsv", ".txt"):
         df = pd.read_csv(p, sep="\t", low_memory=False)
     else:
-        raise ValueError(
-            f"Unsupported file extension {p.suffix!r}; expected .parquet or .tsv"
-        )
+        raise ValueError(f"Unsupported file extension {p.suffix!r}; expected .parquet or .tsv")
 
     n_loaded = len(df)
     df = _normalize_column_names(df)
@@ -215,9 +213,7 @@ def read_psm(
     if drop_decoys and "EG.IsDecoy" in df.columns:
         df = df.loc[~df["EG.IsDecoy"].astype(bool)]
     if drop_non_phospho:
-        is_phospho = df["EG.PrecursorId"].str.contains(
-            r"\[Phospho \(STY\)\]", regex=True, na=False
-        )
+        is_phospho = df["EG.PrecursorId"].str.contains(r"\[Phospho \(STY\)\]", regex=True, na=False)
         df = df.loc[is_phospho]
     if eg_qvalue_max is not None and "EG.Qvalue" in df.columns:
         df = df.loc[df["EG.Qvalue"].fillna(np.inf) <= eg_qvalue_max]

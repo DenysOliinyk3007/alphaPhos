@@ -27,7 +27,7 @@ non-Class-I observations.
 
 from __future__ import annotations
 
-from typing import Iterable, Mapping, Tuple, Union
+from collections.abc import Iterable, Mapping
 
 import numpy as np
 import pandas as pd
@@ -48,27 +48,25 @@ META_COLS: set[str] = {
     "PG.ProteinGroups",
 }
 
-DEFAULT_META_COLS: Tuple[str, ...] = tuple(sorted(META_COLS))
+DEFAULT_META_COLS: tuple[str, ...] = tuple(sorted(META_COLS))
 
 
 def _coerce_s2c(
-    sample_to_condition: Union[Mapping[str, str], pd.Series, pd.DataFrame],
+    sample_to_condition: Mapping[str, str] | pd.Series | pd.DataFrame,
     sample_col: str = "sample",
     condition_col: str = "condition",
 ) -> pd.Series:
     if isinstance(sample_to_condition, pd.Series):
         return sample_to_condition.astype(str)
     if isinstance(sample_to_condition, pd.DataFrame):
-        return (sample_to_condition
-                .set_index(sample_col)[condition_col]
-                .astype(str))
+        return sample_to_condition.set_index(sample_col)[condition_col].astype(str)
     return pd.Series(dict(sample_to_condition), dtype=str)
 
 
 def apply_condition_aware_classI_mask(
     df_sites: pd.DataFrame,
     loc_per_run: pd.DataFrame,
-    sample_to_condition: Union[Mapping[str, str], pd.Series, pd.DataFrame],
+    sample_to_condition: Mapping[str, str] | pd.Series | pd.DataFrame,
     classI_cutoff: float = 0.75,
     condition_threshold: float = 0.50,
     meta_cols: Iterable[str] = DEFAULT_META_COLS,
@@ -114,28 +112,19 @@ def apply_condition_aware_classI_mask(
     DataFrame, or (DataFrame, decision_table) if ``return_decision_table``.
     """
     if not 0 < condition_threshold <= 1:
-        raise ValueError(
-            f"condition_threshold must be in (0, 1], got {condition_threshold}"
-        )
+        raise ValueError(f"condition_threshold must be in (0, 1], got {condition_threshold}")
     if not 0 <= classI_cutoff <= 1:
-        raise ValueError(
-            f"classI_cutoff must be in [0, 1], got {classI_cutoff}"
-        )
+        raise ValueError(f"classI_cutoff must be in [0, 1], got {classI_cutoff}")
 
     s2c = _coerce_s2c(sample_to_condition)
 
     meta_present = [c for c in meta_cols if c in df_sites.columns]
     sample_cols = [c for c in df_sites.columns if c not in meta_present]
     if "PTM_Collapse_key" not in df_sites.columns:
-        raise ValueError(
-            "df_sites must contain a 'PTM_Collapse_key' column for alignment."
-        )
+        raise ValueError("df_sites must contain a 'PTM_Collapse_key' column for alignment.")
 
     # Work in (site x sample) form indexed by PTM_Collapse_key for alignment.
-    quant = (df_sites
-             .set_index("PTM_Collapse_key")[sample_cols]
-             .astype(float)
-             .copy())
+    quant = df_sites.set_index("PTM_Collapse_key")[sample_cols].astype(float).copy()
 
     loc = loc_per_run.reindex(index=quant.index, columns=quant.columns)
 

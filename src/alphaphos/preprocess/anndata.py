@@ -15,13 +15,10 @@ converter transposes the numeric block while preserving per-site metadata
 from __future__ import annotations
 
 import re
-from typing import Optional
 
-import numpy as np
 import pandas as pd
 
 from alphaphos.preprocess.classify import META_COLS
-
 
 _KEY_RE = re.compile(
     r"^(?P<protein_group>[^~]+)~(?P<gene>[^_]*)_"
@@ -32,9 +29,9 @@ _KEY_RE = re.compile(
 def to_anndata(
     sites: pd.DataFrame,
     *,
-    loc_per_run: Optional[pd.DataFrame] = None,
-    condition_df: Optional[pd.DataFrame] = None,
-    decision_table: Optional[pd.DataFrame] = None,
+    loc_per_run: pd.DataFrame | None = None,
+    condition_df: pd.DataFrame | None = None,
+    decision_table: pd.DataFrame | None = None,
     main_layer: str = "intensity_log2",
 ):
     """Convert ``collapse_sites`` output to an AnnData object.
@@ -123,8 +120,7 @@ def to_anndata(
         missing = required - set(condition_df.columns)
         if missing:
             raise ValueError(
-                f"condition_df must contain columns {sorted(required)}; "
-                f"missing: {sorted(missing)}"
+                f"condition_df must contain columns {sorted(required)}; missing: {sorted(missing)}"
             )
         obs = obs.join(
             condition_df.drop_duplicates("sample").set_index("sample"),
