@@ -16,9 +16,9 @@ def collapse_sites(
     aggregation_method: str = "sum",
     localization_strategy: str = "condition",
     noise_floor_filter: bool = True,
-    add_kinase_sequences: bool = False,
+    add_kinase_sequences: bool | None = None,
     fasta_path: str | None = None,
-    kinase_window_size: int = 6,
+    kinase_window_size: int = 7,
     # Condition-aware Class-I masking (only used when localization_strategy='condition')
     condition_df: pd.DataFrame | None = None,
     classI_cutoff: float = 0.75,
@@ -135,6 +135,11 @@ def collapse_sites(
             f"got {localization_strategy!r}"
         )
 
+    # Auto-on kinase annotation when a FASTA path is provided. The caller can
+    # still opt out with add_kinase_sequences=False explicitly.
+    if add_kinase_sequences is None:
+        add_kinase_sequences = fasta_path is not None
+
     if localization_strategy == "condition":
         if condition_df is None:
             raise ValueError(
@@ -186,6 +191,22 @@ def collapse_sites(
             drop_all_nan=drop_all_nan,
             return_decision_table=True,
         )
+
+    # Stash pipeline parameters on sites.attrs so to_anndata() can lift them
+    # into adata.uns['alphaphos']['pipeline_params'] for reproducibility.
+    sites.attrs["alphaphos_pipeline"] = {
+        "cutoff": cutoff,
+        "collapse_level": collapse_level,
+        "aggregation_method": aggregation_method,
+        "localization_strategy": localization_strategy,
+        "noise_floor_filter": noise_floor_filter,
+        "add_kinase_sequences": bool(add_kinase_sequences),
+        "fasta_path": str(fasta_path) if fasta_path is not None else None,
+        "kinase_window_size": kinase_window_size,
+        "classI_cutoff": classI_cutoff,
+        "condition_threshold": condition_threshold,
+        "drop_all_nan": drop_all_nan,
+    }
 
     if return_decision_table:
         return sites, loc_per_run, decision_table
@@ -379,7 +400,7 @@ class PeptideCollapse:
         aggregation_method: str = "sum",
         exclude_carbamidomethyl: bool = True,
         add_kinase_sequences: bool = False,
-        kinase_window_size: int = 6,
+        kinase_window_size: int = 7,
         noise_floor_filter: bool = True,
     ) -> pd.DataFrame:
 
@@ -421,7 +442,7 @@ class PeptideCollapse:
         collapse_level: str = "PG",
         aggregation_method: str = "sum",
         add_kinase_sequences: bool = True,
-        kinase_window_size: int = 6,
+        kinase_window_size: int = 7,
         noise_floor_filter: bool = True,
         localization_strategy: str = "per_run",
     ) -> pd.DataFrame:
@@ -497,7 +518,7 @@ class PeptideCollapse:
         exclude_carbamidomethyl: bool = True,
         fasta_path: str | None = None,
         add_kinase_sequences: bool = True,
-        kinase_window_size: int = 6,
+        kinase_window_size: int = 7,
         noise_floor_filter: bool = True,
         localization_strategy: str = "per_run",
     ) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
@@ -1819,7 +1840,7 @@ class PeptideCollapse:
         except Exception as e:
             raise ValueError(f"Error reading FASTA file: {e}") from e
 
-    def _generate_kinase_sequences(self, data: pd.DataFrame, window_size: int = 6) -> pd.DataFrame:
+    def _generate_kinase_sequences(self, data: pd.DataFrame, window_size: int = 7) -> pd.DataFrame:
         result_data = data.copy()
         kinase_sequences = []
 
@@ -1868,7 +1889,7 @@ class PeptideCollapse:
         return result_data
 
     def _create_kinase_sequence(
-        self, protein_id: str, position: int, amino_acid: str, window_size: int = 6
+        self, protein_id: str, position: int, amino_acid: str, window_size: int = 7
     ) -> str:
         if protein_id not in self.fasta_dict:
             warning_msg = f"FASTA_ERROR: Protein '{protein_id}' not found in FASTA dictionary"
