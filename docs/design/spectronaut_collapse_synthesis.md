@@ -1,6 +1,7 @@
 # Spectronaut PTM collapse — current MS1 pipeline vs. Spectronaut-native MS2, and the alphaPhos synthesis
 
 **Status:** design draft · 2026-05-21
+**Update (2026-05-26):** Empirical defaults validated. The open questions in §7 of this doc were resolved by the benchmark in **[../benchmark/spectronaut_native_benchmark.md](../benchmark/spectronaut_native_benchmark.md)** — the package defaults are now `aggregation_method='sum'` + `localization_strategy='condition'` based on cross-version comparison against SN classI on a 6-run EGF dataset.
 **Scope:** Foundational design for `alphaphos.io.spectronaut`, `alphaphos.preprocess.collapse`, and `alphaphos.preprocess.classify`.
 **Inputs analysed:**
 - Spectronaut 20 Manual, `docs/Spectronaut-20-Manual.pdf` (esp. Box 10 p. 55, §Quantity MS Level p. 121, PTM consolidation p. 126, PTM site report Appendix 8 pp. 200–205).

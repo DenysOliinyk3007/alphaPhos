@@ -85,6 +85,9 @@ studies/*/data/
 studies/*/raw/
 studies/*/output/
 
+# Benchmark data — raw lab exports + regenerable derived outputs; do not commit
+test_data/
+
 # Manuscript figure outputs (regeneratable)
 manuscripts/*/figures/
 manuscripts/*/output/
@@ -94,12 +97,18 @@ resources/spectral_libraries/*.speclib
 resources/spectral_libraries/*.tsv
 resources/fastas/*.fasta
 
-# Design-time validation outputs (regeneratable from the scripts in docs/design/)
+# Design-time / benchmark validation outputs (regeneratable from the scripts
+# in docs/design/ and docs/benchmark/)
 docs/design/*_output/
 docs/design/*_output_*/
 docs/design/*_out/
 docs/design/minibinder_data/
 docs/design/__pycache__/
+docs/benchmark/*_output/
+docs/benchmark/*_output_*/
+docs/benchmark/*_out/
+docs/benchmark/minibinder_data/
+docs/benchmark/__pycache__/
 PeptideCollapse.log
 **/PeptideCollapse.log
 

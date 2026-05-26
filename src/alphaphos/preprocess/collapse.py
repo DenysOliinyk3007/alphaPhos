@@ -16,8 +16,8 @@ def collapse_sites(
     *,
     cutoff: float = 0.75,
     collapse_level: str = "PG",
-    aggregation_method: str = "median",
-    localization_strategy: str = "per_run",
+    aggregation_method: str = "sum",
+    localization_strategy: str = "condition",
     noise_floor_filter: bool = True,
     add_kinase_sequences: bool = False,
     fasta_path: Optional[str] = None,
@@ -56,15 +56,24 @@ def collapse_sites(
         explodes multi-protein groups).
     aggregation_method
         How to combine multiple precursor rows per site:
-        ``"median"`` (default), ``"mean"``, ``"sum"``, or
-        ``"consolidate"`` (canonical Hogrebe ratio-imputation + sum).
+        ``"sum"`` (default — matches Spectronaut's native PTM site report most
+        closely; see ``docs/design/spectronaut_collapse_synthesis.md``),
+        ``"median"``, ``"mean"``, or ``"consolidate"`` (canonical Hogrebe
+        ratio-imputation + sum). Note ``"median"`` introduces an
+        intensity-dependent log2 offset vs Spectronaut classI; prefer ``"sum"``
+        unless reproducing legacy Dublin-style outputs.
     localization_strategy
         One of:
 
-        - ``"per_run"`` — per-cell mask (strict; loc must be >= cutoff in each run)
-        - ``"global_max"`` — dataset-wide max loc per site (permissive)
-        - ``"condition"`` — runs ``global_max`` upstream then applies the
-          per-condition majority-rule Class-I mask. Requires ``condition_df``.
+        - ``"condition"`` (default) — runs ``global_max`` upstream then applies
+          the per-condition majority-rule Class-I mask. Recovers cells that
+          Spectronaut's binary per-cell filter discards when a site is
+          reliably localized within a condition. Requires ``condition_df``.
+        - ``"per_run"`` — per-cell mask (strict; loc must be >= cutoff in each
+          run). Matches Spectronaut Class I exactly.
+        - ``"global_max"`` — dataset-wide max loc per site (permissive). Use
+          for single-condition datasets or as the upstream step in custom
+          masking pipelines.
     noise_floor_filter
         Replace log2 values of 0 or 1 with NaN.
     add_kinase_sequences, fasta_path, kinase_window_size
@@ -110,24 +119,17 @@ def collapse_sites(
 
     Examples
     --------
-    Permissive collapse + condition-aware mask, in one call:
+    Default pipeline (condition-aware mask, sum aggregation):
 
     >>> import pandas as pd
     >>> from alphaphos.io import read_spectronaut
-    >>> from alphaphos.preprocess import filter_to_top_n_positions, collapse_sites
-    >>> df = read_spectronaut("report.parquet", quant_level="MS2",
-    ...                       drop_decoys=True, pg_qvalue_max=0.01)
-    >>> df = filter_to_top_n_positions(df)
+    >>> from alphaphos.preprocess import collapse_sites
+    >>> df = read_spectronaut("report.parquet")
     >>> condition_df = pd.DataFrame({
     ...     "sample":    [...],   # must match R.FileName values
     ...     "condition": [...],   # replicates of one biological state share a label
     ... })
-    >>> sites, loc_per_run = collapse_sites(
-    ...     df,
-    ...     localization_strategy="condition",
-    ...     condition_df=condition_df,
-    ...     aggregation_method="median",
-    ... )
+    >>> sites, loc_per_run = collapse_sites(df, condition_df=condition_df)
     """
     valid_strategies = ("per_run", "global_max", "condition")
     if localization_strategy not in valid_strategies:
@@ -383,7 +385,7 @@ class PeptideCollapse:
         self,
         cutoff: float = 0.75,
         collapse_level: str = "PG",
-        aggregation_method: str = "median",
+        aggregation_method: str = "sum",
         exclude_carbamidomethyl: bool = True,
         add_kinase_sequences: bool = False,
         kinase_window_size: int = 6,
@@ -416,7 +418,7 @@ class PeptideCollapse:
         self,
         cutoff: float = 0.75,
         collapse_level: str = "PG",
-        aggregation_method: str = "median",
+        aggregation_method: str = "sum",
         add_kinase_sequences: bool = True,
         kinase_window_size: int = 6,
         noise_floor_filter: bool = True,
@@ -483,7 +485,7 @@ class PeptideCollapse:
         data: pd.DataFrame,
         cutoff: float = 0.75,
         collapse_level: str = "PG",
-        aggregation_method: str = "median",
+        aggregation_method: str = "sum",
         return_both: bool = False,
         exclude_carbamidomethyl: bool = True,
         fasta_path: Optional[str] = None,
