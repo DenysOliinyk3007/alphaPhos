@@ -133,6 +133,9 @@ def read_psm(
     eg_qvalue_max: float | None = None,
     pg_qvalue_max: float | None = None,
     top_n_attribution: bool = True,
+    drop_contaminants: bool = True,
+    contaminants_fasta: str | Path | None = None,
+    contaminant_prefixes: tuple[str, ...] = ("CON__", "Cont_", "contam_"),
 ) -> pd.DataFrame:
     """Read a Spectronaut Normal-report PSM file (Parquet or TSV).
 
@@ -176,6 +179,16 @@ def read_psm(
         position rows (e.g. for advanced fragment-level work). The filter is
         silently skipped when ``EG.PTMLocalizationProbabilities`` is absent
         from the report (the column it needs to evaluate top-N).
+    drop_contaminants
+        If True (default), drop rows whose ``PG.ProteinGroups`` consists
+        entirely of contaminant proteins (trypsin, BSA, keratins, etc.).
+        See :func:`alphaphos.preprocess.contaminants.filter_contaminants`.
+    contaminants_fasta
+        Optional path to a contaminants FASTA. When ``None`` (default),
+        uses the bundled MaxQuant ``contaminants.fasta`` (246 entries).
+    contaminant_prefixes
+        Protein-ID prefixes that mark a contaminant by convention. Default
+        ``("CON__", "Cont_", "contam_")``.
 
     Returns
     -------
@@ -184,7 +197,8 @@ def read_psm(
         is in ``EG.TotalQuantity (Settings)``. The frame carries a
         ``.attrs`` dict recording: ``source_path``, ``alphaphos_quant_level``,
         ``alphaphos_quant_column``, ``n_rows_loaded``, ``n_rows_returned``,
-        ``top_n_attribution_applied``, ``n_rows_after_top_n``.
+        ``top_n_attribution_applied``, ``n_rows_after_top_n``,
+        ``contaminants_filter_applied``, ``n_rows_after_contaminant_filter``.
     """
     p = Path(path)
     if p.suffix.lower() == ".parquet":
@@ -222,6 +236,21 @@ def read_psm(
 
     df = df.reset_index(drop=True)
 
+    # Contaminant filter: drop rows whose protein group is entirely contaminants
+    contaminants_applied = False
+    if drop_contaminants:
+        # Local import keeps io ← preprocess dep explicit and avoids any
+        # chance of circular import at package-load time.
+        from alphaphos.preprocess.contaminants import filter_contaminants
+
+        df = filter_contaminants(
+            df,
+            contaminants_fasta=contaminants_fasta,
+            prefix_patterns=contaminant_prefixes,
+        )
+        contaminants_applied = True
+    n_after_contaminants = len(df)
+
     # Top-N attribution dedup (Spectronaut over-exports the same peptide
     # measurement as multiple candidate-position rows; this filter keeps only
     # the rows whose PrecId-encoded positions match the top-N by per-row loc
@@ -245,4 +274,6 @@ def read_psm(
     df.attrs["n_rows_returned"] = len(df)
     df.attrs["top_n_attribution_applied"] = attribution_applied
     df.attrs["n_rows_after_top_n"] = len(df) if attribution_applied else n_before_top_n
+    df.attrs["contaminants_filter_applied"] = contaminants_applied
+    df.attrs["n_rows_after_contaminant_filter"] = n_after_contaminants
     return df

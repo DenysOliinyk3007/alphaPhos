@@ -14,6 +14,7 @@
 | --- | --- | --- |
 | `quant_level` (in `read_psm`) | `'auto'` | Spectronaut's `EG.TotalQuantity (Settings)` reflects the export-time MS-level setting. Auto-detect from the columns present; MS1 vs MS2 mismatch with the SN report manifests as a +4.7 log2 systematic offset (§3.1). |
 | `top_n_attribution` (in `read_psm`) | `True` | Safety filter that dedups Spectronaut over-export of same-site/different-precursor rows. Did not affect this dataset's quants (`aphos_old` = `aphos_new_MS2` = `aphos_only_MS2` bit-for-bit), but is required to prevent precursor double-counting on reports with over-export. |
+| `drop_contaminants` (in `read_psm`) | `True` | Drops PSM rows where every protein in the group matches a common-contaminant (MaxQuant `contaminants.fasta`, bundled at [src/alphaphos/resources/contaminants.fasta](../../src/alphaphos/resources/contaminants.fasta), 246 entries: keratins, BSA, trypsin, etc.). On the EGF dataset: 1,126 / 240,099 PSM rows (0.47%), 63 / 34,248 sites (0.18%), 5 spurious "significant" keratin hits in limma. Doesn't change SN classI agreement (r 0.99 either way) but cleans up the downstream hit list. See §3.6. |
 | `cutoff` (collapse-time loc cutoff) | `0.75` | Matches Spectronaut's Class I threshold. With `localization_strategy='condition'` this value is ignored upstream; the `classI_cutoff` below drives the mask. |
 | **`aggregation_method`** | **`'sum'`** | **Biggest finding.** `'median'` (the legacy Dublin default) introduces a systematic intensity-dependent log2 offset vs SN (−1.84 at high quants, +0.10 at low). Switching to `'sum'` collapses it to ~0 (mean diff +0.06, 92% of cells within 0.1 log2 of SN). `'consolidate'` (full Hogrebe port) does *not* match SN better than `'sum'`, and drops more sites. See §3.3. |
 | **`localization_strategy`** | **`'condition'`** | Two-layer filter (collapse runs `global_max` upstream, then per-condition Class-I majority mask) mirrors SN's two-layer filter (peptide-level + binary per-cell). Jaccard 0.98 against `sn_classI`. `'per_run'` is what Reviewer 2 asks for if you want byte-equality with SN; `'global_max'` is the legacy permissive mode. See §3.4. |
@@ -190,6 +191,44 @@ The order of preference in the docstring is `condition` → `per_run` → `globa
 ### 3.5 `classI_cutoff=0.75`, `condition_threshold=0.50`
 
 `0.75` is SN's published Class I default (Manual pp. 124, 157). `0.50` is the majority rule. Both have biological justification and both are inherited unchanged from the existing `condition_aware_classI.py` in Dublin/testscripts.
+
+### 3.6 `drop_contaminants=True` — kill keratin/BSA/trypsin PSMs at the gate
+
+**Mechanism.** `read_psm()` drops rows where every protein in `PG.ProteinGroups` matches a known contaminant. Identification is two-pronged:
+
+1. **Prefix detection** — protein IDs starting with `CON__`, `Cont_`, or `contam_`. Common when the search engine (MaxQuant, Spectronaut) tagged contaminants at search time.
+2. **FASTA accession lookup** — bare UniProt/TREMBL/REFSEQ/ENSEMBL accessions matching entries in the bundled MaxQuant `contaminants.fasta` (246 sequences: keratins, BSA, trypsin, serum proteins). This dataset's Spectronaut search used the second mechanism: contaminants appear with their plain UniProt accessions (e.g. `P05787` for KRT8).
+
+**The conservative-by-design rule.** A row is dropped only when *every* protein in the group is a contaminant. A peptide ambiguously assigned to `P12345;CON__P02769` is kept — its real-protein match could be valid. Matches Spectronaut's own conservative default behaviour.
+
+**Cost vs benefit on the EGF dataset:**
+
+| Metric | no_filter | with_filter | Δ |
+|---|---:|---:|---:|
+| `read_psm` runtime | 8.0 s | 8.7 s | +0.7 s |
+| PSM rows after filter (post-top_n) | 240,099 | 238,973 | −1,126 (0.47%) |
+| Sites after collapse | 34,248 | 34,185 | −63 (0.18%) |
+| Jaccard vs `sn_classI` | 0.832 | 0.831 | ~0 |
+| Per-cell Pearson r vs `sn_classI` | 0.99 | 0.99 | 0 |
+| Mean log2 diff vs `sn_classI` | +0.063 | +0.063 | 0 |
+| % cells within 0.1 log2 of `sn_classI` | 91.69% | 91.69% | 0 |
+| limma significant hits | 2,097 | 2,093 | −4 net |
+| Shared sig hits | — | — | 2,092 (Jaccard 0.997) |
+| logFC concordance (Pearson r) | — | — | 0.9996 |
+
+**Which "significant" hits disappear?** All five contaminant hits removed by the filter are keratins, with apparent EGF regulation that is biologically implausible:
+
+| Feature | logFC | adj.P.Val |
+|---|---:|---:|
+| `P05787~KRT8_S475_M1` | −2.47 | 3.1e-04 |
+| `Q04695~KRT17_S44_M1` | −2.27 | 1.7e-02 |
+| `P05787~KRT8_S432_M1` | −0.87 | 1.7e-02 |
+| `P05787~KRT8_Y437_M1` | −1.49 | 2.8e-02 |
+| `P05787~KRT8_S13_M1` | −1.07 | 3.4e-02 |
+
+**Why SN classI agreement doesn't change.** Spectronaut's own search FASTA already includes a contaminants list, so `sn_classI` was already largely contaminant-free. alphaPhos's filter brings our pipeline to the same place, but doesn't reduce the residual disagreement (which is dominated by sites SN scored Class I and we didn't, or vice versa — not by contaminant content). See §4.6 of [_run_contaminant_benchmark.py](./_run_contaminant_benchmark.py) for the full per-stage numbers.
+
+**Decision:** `drop_contaminants=True` is the right default. Cheap (no measurable cost), removes precisely the artefactual hits a contaminant filter is supposed to remove (keratin "signaling" in an EGF experiment), and leaves the real biology untouched (Pearson r 0.9996 on shared limma features).
 
 ---
 

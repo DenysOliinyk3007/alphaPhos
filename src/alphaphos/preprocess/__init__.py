@@ -12,6 +12,11 @@ from alphaphos.preprocess.classify import (
     apply_condition_aware_classI_mask,
 )
 from alphaphos.preprocess.collapse import PeptideCollapse, collapse_sites
+from alphaphos.preprocess.contaminants import (
+    filter_contaminants,
+    get_default_contaminants_fasta,
+    parse_fasta_accessions,
+)
 
 __all__ = [
     # Top-N attribution (peptide -> site dedup, Spectronaut over-export fix)
@@ -19,6 +24,10 @@ __all__ = [
     "parse_loc_dict",
     "parse_precid_phospho_positions",
     "top_n_positions",
+    # Contaminant filter (drop trypsin/BSA/keratin PSMs)
+    "filter_contaminants",
+    "get_default_contaminants_fasta",
+    "parse_fasta_accessions",
     # Site-level collapse (Hogrebe consolidate ported to Python)
     "collapse_sites",  # one-call function — returns (sites, loc_per_run)
     "PeptideCollapse",  # class form — for fine-grained access to stats etc.
