@@ -17,6 +17,10 @@ from alphaphos.preprocess.contaminants import (
     get_default_contaminants_fasta,
     parse_fasta_accessions,
 )
+from alphaphos.preprocess.impute import (
+    impute_hybrid,
+    impute_knn_site_based,
+)
 
 __all__ = [
     # Top-N attribution (peptide -> site dedup, Spectronaut over-export fix)
@@ -34,6 +38,9 @@ __all__ = [
     # Condition-aware Class I masking (per-condition majority rule)
     "apply_condition_aware_classI_mask",
     "META_COLS",
+    # Imputation (phospho-aware; complements alphapepttools.pp.impute_*)
+    "impute_knn_site_based",  # Dublin-equivalent; legacy-parity path
+    "impute_hybrid",  # MAR (site-KNN) + MNAR (downshifted Gaussian) per cell
     # AnnData export (for scverse / alphapepttools downstream)
     "to_anndata",
 ]
