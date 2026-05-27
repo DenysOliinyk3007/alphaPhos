@@ -643,7 +643,76 @@ print(top_inh.round(3))
 adata.uns["alphaphos_ksea_network_ulm"] = ksea_net.copy()
 """
 
-STEP10_MD = """## §13. Save the analysed AnnData
+STEP_DOSE_MD = """## §13. Dose-response analysis (CurveCurator)
+
+**Use this section only if your experiment is a dose-response study**
+(varying concentrations of a drug/ligand at one or more timepoints).
+Skip if your study is a binary contrast (e.g. +EGF vs -EGF — already
+analysed in §8).
+
+`alphaphos.dose_response.fit_dose_response` wraps the
+[CurveCurator](https://github.com/kusterlab/curve_curator) CLI (Kuster
+lab, TUM) which fits **4-parameter log-logistic** dose-response curves
+to MS data and reports per-curve quality (pEC50, fold change, R²,
+target-decoy FDR q-value).
+
+Inputs needed from `adata.obs`:
+- **`dose_col`** (default `"dose"`) — numeric, in nM. **DMSO/control
+  samples must have dose == 0.**
+- **`timepoint_col`** (default `"timepoint"`) — pass `None` for
+  single-timepoint experiments. For multi-timepoint, CurveCurator is
+  run **independently per timepoint** (CurveCurator doesn't fit
+  dose×time jointly) and the curves are concatenated.
+
+The orchestrator:
+1. Builds CurveCurator's TSV input (sites as rows, `Raw <sample>`
+   columns with linear intensities — converted from log2 internally).
+2. Generates the TOML config (experimental design, fit parameters).
+3. Runs `python -m curve_curator --fdr config.toml` as a subprocess.
+4. Parses `curves.txt` back into a tidy pandas DataFrame.
+
+For each (site, timepoint) you get: `pEC50`, `EC50_nM`,
+`Curve Fold Change`, `Curve R2`, `Curve F_Value`, `Curve P_Value`, and
+(when `fdr=True`) `Curve q_Value` + `Curve Regulation` (the FDR-call).
+
+The interactive dashboard HTML is written to each per-timepoint
+output dir (open in browser to interactively browse curves).
+"""
+
+STEP_DOSE_CODE = """from pathlib import Path
+from alphaphos.dose_response import fit_dose_response
+
+# Pre-flight: only run this section if obs has a 'dose' column with a 0-dose group
+if "dose" not in adata.obs.columns or (adata.obs["dose"] == 0).sum() == 0:
+    print("Skipping §13 — adata.obs has no 'dose' column with DMSO (dose==0) samples.")
+    print("This pipeline section is for dose-response experiments only.")
+else:
+    out_root = Path("D:/Projects/alphaPhos/test_data/cc_runs")
+    curves = fit_dose_response(
+        adata,
+        output_root=out_root,
+        dose_col="dose",
+        timepoint_col="timepoint" if "timepoint" in adata.obs.columns else None,
+        condition="drug",
+        description="alphaPhos pipeline walkthrough",
+        max_missing=12,       # tweak based on n_wells
+        available_cores=4,
+        fdr=True,
+        verbose=True,
+    )
+
+    print(f"\\nFit {len(curves):,} curves across {curves.get('timepoint', pd.Series([0])).nunique()} timepoint(s).")
+    print("\\nTop 15 regulated sites (smallest q-value):")
+    cols = [c for c in ("site_key","timepoint","pEC50","EC50_nM",
+                         "Curve Fold Change","Curve R2","Curve q_Value")
+            if c in curves.columns]
+    print(curves.sort_values("Curve q_Value").head(15)[cols].round(3))
+
+    # Stash for downstream / sharing
+    adata.uns["alphaphos_dose_response"] = curves.copy()
+"""
+
+STEP10_MD = """## §14. Save the analysed AnnData
 
 `adata.write_h5ad` persists everything in one HDF5 file:
 - `.X` (imputed log2 quants)
@@ -730,6 +799,8 @@ def main():
         nbf.v4.new_code_cell(STEP_MEA_CODE),
         nbf.v4.new_markdown_cell(STEP_NETWORK_KSEA_MD),
         nbf.v4.new_code_cell(STEP_NETWORK_KSEA_CODE),
+        nbf.v4.new_markdown_cell(STEP_DOSE_MD),
+        nbf.v4.new_code_cell(STEP_DOSE_CODE),
         nbf.v4.new_markdown_cell(STEP10_MD),
         nbf.v4.new_code_cell(STEP10_CODE),
         nbf.v4.new_markdown_cell(OUTRO_MD),
