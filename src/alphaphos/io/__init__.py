@@ -1,15 +1,33 @@
 """PSM-level readers for search-engine outputs.
 
-Currently only Spectronaut Normal reports are supported. Planned engines
-(DIA-NN, FragPipe, PEAKS, MaxQuant) will follow the same shape: each
-reader normalizes into the Spectronaut-canonical dotted column schema
-that :func:`alphaphos.collapse_sites` consumes.
+Currently supported:
 
-Readers are designed to minimize memory: they prune columns AT READ TIME
-using pyarrow / pandas ``columns=`` / ``usecols=``, so unused columns are
-never materialized into RAM. See :func:`read_spectronaut` for the pattern.
+- Spectronaut Normal reports (``read_spectronaut``)
+- DIA-NN main reports (``read_diann``)
+- FragPipe DIA site-abundance files (``read_fragpipe_sites``)
+
+Spectronaut and DIA-NN readers normalize to a common canonical dotted
+column schema that :func:`alphaphos.collapse_sites` consumes. The
+FragPipe reader is different: FragPipe already emits site-level matrices,
+so the reader BYPASSES ``collapse_sites`` and returns a ready-to-use
+``AnnData`` directly.
+
+All readers minimize memory by pruning columns at read time
+(``pandas.read_parquet(columns=...)`` / ``read_csv(usecols=...)``).
 """
 
+from alphaphos.io.diann import (
+    DEFAULT_DIANN_IO_SETTINGS,
+    resolve_diann_io_settings,
+)
+from alphaphos.io.diann import (
+    read_psm as read_diann,
+)
+from alphaphos.io.fragpipe import (
+    DEFAULT_FRAGPIPE_IO_SETTINGS,
+    read_fragpipe_sites,
+    resolve_fragpipe_io_settings,
+)
 from alphaphos.io.spectronaut import (
     DEFAULT_IO_SETTINGS,
     resolve_io_settings,
@@ -20,6 +38,12 @@ from alphaphos.io.spectronaut import (
 
 __all__ = [
     "read_spectronaut",
+    "read_diann",
+    "read_fragpipe_sites",
     "DEFAULT_IO_SETTINGS",
+    "DEFAULT_DIANN_IO_SETTINGS",
+    "DEFAULT_FRAGPIPE_IO_SETTINGS",
     "resolve_io_settings",
+    "resolve_diann_io_settings",
+    "resolve_fragpipe_io_settings",
 ]

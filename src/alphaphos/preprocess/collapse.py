@@ -265,11 +265,11 @@ def collapse_sites(
     settings = resolve_settings(advanced)
     _configure_logger(verbose)
 
-    if settings["search_engine"] != "SN":
+    if settings["search_engine"] not in ("SN", "Diann"):
         raise NotImplementedError(
             f"search_engine={settings['search_engine']!r} is not yet implemented. "
-            f"Only 'SN' (Spectronaut) is currently supported. Others planned: "
-            f"'Diann', 'Fragpipe', 'Peaks'."
+            f"Currently supported: 'SN' (Spectronaut), 'Diann'. Others planned: "
+            f"'Fragpipe', 'Peaks'."
         )
 
     if settings["localization_strategy"] == "condition" and condition_df is None:

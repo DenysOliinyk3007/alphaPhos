@@ -28,6 +28,23 @@ from alphaphos.constants import (
     COL_PG_PROTEIN_GROUPS,
     COL_PG_QVALUE,
     COL_R_FILENAME,
+    DIANN_GENES,
+    DIANN_GLOBAL_PG_Q_VALUE,
+    DIANN_LIB_PG_Q_VALUE,
+    DIANN_MODIFIED_SEQUENCE,
+    DIANN_MS1_AREA,
+    DIANN_MS1_TRANSLATED,
+    DIANN_PG_MAXLFQ_QUALITY,
+    DIANN_PG_Q_VALUE,
+    DIANN_PRECURSOR_CHARGE,
+    DIANN_PRECURSOR_NORMALISED,
+    DIANN_PRECURSOR_QUANTITY,
+    DIANN_PROTEIN_GROUP,
+    DIANN_PROTEIN_SITES,
+    DIANN_PTM_SITE_CONFIDENCE,
+    DIANN_QUANTITY_QUALITY,
+    DIANN_RUN,
+    DIANN_SITE_OCCUPANCY_PROBS,
 )
 
 # ---------------------------------------------------------------------------
@@ -43,6 +60,19 @@ REQUIRED_COLUMNS: dict[str, tuple[str, ...]] = {
         COL_PG_GENES,
         COL_PG_PROTEIN_GROUPS,
     ),
+    # DIA-NN required set. Compared to Spectronaut, the peptide-start position
+    # is DERIVED (from Protein.Sites + Modified.Sequence) rather than read
+    # directly, so DIANN_PROTEIN_SITES + DIANN_MODIFIED_SEQUENCE are required.
+    "Diann": (
+        DIANN_RUN,
+        DIANN_MODIFIED_SEQUENCE,
+        DIANN_PRECURSOR_CHARGE,
+        DIANN_PRECURSOR_QUANTITY,
+        DIANN_PROTEIN_SITES,
+        DIANN_PTM_SITE_CONFIDENCE,
+        DIANN_GENES,
+        DIANN_PROTEIN_GROUP,
+    ),
 }
 
 
@@ -56,6 +86,17 @@ OPTIONAL_COLUMNS: dict[str, tuple[str, ...]] = {
         COL_EG_IS_DECOY,
         COL_EG_QVALUE,
         COL_PG_QVALUE,
+    ),
+    "Diann": (
+        DIANN_SITE_OCCUPANCY_PROBS,  # per-site loc probs (much better than joint)
+        DIANN_PG_Q_VALUE,  # for the PG.Q.Value ≤ 0.05 filter
+        DIANN_GLOBAL_PG_Q_VALUE,  # for the Global.PG.Q.Value ≤ 0.01 filter
+        DIANN_LIB_PG_Q_VALUE,  # for the Lib.PG.Q.Value ≤ 0.01 filter (MBR)
+        DIANN_QUANTITY_QUALITY,  # for the Quantity.Quality ≥ 0.5 filter
+        DIANN_PG_MAXLFQ_QUALITY,  # for the PG.MaxLFQ.Quality ≥ 0.7 filter
+        DIANN_PRECURSOR_NORMALISED,  # secondary quant
+        DIANN_MS1_TRANSLATED,  # for quantification_level="MS1"
+        DIANN_MS1_AREA,  # secondary MS1 quant
     ),
 }
 
@@ -90,6 +131,22 @@ QUANT_COLUMN_CANDIDATES: dict[str, dict[str, tuple[str, ...]]] = {
             "EG.MS2Quantity",
             "EG.RawIntensityMS2",
         ),
+    },
+    # DIA-NN does not split MS1/MS2 quant the same way Spectronaut does.
+    # Precursor.Quantity is DIA-NN's DIA quant (MS2-based by default; can be
+    # MS1-based depending on the search configuration -- indistinguishable at
+    # the column-name level). MS2 is intentionally EMPTY so the MS2->MS1->auto
+    # fallback chain slides to MS1 when the user asks for MS2 on DIA-NN.
+    "Diann": {
+        "auto": (
+            DIANN_PRECURSOR_QUANTITY,
+            DIANN_PRECURSOR_NORMALISED,
+        ),
+        "MS1": (
+            DIANN_MS1_TRANSLATED,
+            DIANN_MS1_AREA,
+        ),
+        "MS2": (),
     },
 }
 

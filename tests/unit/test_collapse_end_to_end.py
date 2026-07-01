@@ -218,7 +218,7 @@ class TestSettingsValidation:
             ap.collapse_sites(
                 psm_df,
                 condition_df=cdf,
-                advanced={"search_engine": "Diann"},
+                advanced={"search_engine": "Fragpipe"},
             )
 
     def test_invalid_search_engine_value_raises(self):

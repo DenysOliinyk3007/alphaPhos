@@ -28,9 +28,21 @@ See :func:`collapse_sites` for the settings dict; see
 for domain-specific tooling.
 """
 
-__version__ = "0.1.1"
+__version__ = "0.3.0"
 
 # Public entry points, re-exported for convenience.
+from alphaphos.io.diann import (
+    DEFAULT_DIANN_IO_SETTINGS,
+    resolve_diann_io_settings,
+)
+from alphaphos.io.diann import (
+    read_psm as read_diann,
+)
+from alphaphos.io.fragpipe import (
+    DEFAULT_FRAGPIPE_IO_SETTINGS,
+    read_fragpipe_sites,
+    resolve_fragpipe_io_settings,
+)
 from alphaphos.io.spectronaut import (
     DEFAULT_IO_SETTINGS,
     resolve_io_settings,
@@ -58,8 +70,14 @@ def generate_dashboard(*args, **kwargs):  # pragma: no cover
 __all__ = [
     "__version__",
     "read_spectronaut",
+    "read_diann",
+    "read_fragpipe_sites",
     "DEFAULT_IO_SETTINGS",
+    "DEFAULT_DIANN_IO_SETTINGS",
+    "DEFAULT_FRAGPIPE_IO_SETTINGS",
     "resolve_io_settings",
+    "resolve_diann_io_settings",
+    "resolve_fragpipe_io_settings",
     "collapse_sites",
     "DEFAULT_COLLAPSE_SETTINGS",
     "resolve_settings",

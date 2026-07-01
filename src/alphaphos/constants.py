@@ -38,6 +38,61 @@ COL_CANONICAL_QUANT = "EG.TotalQuantity (Settings)"
 
 
 # ---------------------------------------------------------------------------
+# DIA-NN input columns
+# ---------------------------------------------------------------------------
+
+DIANN_RUN = "Run"
+DIANN_MODIFIED_SEQUENCE = "Modified.Sequence"
+DIANN_PRECURSOR_CHARGE = "Precursor.Charge"
+DIANN_PRECURSOR_QUANTITY = "Precursor.Quantity"
+DIANN_PRECURSOR_NORMALISED = "Precursor.Normalised"
+DIANN_PROTEIN_SITES = "Protein.Sites"
+DIANN_PTM_SITE_CONFIDENCE = "PTM.Site.Confidence"
+DIANN_SITE_OCCUPANCY_PROBS = "Site.Occupancy.Probabilities"
+DIANN_GENES = "Genes"
+DIANN_PROTEIN_GROUP = "Protein.Group"
+DIANN_PG_Q_VALUE = "PG.Q.Value"
+DIANN_GLOBAL_PG_Q_VALUE = "Global.PG.Q.Value"
+DIANN_LIB_PG_Q_VALUE = "Lib.PG.Q.Value"
+DIANN_QUANTITY_QUALITY = "Quantity.Quality"
+DIANN_PG_MAXLFQ_QUALITY = "PG.MaxLFQ.Quality"
+DIANN_MS1_TRANSLATED = "Ms1.Translated"
+DIANN_MS1_AREA = "Ms1.Area"
+
+# Phospho modification token in DIA-NN's Modified.Sequence
+UNIMOD_PHOSPHO = "(UniMod:21)"
+
+
+# ---------------------------------------------------------------------------
+# FragPipe DIA site-abundance file columns
+# (from abundance_single-site_MS{1,2}quant_{None,Norm}.tsv)
+# ---------------------------------------------------------------------------
+
+FRAGPIPE_INDEX = "Index"  # e.g. "P10644_S77"
+FRAGPIPE_GENE = "Gene"
+FRAGPIPE_PROTEIN_ID = "ProteinID"
+FRAGPIPE_PEPTIDE = "Peptide"  # sequence with lowercase phospho residues
+FRAGPIPE_SEQUENCE_WINDOW = "SequenceWindow"  # +/- 7 residue window around the site
+FRAGPIPE_MULTIPLICITY = "Multiplicity"
+FRAGPIPE_BEST_LOCALIZATION = "Best Localization"
+FRAGPIPE_BEST_SCAN_FOR_LOC = "Best Scan for Localization"
+FRAGPIPE_BEST_PRECURSOR_FOR_QUANT = "Best Precursor for Quant"
+
+# The eight metadata columns above; everything else in the file is a sample.
+FRAGPIPE_META_COLUMNS: tuple[str, ...] = (
+    FRAGPIPE_INDEX,
+    FRAGPIPE_GENE,
+    FRAGPIPE_PROTEIN_ID,
+    FRAGPIPE_PEPTIDE,
+    FRAGPIPE_SEQUENCE_WINDOW,
+    FRAGPIPE_MULTIPLICITY,
+    FRAGPIPE_BEST_LOCALIZATION,
+    FRAGPIPE_BEST_SCAN_FOR_LOC,
+    FRAGPIPE_BEST_PRECURSOR_FOR_QUANT,
+)
+
+
+# ---------------------------------------------------------------------------
 # Internal working columns (pipeline-local, not user-facing)
 # ---------------------------------------------------------------------------
 

@@ -12,6 +12,58 @@ While in `0.x`, breaking API changes may appear in any MINOR bump (`0.1 → 0.2`
 
 _Nothing yet._
 
+## [0.3.0] - 2026-07-01
+
+### Added
+
+- **FragPipe DIA site-abundance reader**
+  (`alphaphos.io.fragpipe.read_fragpipe_sites`, re-exported as
+  `ap.read_fragpipe_sites`) with `DEFAULT_FRAGPIPE_IO_SETTINGS` and
+  `resolve_fragpipe_io_settings`. Consumes FragPipe's
+  ``abundance_{single,multi}-site_MS{1,2}quant_{None,Norm}.tsv`` and
+  returns a fully-packaged `AnnData` directly -- FragPipe already emits
+  site-level matrices via IonQuant + PTM-Prophet, so we trust their
+  collapse and skip our own pipeline for this engine. Same AnnData
+  contract as `collapse_sites` output (canonical `Protein|Gene|Site|Mult`
+  keys, `layers["intensity_log2"]`, `.var` schema with `sequence_window`
+  and auto-converted `kinase_sequence`). Class-I filter on
+  ``Best Localization >= 0.75`` on by default; sample-column paths
+  auto-normalized to base names.
+- **`alphaphos.constants`** extended with FragPipe abundance column
+  constants (`FRAGPIPE_*` and `FRAGPIPE_META_COLUMNS`).
+
+## [0.2.0] - 2026-07-01
+
+### Added
+
+- **DIA-NN reader** (`alphaphos.io.diann.read_psm`, re-exported as
+  `ap.read_diann`) with `DEFAULT_DIANN_IO_SETTINGS` and
+  `resolve_diann_io_settings`. Ports the manuscript-validated pipeline
+  from `nanoPhos_env/nanoPhos_Figure3_DIANN_v00.ipynb`. Column pruning
+  at read time (same pattern as `read_spectronaut`), engine-specific QC
+  filter chain (`PG.Q.Value`, `Global.PG.Q.Value`, `Lib.PG.Q.Value`,
+  `Quantity.Quality`, `PG.MaxLFQ.Quality`), phospho-only filter
+  (`UniMod:21`), and adapter that emits Spectronaut-canonical PSM
+  columns so the SAME `collapse_sites` pipeline runs on both engines.
+  Requires DIA-NN >= 1.9 (needs `Protein.Sites` and
+  `Site.Occupancy.Probabilities` columns).
+- **`search_engine="Diann"`** is now accepted by `collapse_sites`; the
+  MS2 → MS1 → auto fallback chain correctly falls to MS1 for DIA-NN
+  (DIA-NN doesn't split MS1/MS2 quant the same way Spectronaut does).
+- **`alphaphos.io.schemas` extended** with `REQUIRED_COLUMNS["Diann"]`,
+  `OPTIONAL_COLUMNS["Diann"]`, and `QUANT_COLUMN_CANDIDATES["Diann"]`.
+- **`alphaphos.constants` extended** with `DIANN_*` and
+  `UNIMOD_PHOSPHO` constants so the DIA-NN column names live in the
+  same single-source-of-truth as Spectronaut's.
+
+### Fixed
+
+- **`pyarrow` added to runtime deps**. It was silently pulled in by other
+  packages in the dev env, so `import alphaphos` worked locally. On a
+  fresh CI install it broke every test with `ModuleNotFoundError: No module
+  named 'pyarrow'` because ``io/spectronaut.py`` now imports
+  ``pyarrow.parquet`` at module top.
+
 ## [0.1.1] - 2026-07-01
 
 Internal refactor pass to align with the coding principles in

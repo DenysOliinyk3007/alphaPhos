@@ -65,7 +65,7 @@ class TestAllNeededColumns:
 
     def test_unknown_engine_raises(self):
         with pytest.raises(KeyError, match="Unknown engine"):
-            schemas.all_needed_columns("Diann")
+            schemas.all_needed_columns("Fragpipe")
 
 
 class TestResolveQuantColumn:
@@ -131,7 +131,7 @@ class TestResolveQuantColumn:
         with pytest.raises(KeyError, match="Unknown engine"):
             schemas.resolve_quant_column(
                 available_columns=set(),
-                engine="Diann",
+                engine="Fragpipe",
                 requested_level="MS2",
             )
 
