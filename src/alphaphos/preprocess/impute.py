@@ -19,7 +19,7 @@ Two functions, both operating on an ``AnnData`` with shape
 
 Both functions mutate ``adata`` in place by default (``copy=False``) and
 require a complete-features matrix — call
-:func:`alphapepttools.pp.filter_data_completeness` first.
+:func:`alphaphos.filter_by_completeness` first.
 
 The site-based KNN direction is established as correct for phospho 3v3
 designs in ``docs/benchmark/_run_imputation_benchmark.py``. The hybrid
@@ -52,8 +52,8 @@ def _check_complete_features(X: np.ndarray) -> None:
         n = int(all_nan_cols.sum())
         raise ValueError(
             f"{n} feature(s) have no observed values; KNN cannot impute them. "
-            f"Filter with alphapepttools.pp.filter_data_completeness "
-            f"(action='drop') first."
+            f"Filter first with alphaphos.filter_by_completeness(adata, "
+            f"min_valid_frac=<some positive number>)."
         )
 
 

@@ -21,6 +21,7 @@ from alphaphos.preprocess.contaminants import (
     get_default_contaminants_fasta,
     parse_fasta_accessions,
 )
+from alphaphos.preprocess.filter import filter_by_completeness
 from alphaphos.preprocess.impute import (
     impute_hybrid,
     impute_knn_site_based,
@@ -44,7 +45,9 @@ __all__ = [
     # for now, exposed as a public helper for callers with externally-collapsed data).
     "apply_condition_aware_classI_mask",
     "META_COLS",
-    # Imputation (phospho-aware; complements alphapepttools.pp.impute_*)
+    # Site-completeness filter (drop sites failing valid-fraction threshold)
+    "filter_by_completeness",
+    # Imputation (phospho-aware)
     "impute_knn_site_based",  # Dublin-equivalent; legacy-parity path
     "impute_hybrid",  # MAR (site-KNN) + MNAR (downshifted Gaussian) per cell
     # AnnData construction escape hatch -- use collapse_sites in normal workflows.

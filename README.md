@@ -2,11 +2,11 @@
 
 Phosphoproteomics analysis toolkit.
 
-**Status:** pre-alpha (v0.3.0). Structure scaffolded; modules being extracted from prior scripts.
+**Status:** pre-alpha (v0.4.0). Structure scaffolded; modules being extracted from prior scripts.
 
 ## Scope
 
-A Python library for reproducible phosphoproteomics analysis: parse search-engine outputs (MaxQuant, Spectronaut, DIA-NN, AlphaPept), collapse peptides to sites, normalize and filter, run differential statistics, KSEA, functional enrichment, and produce standard visualizations. The in-memory representation is an AnnData-based `PhosphoExperiment` with peptide / site / protein layers.
+A Python library for reproducible phosphoproteomics analysis
 
 ## Install
 

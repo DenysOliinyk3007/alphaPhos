@@ -12,6 +12,34 @@ While in `0.x`, breaking API changes may appear in any MINOR bump (`0.1 → 0.2`
 
 _Nothing yet._
 
+## [0.4.0] - 2026-07-01
+
+### Added
+
+- **Site-completeness filter** (`alphaphos.preprocess.filter.filter_by_completeness`,
+  re-exported as `ap.filter_by_completeness`) -- native alphaPhos filter,
+  no external dep. Three group-handling strategies:
+    - ``"all"`` (default; no ``group_column``): global valid-fraction filter.
+    - ``"any"`` (needs ``group_column``): keeps sites passing in >=1 group
+      -- preserves condition-specific sites.
+    - ``"each"`` (needs ``group_column``): keeps sites passing in EVERY
+      group -- strictest, safest before differential testing.
+  Uses ``min_valid_frac`` (fraction of NON-NaN samples required, in ``[0, 1]``)
+  rather than the older ``max_missing`` convention. Always returns a new
+  ``AnnData``; input is untouched. Layer-aware: computes missingness on
+  the specified layer (default ``.X``), but the drop applies to every
+  layer / obsm / varm via AnnData subsetting.
+- **`ap.impute_hybrid` and `ap.impute_knn_site_based` re-exported at the
+  top level** (they were already in ``alphaphos.preprocess.impute``;
+  now they show up in ``ap.*`` for consistency with ``ap.filter_by_completeness``).
+
+### Changed
+
+- **`impute.py` no longer references `alphapepttools`**. The docstring
+  and the "features have no observed values" error now point at
+  ``alphaphos.filter_by_completeness`` -- alphaPhos is self-contained
+  for the filter -> impute path.
+
 ## [0.3.0] - 2026-07-01
 
 ### Added
