@@ -20,14 +20,21 @@ from __future__ import annotations
 
 import pandas as pd
 
+from alphaphos.constants import (
+    COL_EG_PRECURSOR_ID,
+    COL_R_FILENAME,
+    OBS_PHOSPHO_SELECTIVITY_PCT,
+    OBS_SAMPLE,
+)
+
 PHOSPHO_MARKER = "[Phospho (STY)]"
 
 
 def compute_selectivity(
     psm_df: pd.DataFrame,
     *,
-    sample_col: str = "R.FileName",
-    precursor_col: str = "EG.PrecursorId",
+    sample_col: str = COL_R_FILENAME,
+    precursor_col: str = COL_EG_PRECURSOR_ID,
 ) -> pd.DataFrame:
     """Compute per-sample phospho-enrichment fraction from raw PSMs.
 
@@ -101,9 +108,9 @@ def compute_selectivity(
             phospho_precursors=("is_phospho", "sum"),
         )
         .reset_index()
-        .rename(columns={sample_col: "sample"})
+        .rename(columns={sample_col: OBS_SAMPLE})
     )
-    summary["phospho_selectivity_pct"] = (
+    summary[OBS_PHOSPHO_SELECTIVITY_PCT] = (
         summary["phospho_precursors"] / summary["total_precursors"] * 100
     ).round(2)
     return summary

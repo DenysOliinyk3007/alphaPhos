@@ -12,6 +12,39 @@ While in `0.x`, breaking API changes may appear in any MINOR bump (`0.1 → 0.2`
 
 _Nothing yet._
 
+## [0.1.1] - 2026-07-01
+
+Internal refactor pass to align with the coding principles in
+`CLAUDE.coding.md`. No public behavior change.
+
+### Added
+
+- **`alphaphos.constants`** module — single source of truth for column
+  names, layer keys, obs / var / uns keys, and internal working-column
+  identifiers (``COL_*``, ``PTM_*``, ``VAR_*``, ``OBS_*``, ``LAYER_*``,
+  ``UNS_*``). All internal modules now import from here rather than
+  hardcoding strings.
+
+### Changed
+
+- **In-function imports lifted to module top** across
+  ``io/spectronaut.py``, ``preprocess/collapse.py``, and
+  ``preprocess/_collapse/site_pipeline.py``. No more deferred imports
+  except in the module-level try/except guards for optional dependencies.
+- **Docstrings scoped tighter** — removed caller / downstream references
+  from function docstrings (e.g. "for the QC dashboard's PSM lineage
+  panel"). Docstrings now describe what the function itself does and
+  what it returns.
+- **`io/schemas.py`** now references named column constants from
+  ``alphaphos.constants`` rather than hard-coding string literals in its
+  lookup tables.
+
+### Fixed
+
+- **`test_uns_provenance`** hardcoded the version string ``"0.0.0"``,
+  which broke CI on the 0.1.0 bump. Now reads from ``ap.__version__``
+  so future bumps don't re-break the test.
+
 ## [0.1.0] - 2026-07-01
 
 The first tagged pre-release. Establishes the public API shape that

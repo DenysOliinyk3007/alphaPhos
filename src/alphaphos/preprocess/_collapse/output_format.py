@@ -1,7 +1,6 @@
 """Assemble the collapse pipeline's outputs into a single ``AnnData``.
 
-At the end of the pipeline we have three parallel DataFrames indexed by
-``full_key``:
+Takes three parallel DataFrames indexed by ``full_key``:
 
 * ``site_quant``    -- log2 intensity, sites x samples
 * ``site_loc``      -- localization probability, sites x samples
@@ -11,12 +10,7 @@ At the end of the pipeline we have three parallel DataFrames indexed by
 
 The AnnData contract requires the OPPOSITE orientation for ``.X`` (samples
 as observations along the first axis). This module handles the transpose
-and populates every ``.var``, ``.obs``, ``.layers``, ``.uns`` slot in one
-call so users get a fully-ready object with no missing metadata.
-
-For advanced users, :mod:`alphaphos.preprocess.anndata` also exposes a
-lower-level ``to_anndata`` that accepts externally-collapsed data; the
-function here calls into it for the actual construction.
+and populates every ``.var``, ``.obs``, ``.layers``, ``.uns`` slot.
 """
 
 from __future__ import annotations
@@ -26,6 +20,22 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+
+from alphaphos.constants import (
+    LAYER_INTENSITY_LOG2,
+    LAYER_LOCALIZATION,
+    OBS_PHOSPHO_SELECTIVITY_PCT,
+    OBS_SAMPLE,
+    UNS_ALPHAPHOS,
+    UNS_SOURCE_ATTRS,
+    VAR_FRACTION_CLASSI,
+    VAR_FULL_KEY,
+    VAR_MAX_LOC_PROB,
+    VAR_MEAN_LOC_PROB,
+    VAR_MIN_LOC_PROB,
+    VAR_N_CLASSI_SAMPLES,
+    VAR_N_SAMPLES_DETECTED,
+)
 
 # Type-only import: anndata.AnnData
 try:
@@ -88,12 +98,10 @@ def assemble_anndata(
         ``adata.uns['alphaphos']['classI_decision_table']``.
     source_attrs : dict, optional
         The ``psm_df.attrs`` dict from ``read_spectronaut``. Stored at
-        ``adata.uns['source_attrs']``. Powers the QC dashboard's PSM
-        pipeline waterfall panel.
+        ``adata.uns['source_attrs']``.
     short_key_collisions : list, optional
         Output of :func:`resolve_short_key_collisions`. Stored at
-        ``adata.uns['alphaphos']['short_key_collisions']`` when non-empty
-        so users can inspect which gene:site labels got suffixed.
+        ``adata.uns['alphaphos']['short_key_collisions']`` when non-empty.
     version : str
         The alphaPhos version string, stored at
         ``adata.uns['alphaphos']['version']`` for provenance.
@@ -126,37 +134,37 @@ def assemble_anndata(
     loc_layer = site_loc.T.to_numpy(dtype=np.float32, copy=True)
 
     obs = pd.DataFrame(index=site_quant.columns.astype(str))
-    obs.index.name = "sample"
+    obs.index.name = OBS_SAMPLE
     if condition_df is not None:
         cdf = condition_df.copy()
-        if "sample" not in cdf.columns:
+        if OBS_SAMPLE not in cdf.columns:
             raise KeyError("condition_df must contain a 'sample' column.")
-        cdf = cdf.set_index("sample")
+        cdf = cdf.set_index(OBS_SAMPLE)
         obs = obs.join(cdf, how="left")
     if selectivity is not None:
         # Join by sample id; missing samples get NaN.
-        sel = selectivity.set_index("sample")[["phospho_selectivity_pct"]]
+        sel = selectivity.set_index(OBS_SAMPLE)[[OBS_PHOSPHO_SELECTIVITY_PCT]]
         obs = obs.join(sel, how="left")
 
     var = site_meta.copy()
     var.index = var.index.astype(str)
-    var.index.name = "full_key"
+    var.index.name = VAR_FULL_KEY
 
     # Compute site-level QC columns for adata.var (analog to what to_anndata does).
-    var["n_samples_detected"] = np.asarray((~np.isnan(X)).sum(axis=0)).astype(int)
+    var[VAR_N_SAMPLES_DETECTED] = np.asarray((~np.isnan(X)).sum(axis=0)).astype(int)
     with np.errstate(all="ignore"):
         loc_arr = np.asarray(loc_layer)
-        var["mean_loc_prob"] = np.nanmean(loc_arr, axis=0)
-        var["max_loc_prob"] = np.nanmax(loc_arr, axis=0)
-        var["min_loc_prob"] = np.nanmin(loc_arr, axis=0)
+        var[VAR_MEAN_LOC_PROB] = np.nanmean(loc_arr, axis=0)
+        var[VAR_MAX_LOC_PROB] = np.nanmax(loc_arr, axis=0)
+        var[VAR_MIN_LOC_PROB] = np.nanmin(loc_arr, axis=0)
     classI_cutoff = float(settings.get("classI_cutoff", 0.75))
     is_classI = loc_arr >= classI_cutoff  # NaN loc -> False
-    var["n_classI_samples"] = is_classI.sum(axis=0).astype(int)
-    var["fraction_classI"] = var["n_classI_samples"] / max(loc_arr.shape[0], 1)
+    var[VAR_N_CLASSI_SAMPLES] = is_classI.sum(axis=0).astype(int)
+    var[VAR_FRACTION_CLASSI] = var[VAR_N_CLASSI_SAMPLES] / max(loc_arr.shape[0], 1)
 
     adata = ad.AnnData(X=X, obs=obs, var=var)
-    adata.layers["intensity_log2"] = X.copy()
-    adata.layers["localization"] = loc_layer
+    adata.layers[LAYER_INTENSITY_LOG2] = X.copy()
+    adata.layers[LAYER_LOCALIZATION] = loc_layer
 
     # uns package: everything alphaPhos-specific goes under 'alphaphos'.
     alphaphos_ns: dict[str, Any] = {
@@ -168,9 +176,9 @@ def assemble_anndata(
         alphaphos_ns["short_key_collisions"] = short_key_collisions
     if decision_table is not None:
         alphaphos_ns["classI_decision_table"] = decision_table
-    adata.uns["alphaphos"] = alphaphos_ns
+    adata.uns[UNS_ALPHAPHOS] = alphaphos_ns
     if source_attrs is not None:
-        adata.uns["source_attrs"] = dict(source_attrs)
+        adata.uns[UNS_SOURCE_ATTRS] = dict(source_attrs)
 
     logger.info(
         "Assembled AnnData: %d samples x %d sites; obs cols=%s; layers=%s.",

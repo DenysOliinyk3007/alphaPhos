@@ -11,11 +11,24 @@ FragPipe / PEAKS, follow the same shape: three sub-dicts per engine
 requested quantification level.
 
 Column names use the dotted Spectronaut convention throughout (``R.FileName``,
-not ``R_FileName``). The reader normalizes underscore-form to dotted-form
-so downstream code sees only dotted names.
+not ``R_FileName``).
 """
 
 from __future__ import annotations
+
+from alphaphos.constants import (
+    COL_CANONICAL_QUANT,
+    COL_EG_IS_DECOY,
+    COL_EG_PRECURSOR_ID,
+    COL_EG_PTM_ASSAY_PROB,
+    COL_EG_PTM_LOC_PROBS,
+    COL_EG_QVALUE,
+    COL_PEP_PEPTIDE_POSITION,
+    COL_PG_GENES,
+    COL_PG_PROTEIN_GROUPS,
+    COL_PG_QVALUE,
+    COL_R_FILENAME,
+)
 
 # ---------------------------------------------------------------------------
 # What the collapse pipeline MUST have to run (hard error if missing).
@@ -23,12 +36,12 @@ from __future__ import annotations
 
 REQUIRED_COLUMNS: dict[str, tuple[str, ...]] = {
     "SN": (
-        "R.FileName",
-        "EG.PrecursorId",
-        "PEP.PeptidePosition",
-        "EG.PTMAssayProbability",
-        "PG.Genes",
-        "PG.ProteinGroups",
+        COL_R_FILENAME,
+        COL_EG_PRECURSOR_ID,
+        COL_PEP_PEPTIDE_POSITION,
+        COL_EG_PTM_ASSAY_PROB,
+        COL_PG_GENES,
+        COL_PG_PROTEIN_GROUPS,
     ),
 }
 
@@ -39,10 +52,10 @@ REQUIRED_COLUMNS: dict[str, tuple[str, ...]] = {
 
 OPTIONAL_COLUMNS: dict[str, tuple[str, ...]] = {
     "SN": (
-        "EG.PTMLocalizationProbabilities",  # per-position loc probs (much better than joint)
-        "EG.IsDecoy",  # for drop_decoys filter
-        "EG.Qvalue",  # for eg_qvalue_max filter
-        "PG.Qvalue",  # for pg_qvalue_max filter
+        COL_EG_PTM_LOC_PROBS,
+        COL_EG_IS_DECOY,
+        COL_EG_QVALUE,
+        COL_PG_QVALUE,
     ),
 }
 
@@ -62,7 +75,7 @@ OPTIONAL_COLUMNS: dict[str, tuple[str, ...]] = {
 QUANT_COLUMN_CANDIDATES: dict[str, dict[str, tuple[str, ...]]] = {
     "SN": {
         "auto": (
-            "EG.TotalQuantity (Settings)",
+            COL_CANONICAL_QUANT,
             "FG.Quantity",
         ),
         "MS1": (

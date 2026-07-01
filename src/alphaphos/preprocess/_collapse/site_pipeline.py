@@ -40,11 +40,32 @@ Pipeline overview (per stage docstrings below have full detail):
 
 from __future__ import annotations
 
+import hashlib
 import logging
 
 import numpy as np
 import pandas as pd
 
+from alphaphos.constants import (
+    COL_CANONICAL_QUANT,
+    COL_EG_PRECURSOR_ID,
+    COL_EG_PTM_ASSAY_PROB,
+    COL_EG_PTM_LOC_PROBS,
+    COL_PEP_PEPTIDE_POSITION,
+    COL_PG_GENES,
+    COL_PG_PROTEIN_GROUPS,
+    COL_R_FILENAME,
+    PTM_AA,
+    PTM_BASE_SEQ,
+    PTM_GROUP,
+    PTM_LOC_DICT,
+    PTM_LOCALIZATION,
+    PTM_NUM,
+    PTM_POS_VAL,
+    PTM_UPD_SEQ,
+    VAR_FULL_KEY,
+    VAR_SHORT_KEY,
+)
 from alphaphos.preprocess._collapse.aggregation import aggregate_by_key
 from alphaphos.preprocess._collapse.keys import (
     build_full_key,
@@ -120,10 +141,10 @@ def prepare_psms(psm_df: pd.DataFrame, *, logger: logging.Logger = _NULL_LOGGER)
 
     # Underscore-in-gene-name mitigation. Preserves legacy behavior; the
     # replacement is inverted at finalize time so users see ``_`` again.
-    if "PG.Genes" in df.columns:
-        underscore_count = df["PG.Genes"].astype(str).str.contains("_", na=False).sum()
+    if COL_PG_GENES in df.columns:
+        underscore_count = df[COL_PG_GENES].astype(str).str.contains("_", na=False).sum()
         if underscore_count > 0:
-            df["PG.Genes"] = df["PG.Genes"].astype(str).str.replace("_", "#", regex=False)
+            df[COL_PG_GENES] = df[COL_PG_GENES].astype(str).str.replace("_", "#", regex=False)
             logger.warning(
                 "%d gene names contained underscores and have been temporarily "
                 "replaced with '#' (restored at output).",
@@ -131,7 +152,7 @@ def prepare_psms(psm_df: pd.DataFrame, *, logger: logging.Logger = _NULL_LOGGER)
             )
 
     # Parse EG.PrecursorId into the modification columns.
-    mods = df["EG.PrecursorId"].apply(extract_sequence_modifications)
+    mods = df[COL_EG_PRECURSOR_ID].apply(extract_sequence_modifications)
     df["clean_sequence"] = [m["clean_sequence"] for m in mods]
     df["phospho_positions"] = [m["phospho_positions"] for m in mods]
     df["phospho_count"] = [m["phospho_count"] for m in mods]
@@ -148,10 +169,8 @@ def prepare_psms(psm_df: pd.DataFrame, *, logger: logging.Logger = _NULL_LOGGER)
     )
 
     # Per-position loc probabilities (optional: only if the column exists).
-    if "EG.PTMLocalizationProbabilities" in df.columns:
-        df["_loc_dict"] = df["EG.PTMLocalizationProbabilities"].apply(
-            parse_localization_probabilities
-        )
+    if COL_EG_PTM_LOC_PROBS in df.columns:
+        df[PTM_LOC_DICT] = df[COL_EG_PTM_LOC_PROBS].apply(parse_localization_probabilities)
 
     return df
 
@@ -194,22 +213,22 @@ def explode_to_sites(
     df = prepared_df.copy()
 
     # Alias the columns to their downstream names.
-    df["PTM_group"] = df["EG.PrecursorId"]
-    df["PTM_base_seq"] = df["clean_sequence"]
-    df["PTM_0_pos_val"] = df["phospho_positions"]
-    df["PTM_0_num"] = df["phospho_count"]
+    df[PTM_GROUP] = df[COL_EG_PRECURSOR_ID]
+    df[PTM_BASE_SEQ] = df["clean_sequence"]
+    df[PTM_POS_VAL] = df["phospho_positions"]
+    df[PTM_NUM] = df["phospho_count"]
 
-    df = df.explode("PTM_0_pos_val")
+    df = df.explode(PTM_POS_VAL)
     # After explode, PTM_0_pos_val is object dtype; coerce to Python int for
     # downstream key building.
-    df["PTM_0_pos_val"] = df["PTM_0_pos_val"].astype(int)
+    df[PTM_POS_VAL] = df[PTM_POS_VAL].astype(int)
 
-    df["UPD_seq"] = df.apply(
-        lambda x: build_modified_sequence(x["PTM_base_seq"], x["PTM_0_pos_val"]),
+    df[PTM_UPD_SEQ] = df.apply(
+        lambda x: build_modified_sequence(x[PTM_BASE_SEQ], x[PTM_POS_VAL]),
         axis=1,
     )
-    df["PTM_0_aa"] = df.apply(
-        lambda x: get_phospho_amino_acid(x["PTM_base_seq"], x["PTM_0_pos_val"]),
+    df[PTM_AA] = df.apply(
+        lambda x: get_phospho_amino_acid(x[PTM_BASE_SEQ], x[PTM_POS_VAL]),
         axis=1,
     )
 
@@ -217,20 +236,18 @@ def explode_to_sites(
     # joint EG.PTMAssayProbability when per-position parsing wasn't possible
     # for this row (e.g. no EG.PTMLocalizationProbabilities column, or an
     # empty / unparseable string).
-    if "_loc_dict" in df.columns:
+    if PTM_LOC_DICT in df.columns:
         loc_series = pd.Series(
             [
                 d.get(int(pos), np.nan) if d else np.nan
-                for d, pos in zip(df["_loc_dict"], df["PTM_0_pos_val"], strict=True)
+                for d, pos in zip(df[PTM_LOC_DICT], df[PTM_POS_VAL], strict=True)
             ],
             index=df.index,
         )
-        df["PTM_localization"] = loc_series
-        fallback = df["PTM_localization"].isna()
+        df[PTM_LOCALIZATION] = loc_series
+        fallback = df[PTM_LOCALIZATION].isna()
         # Where per-site parsing produced NaN, use the joint prob as a stand-in.
-        df.loc[fallback, "PTM_localization"] = df.loc[fallback, "EG.PTMAssayProbability"].astype(
-            float
-        )
+        df.loc[fallback, PTM_LOCALIZATION] = df.loc[fallback, COL_EG_PTM_ASSAY_PROB].astype(float)
 
         n_per_site = int((~fallback).sum())
         n_fallback = int(fallback.sum())
@@ -242,9 +259,9 @@ def explode_to_sites(
             n_fallback,
             pct,
         )
-        df = df.drop(columns=["_loc_dict"])
+        df = df.drop(columns=[PTM_LOC_DICT])
     else:
-        df["PTM_localization"] = df["EG.PTMAssayProbability"].astype(float)
+        df[PTM_LOCALIZATION] = df[COL_EG_PTM_ASSAY_PROB].astype(float)
         logger.info(
             "No EG.PTMLocalizationProbabilities column; using joint "
             "EG.PTMAssayProbability for all rows."
@@ -282,9 +299,9 @@ def build_precursor_pivots(
     reindexing.
     """
     quant_wide = exploded_df.pivot_table(
-        index=["PTM_group", "PTM_0_pos_val"],
-        columns="R.FileName",
-        values="EG.TotalQuantity (Settings)",
+        index=[PTM_GROUP, PTM_POS_VAL],
+        columns=COL_R_FILENAME,
+        values=COL_CANONICAL_QUANT,
         aggfunc="sum",
     ).replace(0, np.nan)
 
@@ -296,23 +313,23 @@ def build_precursor_pivots(
     )
 
     loc_wide = exploded_df.pivot_table(
-        index=["PTM_group", "PTM_0_pos_val"],
-        columns="R.FileName",
-        values="PTM_localization",
+        index=[PTM_GROUP, PTM_POS_VAL],
+        columns=COL_R_FILENAME,
+        values=PTM_LOCALIZATION,
         aggfunc="max",  # take strongest per-run evidence if duplicated
     )
 
     meta_keep = [
-        "PEP.PeptidePosition",
-        "PG.ProteinGroups",
-        "PG.Genes",
-        "PTM_0_num",
-        "PTM_0_aa",
-        "UPD_seq",
+        COL_PEP_PEPTIDE_POSITION,
+        COL_PG_PROTEIN_GROUPS,
+        COL_PG_GENES,
+        PTM_NUM,
+        PTM_AA,
+        PTM_UPD_SEQ,
     ]
     meta_keep = [c for c in meta_keep if c in exploded_df.columns]
     meta_wide = exploded_df.pivot_table(
-        index=["PTM_group", "PTM_0_pos_val"],
+        index=[PTM_GROUP, PTM_POS_VAL],
         values=meta_keep,
         aggfunc="first",
     )
@@ -371,7 +388,7 @@ def compute_site_metadata(
         raise ValueError(f"collapse_level must be 'PG' or 'P', got {collapse_level!r}")
 
     # Parse PEP.PeptidePosition -> peptide_start (Int)
-    meta["peptide_start"] = meta["PEP.PeptidePosition"].apply(extract_first_valid_position)
+    meta["peptide_start"] = meta[COL_PEP_PEPTIDE_POSITION].apply(extract_first_valid_position)
 
     # Drop rows without a valid peptide start (would produce garbage keys).
     n_before = len(meta)
@@ -386,7 +403,7 @@ def compute_site_metadata(
 
     # Also drop rows where PTM_0_aa is 'X' (out-of-range or non-STY).
     n_before = len(meta)
-    meta = meta[meta["PTM_0_aa"].isin(["S", "T", "Y"])].copy()
+    meta = meta[meta[PTM_AA].isin(["S", "T", "Y"])].copy()
     if n_before - len(meta) > 0:
         logger.warning(
             "AA filter: dropped %d sites with non-STY residues in their position.",
@@ -394,37 +411,37 @@ def compute_site_metadata(
         )
 
     # Absolute site position in the parent protein (1-indexed).
-    intra = meta.index.get_level_values("PTM_0_pos_val")
+    intra = meta.index.get_level_values(PTM_POS_VAL)
     meta["absolute_position"] = (meta["peptide_start"] + intra.astype(int) - 1).astype(np.int64)
 
     # Multiplicity clamped to 3 (M1/M2/M3+ convention).
-    meta["multiplicity"] = meta["PTM_0_num"].astype(np.int64).clip(upper=3)
+    meta["multiplicity"] = meta[PTM_NUM].astype(np.int64).clip(upper=3)
 
     # Protein group / gene canonicalization for the key.
     if collapse_level == "PG":
-        meta["protein_group_id"] = meta["PG.ProteinGroups"].astype(str).str.split(";").str[0]
-        meta["gene"] = meta["PG.Genes"].astype(str).str.split(";").str[0]
+        meta["protein_group_id"] = meta[COL_PG_PROTEIN_GROUPS].astype(str).str.split(";").str[0]
+        meta["gene"] = meta[COL_PG_GENES].astype(str).str.split(";").str[0]
     else:  # "P" -- keep full string, downstream explodes it later
-        meta["protein_group_id"] = meta["PG.ProteinGroups"].astype(str)
-        meta["gene"] = meta["PG.Genes"].astype(str)
+        meta["protein_group_id"] = meta[COL_PG_PROTEIN_GROUPS].astype(str)
+        meta["gene"] = meta[COL_PG_GENES].astype(str)
 
     # Build the three key flavors.
-    meta["full_key"] = [
+    meta[VAR_FULL_KEY] = [
         build_full_key(pg, g, aa, p, m)
         for pg, g, aa, p, m in zip(
             meta["protein_group_id"],
             meta["gene"],
-            meta["PTM_0_aa"],
+            meta[PTM_AA],
             meta["absolute_position"],
             meta["multiplicity"],
             strict=True,
         )
     ]
-    meta["short_key"] = [
+    meta[VAR_SHORT_KEY] = [
         build_short_key(g, aa, p, m)
         for g, aa, p, m in zip(
             meta["gene"],
-            meta["PTM_0_aa"],
+            meta[PTM_AA],
             meta["absolute_position"],
             meta["multiplicity"],
             strict=True,
@@ -434,7 +451,7 @@ def compute_site_metadata(
         build_pg_key(pg, aa, p, m)
         for pg, aa, p, m in zip(
             meta["protein_group_id"],
-            meta["PTM_0_aa"],
+            meta[PTM_AA],
             meta["absolute_position"],
             meta["multiplicity"],
             strict=True,
@@ -491,21 +508,21 @@ def aggregate_precursors_to_sites(
     """
     # Align: attach full_key to the precursor pivots via join on the shared
     # (PTM_group, PTM_0_pos_val) index.
-    keys_by_index = site_meta["full_key"]
+    keys_by_index = site_meta[VAR_FULL_KEY]
     quant_with_keys = quant_wide.join(keys_by_index, how="inner")
     loc_with_keys = loc_wide.join(keys_by_index, how="inner")
 
     # Sample columns are everything except full_key
     sample_cols = [c for c in quant_wide.columns]
 
-    quant_indexed = quant_with_keys.set_index("full_key")[sample_cols]
+    quant_indexed = quant_with_keys.set_index(VAR_FULL_KEY)[sample_cols]
     site_quant = aggregate_by_key(quant_indexed, aggregation_method, sample_cols)
 
-    loc_indexed = loc_with_keys.set_index("full_key")[sample_cols]
+    loc_indexed = loc_with_keys.set_index(VAR_FULL_KEY)[sample_cols]
     site_loc = loc_indexed.groupby(level=0).max()
 
     # Deduplicate metadata to one row per full_key.
-    site_meta_dedup = site_meta.reset_index().drop_duplicates("full_key").set_index("full_key")
+    site_meta_dedup = site_meta.reset_index().drop_duplicates(VAR_FULL_KEY).set_index(VAR_FULL_KEY)
 
     logger.info(
         "Aggregated (%s) to %d sites x %d samples.",
@@ -573,11 +590,9 @@ def log2_transform(
 
 def _log_duplicate_raw_files(df: pd.DataFrame, logger: logging.Logger) -> None:
     """Warn if two ``R.FileName`` values share their first-100 precursors."""
-    import hashlib
-
     file_hashes: dict[str, list[str]] = {}
-    for fname in df["R.FileName"].unique():
-        subset = df.loc[df["R.FileName"] == fname, "EG.PrecursorId"]
+    for fname in df[COL_R_FILENAME].unique():
+        subset = df.loc[df[COL_R_FILENAME] == fname, COL_EG_PRECURSOR_ID]
         sorted_precursors = sorted(subset.dropna().astype(str).tolist())[:100]
         h = hashlib.md5("||".join(sorted_precursors).encode()).hexdigest()
         file_hashes.setdefault(h, []).append(fname)
@@ -602,11 +617,11 @@ def resolve_short_keys(site_meta: pd.DataFrame) -> tuple[pd.DataFrame, list]:
     list of collision events (for logging into ``adata.uns``).
     """
     resolved, collisions = resolve_short_key_collisions(
-        site_meta["short_key"].tolist(),
+        site_meta[VAR_SHORT_KEY].tolist(),
         site_meta.index.tolist()
-        if site_meta.index.name == "full_key"
-        else site_meta["full_key"].tolist(),
+        if site_meta.index.name == VAR_FULL_KEY
+        else site_meta[VAR_FULL_KEY].tolist(),
     )
     site_meta = site_meta.copy()
-    site_meta["short_key"] = resolved
+    site_meta[VAR_SHORT_KEY] = resolved
     return site_meta, collisions

@@ -50,6 +50,7 @@ Public API
 from __future__ import annotations
 
 import logging
+import warnings
 from typing import Any
 
 import pandas as pd
@@ -60,6 +61,12 @@ except ImportError:  # pragma: no cover
     ad = None  # type: ignore[assignment]
 
 from alphaphos import __version__ as _alphaphos_version
+from alphaphos.constants import (
+    COL_CANONICAL_QUANT,
+    COL_EG_PTM_LOC_PROBS,
+    OBS_CONDITION,
+    OBS_SAMPLE,
+)
 from alphaphos.io.schemas import resolve_quant_column
 from alphaphos.preprocess._collapse.masking import (
     VALID_STRATEGIES,
@@ -79,6 +86,7 @@ from alphaphos.preprocess._collapse.site_pipeline import (
     prepare_psms,
     resolve_short_keys,
 )
+from alphaphos.preprocess.attribution import filter_to_top_n_positions
 
 logger = logging.getLogger("alphaphos.preprocess.collapse")
 
@@ -209,8 +217,7 @@ def collapse_sites(
         others raise ``NotImplementedError``).
 
         Any ``data.attrs`` dict is preserved in
-        ``adata.uns["source_attrs"]`` for the QC dashboard's PSM lineage
-        panel.
+        ``adata.uns["source_attrs"]``.
     condition_df : DataFrame, optional
         Sample-level metadata. Must contain columns ``sample`` (matching
         ``R.FileName`` values) and ``condition`` (replicate grouping);
@@ -271,8 +278,8 @@ def collapse_sites(
             "DataFrame with columns 'sample' (matching R.FileName) and "
             "'condition' (grouping replicates)."
         )
-    if condition_df is not None and not {"sample", "condition"}.issubset(condition_df.columns):
-        missing = {"sample", "condition"} - set(condition_df.columns)
+    if condition_df is not None and not {OBS_SAMPLE, OBS_CONDITION}.issubset(condition_df.columns):
+        missing = {OBS_SAMPLE, OBS_CONDITION} - set(condition_df.columns)
         raise KeyError(f"condition_df is missing required columns: {sorted(missing)}")
 
     stats: dict[str, Any] = {"n_psms_loaded": len(data)}
@@ -446,16 +453,11 @@ def _select_quantification_column(
     engine: str,
     requested_level: str,
 ) -> tuple[pd.DataFrame, str, str]:
-    """Pick the quant column, copy it into the canonical slot for downstream.
+    """Pick the quant column and copy its values into the canonical slot.
 
-    Uses :func:`alphaphos.io.schemas.resolve_quant_column` to walk the
-    ``MS2 -> MS1 -> auto`` fallback chain. If a fallback was needed, emits
-    a ``UserWarning`` AND logs a warning so the substitution is visible
-    both to end users and in server-side logs.
-
-    ``prepare_psms`` downstream reads ``EG.TotalQuantity (Settings)``; we
-    copy the chosen column's values into that slot so the rest of the
-    pipeline is agnostic to the source column.
+    Walks the ``MS2 -> MS1 -> auto`` fallback chain via
+    :func:`alphaphos.io.schemas.resolve_quant_column`. If a fallback was
+    needed, emits a ``UserWarning`` AND logs a warning.
 
     Returns
     -------
@@ -464,8 +466,6 @@ def _select_quantification_column(
         already the canonical slot), the actual source column name, and
         the level the source column belongs to.
     """
-    import warnings
-
     available = set(df.columns)
     chosen_col, level_used = resolve_quant_column(
         available, engine=engine, requested_level=requested_level
@@ -478,9 +478,9 @@ def _select_quantification_column(
         warnings.warn(msg, UserWarning, stacklevel=3)
         logger.warning(msg)
 
-    if chosen_col != "EG.TotalQuantity (Settings)":
+    if chosen_col != COL_CANONICAL_QUANT:
         df = df.copy()
-        df["EG.TotalQuantity (Settings)"] = df[chosen_col]
+        df[COL_CANONICAL_QUANT] = df[chosen_col]
 
     logger.info("Using quantification column: %r (level=%s)", chosen_col, level_used)
     return df, chosen_col, level_used
@@ -498,15 +498,11 @@ def _apply_top_n_attribution(df: pd.DataFrame) -> pd.DataFrame:
     Silently no-ops when ``EG.PTMLocalizationProbabilities`` is absent
     (older Spectronaut exports, or reports that were pruned before load).
     """
-    if "EG.PTMLocalizationProbabilities" not in df.columns:
+    if COL_EG_PTM_LOC_PROBS not in df.columns:
         logger.info(
             "Skipping top_n_attribution: EG.PTMLocalizationProbabilities column not present."
         )
         return df
-
-    # Local import: keeps preprocess -> preprocess dep explicit, avoids
-    # any circular concerns at package-load time.
-    from alphaphos.preprocess.attribution import filter_to_top_n_positions
 
     n_before = len(df)
     df = filter_to_top_n_positions(df)

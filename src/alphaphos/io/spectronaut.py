@@ -37,10 +37,8 @@ Configuration via a settings dict, mirroring the pattern in
 
 Unknown keys in ``advanced`` raise, so typos surface immediately.
 
-The returned DataFrame carries ``.attrs`` populated with lineage
-counts (rows loaded, rows after each filter, source path, engine) so
-downstream tooling (the QC dashboard's PSM funnel) can render the
-provenance.
+The returned DataFrame carries ``.attrs`` populated with lineage counts
+(rows loaded, rows after each filter, source path, engine).
 """
 
 from __future__ import annotations
@@ -51,11 +49,18 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+import pyarrow.parquet as pq
 
+from alphaphos.constants import (
+    COL_EG_IS_DECOY,
+    COL_EG_QVALUE,
+    COL_PG_QVALUE,
+)
 from alphaphos.io.schemas import (
     REQUIRED_COLUMNS,
     all_needed_columns,
 )
+from alphaphos.preprocess.contaminants import filter_contaminants
 
 logger = logging.getLogger("alphaphos.io.spectronaut")
 
@@ -163,8 +168,6 @@ def _scan_available_columns(path: Path, engine: str) -> dict[str, str]:
         ``pd.read_parquet(columns=...)`` or ``pd.read_csv(usecols=...)``.
     """
     if path.suffix.lower() == ".parquet":
-        import pyarrow.parquet as pq
-
         raw_names = pq.read_schema(str(path)).names
     else:
         # TSV / TXT: read only the header line to enumerate columns.
@@ -190,7 +193,7 @@ def _coerce_dtypes(df: pd.DataFrame) -> pd.DataFrame:
     Some Spectronaut versions export q-values, EG.CScore etc. as strings
     (e.g. ``"2.97e-20"``). We coerce these so filters work reliably.
     """
-    for col in ("EG.Qvalue", "PG.Qvalue"):
+    for col in (COL_EG_QVALUE, COL_PG_QVALUE):
         if col in df.columns and df[col].dtype == object:
             df[col] = pd.to_numeric(df[col], errors="coerce")
     return df
@@ -263,8 +266,6 @@ def read_psm(
 
     # Track how many columns we skipped for the attrs.
     if p.suffix.lower() == ".parquet":
-        import pyarrow.parquet as pq
-
         n_total_cols = len(pq.read_schema(str(p)).names)
     else:
         with open(p, encoding="utf-8", errors="replace") as f:
@@ -297,26 +298,23 @@ def read_psm(
 
     # ------- boundary filters -------
     n_after_decoys = None
-    if settings["drop_decoys"] and "EG.IsDecoy" in df.columns:
-        df = df.loc[~df["EG.IsDecoy"].astype(bool)]
+    if settings["drop_decoys"] and COL_EG_IS_DECOY in df.columns:
+        df = df.loc[~df[COL_EG_IS_DECOY].astype(bool)]
         n_after_decoys = len(df)
         logger.info("Dropped decoys: %d rows remaining.", n_after_decoys)
 
     n_after_qvalue = None
-    if settings["eg_qvalue_max"] is not None and "EG.Qvalue" in df.columns:
-        df = df.loc[df["EG.Qvalue"].fillna(np.inf) <= settings["eg_qvalue_max"]]
+    if settings["eg_qvalue_max"] is not None and COL_EG_QVALUE in df.columns:
+        df = df.loc[df[COL_EG_QVALUE].fillna(np.inf) <= settings["eg_qvalue_max"]]
         n_after_qvalue = len(df)
-    if settings["pg_qvalue_max"] is not None and "PG.Qvalue" in df.columns:
-        df = df.loc[df["PG.Qvalue"].fillna(np.inf) <= settings["pg_qvalue_max"]]
+    if settings["pg_qvalue_max"] is not None and COL_PG_QVALUE in df.columns:
+        df = df.loc[df[COL_PG_QVALUE].fillna(np.inf) <= settings["pg_qvalue_max"]]
         n_after_qvalue = len(df)
 
     df = df.reset_index(drop=True)
 
     n_after_contam = None
     if settings["drop_contaminants"]:
-        # Local import avoids a preprocess <-> io circular at package load.
-        from alphaphos.preprocess.contaminants import filter_contaminants
-
         df = filter_contaminants(
             df,
             contaminants_fasta=settings["contaminants_fasta"],

@@ -184,7 +184,7 @@ class TestCollapseSitesEndToEnd:
         params = collapsed.uns["alphaphos"]["pipeline_params"]
         assert params["localization_strategy"] == "per_run"
         assert params["cutoff"] == 0.75
-        assert collapsed.uns["alphaphos"]["version"] == "0.0.0"
+        assert collapsed.uns["alphaphos"]["version"] == ap.__version__
         assert "stats" in collapsed.uns["alphaphos"]
 
     def test_source_attrs_forwarded(self, collapsed):

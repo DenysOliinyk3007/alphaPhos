@@ -28,7 +28,7 @@ See :func:`collapse_sites` for the settings dict; see
 for domain-specific tooling.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 # Public entry points, re-exported for convenience.
 from alphaphos.io.spectronaut import (

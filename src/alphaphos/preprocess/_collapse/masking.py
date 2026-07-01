@@ -33,6 +33,8 @@ import logging
 import numpy as np
 import pandas as pd
 
+from alphaphos.constants import OBS_CONDITION, OBS_SAMPLE, VAR_FULL_KEY
+
 _NULL_LOGGER = logging.getLogger("alphaphos.preprocess._collapse.masking")
 
 
@@ -160,14 +162,14 @@ def mask_condition_aware(
         ``(n_sites x n_conditions)`` fraction of Class-I replicates per
         (site, condition). Attached to ``adata.uns`` for diagnostics.
     """
-    if "sample" not in condition_df.columns or "condition" not in condition_df.columns:
+    if OBS_SAMPLE not in condition_df.columns or OBS_CONDITION not in condition_df.columns:
         raise ValueError("condition_df must contain both 'sample' and 'condition' columns.")
     if not 0 < condition_threshold <= 1:
         raise ValueError(f"condition_threshold must be in (0, 1], got {condition_threshold}")
     if not 0 <= classI_cutoff <= 1:
         raise ValueError(f"classI_cutoff must be in [0, 1], got {classI_cutoff}")
 
-    s2c = condition_df.set_index("sample")["condition"].astype(str)
+    s2c = condition_df.set_index(OBS_SAMPLE)[OBS_CONDITION].astype(str)
 
     quant = site_quant.astype(float).copy()
     loc = site_loc.reindex(index=quant.index, columns=quant.columns)
@@ -205,7 +207,7 @@ def mask_condition_aware(
     )
 
     decision_table = pd.DataFrame(decision_rows)
-    decision_table.index.name = "full_key"
+    decision_table.index.name = VAR_FULL_KEY
     return masked, decision_table
 
 

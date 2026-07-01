@@ -233,9 +233,8 @@ def add_kinase_windows(
     """Add a per-site kinase window column to ``adata.var``.
 
     Reads three columns from ``adata.var`` and looks up each site's flanking
-    residues in the FASTA. Failures produce sentinel strings so downstream
-    code (e.g. :mod:`alphaphos.kinase.library`) can filter them out
-    consistently.
+    residues in the FASTA. Failures produce sentinel strings prefixed with
+    ``FASTA_ERROR:``, ``POSITION_ERROR:``, or ``SEQUENCE_MISMATCH:``.
 
     Parameters
     ----------
