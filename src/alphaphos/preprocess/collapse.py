@@ -79,7 +79,6 @@ from alphaphos.preprocess._collapse.site_pipeline import (
     resolve_short_keys,
 )
 
-
 logger = logging.getLogger("alphaphos.preprocess.collapse")
 
 
@@ -89,15 +88,15 @@ logger = logging.getLogger("alphaphos.preprocess.collapse")
 
 
 DEFAULT_COLLAPSE_SETTINGS: dict[str, Any] = {
-    "search_engine":         "SN",         # "SN" | "Diann" | "Fragpipe" | "Peaks" (only SN implemented)
-    "cutoff":                0.75,         # loc cutoff for per_run / global_max
-    "classI_cutoff":         0.75,         # loc cutoff for the condition-aware mask
-    "condition_threshold":   0.50,         # min fraction of Class-I reps to keep condition
-    "collapse_level":        "PG",         # "PG" (protein group) | "P" (protein resolved)
-    "aggregation_method":    "sum",        # "sum" | "median" | "mean" | "consolidate"
+    "search_engine": "SN",  # "SN" | "Diann" | "Fragpipe" | "Peaks" (only SN implemented)
+    "cutoff": 0.75,  # loc cutoff for per_run / global_max
+    "classI_cutoff": 0.75,  # loc cutoff for the condition-aware mask
+    "condition_threshold": 0.50,  # min fraction of Class-I reps to keep condition
+    "collapse_level": "PG",  # "PG" (protein group) | "P" (protein resolved)
+    "aggregation_method": "sum",  # "sum" | "median" | "mean" | "consolidate"
     "localization_strategy": "condition",  # "condition" | "per_run" | "global_max"
-    "noise_floor_filter":    True,         # remove log2 values in {0, 1}
-    "drop_all_nan":          True,         # drop sites fully NaN after the mask
+    "noise_floor_filter": True,  # remove log2 values in {0, 1}
+    "drop_all_nan": True,  # drop sites fully NaN after the mask
 }
 
 _ALLOWED_ENGINES = ("SN", "Diann", "Fragpipe", "Peaks")
@@ -144,8 +143,7 @@ def resolve_settings(advanced: dict[str, Any] | None) -> dict[str, Any]:
     # Value-level validation
     if settings["search_engine"] not in _ALLOWED_ENGINES:
         raise ValueError(
-            f"search_engine must be one of {_ALLOWED_ENGINES}, "
-            f"got {settings['search_engine']!r}"
+            f"search_engine must be one of {_ALLOWED_ENGINES}, got {settings['search_engine']!r}"
         )
     if settings["localization_strategy"] not in VALID_STRATEGIES:
         raise ValueError(
@@ -153,9 +151,7 @@ def resolve_settings(advanced: dict[str, Any] | None) -> dict[str, Any]:
             f"got {settings['localization_strategy']!r}"
         )
     if settings["collapse_level"] not in ("PG", "P"):
-        raise ValueError(
-            f"collapse_level must be 'PG' or 'P', got {settings['collapse_level']!r}"
-        )
+        raise ValueError(f"collapse_level must be 'PG' or 'P', got {settings['collapse_level']!r}")
     if settings["aggregation_method"] not in ("sum", "median", "mean", "consolidate"):
         raise ValueError(
             f"aggregation_method must be one of ('sum', 'median', 'mean', 'consolidate'), "
@@ -183,7 +179,7 @@ def collapse_sites(
     condition_df: pd.DataFrame | None = None,
     advanced: dict[str, Any] | None = None,
     verbose: bool = False,
-) -> "ad.AnnData":
+) -> ad.AnnData:
     """Collapse a PSM-level DataFrame to a site-level ``AnnData``.
 
     Runs the canonical Hogrebe-style pipeline: parse ``EG.PrecursorId``,
@@ -304,18 +300,25 @@ def collapse_sites(
     decision_table = None
     if strategy == "per_run":
         site_quant = mask_per_run(
-            site_quant, site_loc, cutoff=settings["cutoff"], logger=logger,
+            site_quant,
+            site_loc,
+            cutoff=settings["cutoff"],
+            logger=logger,
         )
     elif strategy == "global_max":
         site_quant, site_loc = filter_by_global_max(
-            site_quant, site_loc, cutoff=settings["cutoff"], logger=logger,
+            site_quant,
+            site_loc,
+            cutoff=settings["cutoff"],
+            logger=logger,
         )
         site_meta = site_meta.loc[site_quant.index]
     elif strategy == "condition":
         # Condition mask works on LINEAR intensity + linear loc; the sequence
         # remains: mask -> log2 -> noise floor.
         site_quant, decision_table = mask_condition_aware(
-            site_quant, site_loc,
+            site_quant,
+            site_loc,
             condition_df=condition_df,
             classI_cutoff=settings["classI_cutoff"],
             condition_threshold=settings["condition_threshold"],
@@ -332,7 +335,10 @@ def collapse_sites(
     # -- Stage 8: drop all-NaN sites (applies to per_run and condition modes).
     if strategy != "global_max" and settings["drop_all_nan"]:
         site_quant, site_loc, site_meta = drop_all_nan_sites(
-            site_quant, site_loc, site_meta, logger=logger,
+            site_quant,
+            site_loc,
+            site_meta,
+            logger=logger,
         )
         if decision_table is not None:
             decision_table = decision_table.reindex(site_quant.index)
@@ -345,10 +351,12 @@ def collapse_sites(
 
     # -- Site position column is what downstream code expects; rename absolute_position
     #    to site_position and drop internals.
-    site_meta = site_meta.rename(columns={
-        "absolute_position": "site_position",
-        "PTM_0_aa": "site_aa",
-    })
+    site_meta = site_meta.rename(
+        columns={
+            "absolute_position": "site_position",
+            "PTM_0_aa": "site_aa",
+        }
+    )
     # Restore ``_`` in gene names (they were temporarily replaced with ``#`` in prepare_psms).
     if "gene" in site_meta.columns:
         site_meta["gene"] = site_meta["gene"].astype(str).str.replace("#", "_", regex=False)

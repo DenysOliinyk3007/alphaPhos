@@ -40,10 +40,12 @@ from alphaphos.preprocess.collapse import (
     resolve_settings,
 )
 
+
 # QC dashboard: only imported lazily to avoid pulling bokeh at package import.
 def generate_dashboard(*args, **kwargs):  # pragma: no cover
     """See :func:`alphaphos.qc.generate_dashboard`."""
     from alphaphos.qc import generate_dashboard as _gd
+
     return _gd(*args, **kwargs)
 
 

@@ -32,7 +32,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-
 # ---------------------------------------------------------------------------
 # Strategy dispatch
 # ---------------------------------------------------------------------------
@@ -75,17 +74,14 @@ def aggregate_by_key(
     """
     if method not in VALID_AGGREGATION_METHODS:
         raise ValueError(
-            f"aggregation method must be one of {VALID_AGGREGATION_METHODS}, "
-            f"got {method!r}"
+            f"aggregation method must be one of {VALID_AGGREGATION_METHODS}, got {method!r}"
         )
 
     if method == "consolidate":
         # groupby.apply returning a Series-per-group avoids an intermediate
         # dict; each group's ``consolidate`` output is 1-D (n_samples,).
         groups = df.groupby(df.index)[sample_cols]
-        return groups.apply(
-            lambda g: pd.Series(consolidate(g.values), index=sample_cols)
-        )
+        return groups.apply(lambda g: pd.Series(consolidate(g.values), index=sample_cols))
     if method == "median":
         return df[sample_cols].groupby(df.index).median()
     if method == "mean":

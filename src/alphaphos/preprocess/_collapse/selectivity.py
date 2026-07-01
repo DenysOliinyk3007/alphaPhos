@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import pandas as pd
 
-
 PHOSPHO_MARKER = "[Phospho (STY)]"
 
 
@@ -91,8 +90,8 @@ def compute_selectivity(
     # Dedupe precursors within each sample so multi-row precursors (from
     # ambiguous localization) don't inflate counts.
     unique = psm_df[[sample_col, precursor_col]].drop_duplicates().copy()
-    unique["is_phospho"] = unique[precursor_col].astype(str).str.contains(
-        PHOSPHO_MARKER, regex=False, na=False
+    unique["is_phospho"] = (
+        unique[precursor_col].astype(str).str.contains(PHOSPHO_MARKER, regex=False, na=False)
     )
 
     summary = (

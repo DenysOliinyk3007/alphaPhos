@@ -52,7 +52,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
 
 try:
     import anndata as ad
@@ -221,7 +220,7 @@ def extract_window(
 
 
 def add_kinase_windows(
-    adata: "ad.AnnData",
+    adata: ad.AnnData,
     fasta_path: str | Path,
     *,
     window_size: int = 7,
@@ -230,7 +229,7 @@ def add_kinase_windows(
     aa_col: str = "site_aa",
     out_col: str = "kinase_sequence",
     copy: bool = True,
-) -> "ad.AnnData":
+) -> ad.AnnData:
     """Add a per-site kinase window column to ``adata.var``.
 
     Reads three columns from ``adata.var`` and looks up each site's flanking
@@ -281,8 +280,7 @@ def add_kinase_windows(
     for col in (protein_col, position_col, aa_col):
         if col not in adata.var.columns:
             raise KeyError(
-                f"adata.var is missing required column '{col}'. "
-                f"Have: {sorted(adata.var.columns)}"
+                f"adata.var is missing required column '{col}'. Have: {sorted(adata.var.columns)}"
             )
 
     fasta_dict = load_fasta(fasta_path)
@@ -297,7 +295,9 @@ def add_kinase_windows(
         strict=True,
     ):
         try:
-            window = extract_window(fasta_dict, str(pid), int(pos), str(aa), window_size=window_size)
+            window = extract_window(
+                fasta_dict, str(pid), int(pos), str(aa), window_size=window_size
+            )
         except Exception as exc:  # defensive: don't crash on one bad row
             window = f"PARSING_ERROR: {exc}"
         if window.startswith("FASTA_ERROR:"):
@@ -326,6 +326,10 @@ def add_kinase_windows(
     logger.info(
         "add_kinase_windows: %d ok, %d fasta_error, %d position_error, "
         "%d sequence_mismatch (total %d).",
-        n_ok, n_fasta_err, n_pos_err, n_mismatch, len(sequences),
+        n_ok,
+        n_fasta_err,
+        n_pos_err,
+        n_mismatch,
+        len(sequences),
     )
     return ad_out

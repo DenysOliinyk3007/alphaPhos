@@ -18,6 +18,7 @@ import pandas as pd
 from bokeh.models import ColumnDataSource, HoverTool, Legend, LegendItem
 from bokeh.palettes import Category10_10, Category20_20, Viridis256
 from bokeh.plotting import figure
+
 # factor_cmap removed — pre-computed color columns are more robust in the
 # presence of null/unexpected values in the data source
 
@@ -82,7 +83,9 @@ def plot_sty_ratio(df: pd.DataFrame, *, width: int = 600, height: int = 360):
     samples = list(pivot.index)
     aas = ["S", "T", "Y"]
     p = figure(
-        x_range=samples, width=width, height=height,
+        x_range=samples,
+        width=width,
+        height=height,
         title="§2 S/T/Y composition (% of detected sites per sample)",
         tools="pan,wheel_zoom,reset,save",
     )
@@ -91,8 +94,15 @@ def plot_sty_ratio(df: pd.DataFrame, *, width: int = 600, height: int = 360):
         vals = pivot.get(aa, pd.Series(0.0, index=samples)).fillna(0.0).astype(float)
         top = (cumsum + vals).tolist()
         bot = cumsum.tolist()
-        p.vbar(x=samples, bottom=bot, top=top, width=0.8,
-               color=_AA_COLORS[aa], legend_label=aa, line_color=None)
+        p.vbar(
+            x=samples,
+            bottom=bot,
+            top=top,
+            width=0.8,
+            color=_AA_COLORS[aa],
+            legend_label=aa,
+            line_color=None,
+        )
         cumsum = cumsum + vals
     p.y_range.start = 0
     p.y_range.end = 100
@@ -144,7 +154,9 @@ def plot_multiplicity(df: pd.DataFrame, *, width: int = 600, height: int = 360):
     samples = list(pivot.index)
     mults = ["1", "2", "3+"]
     p = figure(
-        x_range=samples, width=width, height=height,
+        x_range=samples,
+        width=width,
+        height=height,
         title="§2 Multiplicity composition per sample",
         tools="pan,wheel_zoom,reset,save",
     )
@@ -153,8 +165,15 @@ def plot_multiplicity(df: pd.DataFrame, *, width: int = 600, height: int = 360):
         vals = pivot.get(m, pd.Series(0.0, index=samples)).fillna(0.0).astype(float)
         top = (cumsum + vals).tolist()
         bot = cumsum.tolist()
-        p.vbar(x=samples, bottom=bot, top=top, width=0.8,
-               color=_MULT_COLORS[m], legend_label=f"M{m}", line_color=None)
+        p.vbar(
+            x=samples,
+            bottom=bot,
+            top=top,
+            width=0.8,
+            color=_MULT_COLORS[m],
+            legend_label=f"M{m}",
+            line_color=None,
+        )
         cumsum = cumsum + vals
     p.y_range.start = 0
     p.y_range.end = 100
@@ -191,8 +210,13 @@ def plot_missingness(df: pd.DataFrame, *, width: int = 600, height: int = 360):
         items = []
         for cond in conditions:
             r = p.rect(
-                x=samples[:1], y=[0], width=0, height=0,
-                fill_color=color_map[cond], line_color=None, alpha=0,
+                x=samples[:1],
+                y=[0],
+                width=0,
+                height=0,
+                fill_color=color_map[cond],
+                line_color=None,
+                alpha=0,
             )
             items.append(LegendItem(label=cond, renderers=[r]))
         p.add_layout(Legend(items=items, location="center"), "right")
@@ -259,9 +283,7 @@ def plot_per_condition_cv_by_aa(df: pd.DataFrame, *, width: int = 600, height: i
     df["condition"] = df["condition"].astype(str)
     df["site_aa"] = df["site_aa"].astype(str)
     if df.empty:
-        return _empty_figure(
-            "Per-condition CV: no usable data", width=width, height=height
-        )
+        return _empty_figure("Per-condition CV: no usable data", width=width, height=height)
     grouped = df.groupby(["condition", "site_aa"])["cv"]
     q = grouped.quantile([0.25, 0.5, 0.75]).unstack()
     q.columns = ["q1", "median", "q3"]
@@ -272,7 +294,11 @@ def plot_per_condition_cv_by_aa(df: pd.DataFrame, *, width: int = 600, height: i
     # Pre-compute color column rather than relying on factor_cmap (which crashes
     # on any unexpected/null value in the data source)
     palette = _palette_for(q["x"].tolist())
-    q["color"] = palette[: len(q)] if len(q) <= len(palette) else (palette * (len(q) // len(palette) + 1))[: len(q)]
+    q["color"] = (
+        palette[: len(q)]
+        if len(q) <= len(palette)
+        else (palette * (len(q) // len(palette) + 1))[: len(q)]
+    )
     src = ColumnDataSource(q)
     p = figure(
         x_range=q["x"].tolist(),
@@ -283,13 +309,23 @@ def plot_per_condition_cv_by_aa(df: pd.DataFrame, *, width: int = 600, height: i
     )
     # IQR box
     p.vbar(
-        x="x", top="q3", bottom="q1", width=0.5, source=src,
-        fill_color="color", line_color="black",
+        x="x",
+        top="q3",
+        bottom="q1",
+        width=0.5,
+        source=src,
+        fill_color="color",
+        line_color="black",
     )
     # Median dash
     p.segment(
-        x0="x", y0="median", x1="x", y1="median", source=src,
-        line_color="black", line_width=3,
+        x0="x",
+        y0="median",
+        x1="x",
+        y1="median",
+        source=src,
+        line_color="black",
+        line_width=3,
     )
     # Whiskers
     p.segment(x0="x", y0="lower", x1="x", y1="q1", source=src, line_color="black")
@@ -342,12 +378,14 @@ def plot_replicate_correlation(
     # Pre-compute fill_color per cell: linear interpolation Viridis256[low..high]
     low, high = 0.5, 1.0
     n_colors = len(Viridis256)
+
     def _color_for(r: float) -> str:
         if r is None or pd.isna(r):
             return "#cccccc"
         t = max(0.0, min(1.0, (r - low) / (high - low)))
-        i = int(round(t * (n_colors - 1)))
+        i = round(t * (n_colors - 1))
         return Viridis256[i]
+
     df_long["color"] = df_long["r"].map(_color_for)
     src = ColumnDataSource(df_long)
     p = figure(
@@ -367,11 +405,7 @@ def plot_replicate_correlation(
         fill_color="color",
         line_color=None,
     )
-    p.add_tools(
-        HoverTool(
-            tooltips=[("x", "@sample_x"), ("y", "@sample_y"), ("r", "@r{0.000}")]
-        )
-    )
+    p.add_tools(HoverTool(tooltips=[("x", "@sample_x"), ("y", "@sample_y"), ("r", "@r{0.000}")]))
     p.xaxis.major_label_orientation = math.pi / 4
     return p
 
@@ -437,13 +471,16 @@ def plot_imputation_summary(df: pd.DataFrame, *, width: int = 600, height: int =
     if df.empty:
         return _empty_figure(
             "Imputation diagnostics: provide impute_audit (return_audit=True)",
-            width=width, height=height,
+            width=width,
+            height=height,
         )
     pivot = df.pivot(index="sample_idx", columns="strategy", values="n").fillna(0.0)
     samples = [str(i) for i in pivot.index]
     strategies = list(pivot.columns)
     p = figure(
-        x_range=samples, width=width, height=height,
+        x_range=samples,
+        width=width,
+        height=height,
         title="§5 Hybrid imputation — MAR vs MNAR cells per sample",
         tools="pan,wheel_zoom,reset,save",
     )
@@ -453,9 +490,15 @@ def plot_imputation_summary(df: pd.DataFrame, *, width: int = 600, height: int =
         vals = pivot[strat].fillna(0.0).astype(float)
         top = (cumsum + vals).tolist()
         bot = cumsum.tolist()
-        p.vbar(x=samples, bottom=bot, top=top, width=0.8,
-               color=color_map.get(strat, "#888888"),
-               legend_label=strat, line_color=None)
+        p.vbar(
+            x=samples,
+            bottom=bot,
+            top=top,
+            width=0.8,
+            color=color_map.get(strat, "#888888"),
+            legend_label=strat,
+            line_color=None,
+        )
         cumsum = cumsum + vals
     p.yaxis.axis_label = "# imputed cells"
     p.xaxis.axis_label = "sample index"

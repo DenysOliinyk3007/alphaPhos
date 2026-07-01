@@ -20,7 +20,6 @@ from alphaphos.preprocess._collapse.parsing import (
     rank_select_positions,
 )
 
-
 # ---------------------------------------------------------------------------
 # extract_sequence_modifications
 # ---------------------------------------------------------------------------
@@ -48,9 +47,7 @@ class TestExtractSequenceModifications:
         assert r["phospho_count"] == 2
 
     def test_mixed_mods(self):
-        r = extract_sequence_modifications(
-            "_S[Phospho (STY)]TC[Carbamidomethyl (C)]K_.2"
-        )
+        r = extract_sequence_modifications("_S[Phospho (STY)]TC[Carbamidomethyl (C)]K_.2")
         assert r["clean_sequence"] == "STCK"
         assert r["phospho_positions"] == [1]
         assert r["phospho_count"] == 1
@@ -80,9 +77,7 @@ class TestCalculatePhosphoPositions:
         assert calculate_phospho_positions("S[Phospho (STY)]TSK") == [1]
 
     def test_multiple(self):
-        assert calculate_phospho_positions(
-            "S[Phospho (STY)]TS[Phospho (STY)]K"
-        ) == [1, 3]
+        assert calculate_phospho_positions("S[Phospho (STY)]TS[Phospho (STY)]K") == [1, 3]
 
     def test_terminal_position(self):
         assert calculate_phospho_positions("PEPTIDES[Phospho (STY)]") == [8]
@@ -165,7 +160,7 @@ class TestRankSelectPositions:
         assert prob == [0.9]
 
     def test_ties_break_by_position(self):
-        pos, prob = rank_select_positions({8: 0.5, 3: 0.5, 12: 0.2}, 2)
+        pos, _prob = rank_select_positions({8: 0.5, 3: 0.5, 12: 0.2}, 2)
         # Both 0.5 -- ascending position wins the tie
         assert pos == [3, 8]
 

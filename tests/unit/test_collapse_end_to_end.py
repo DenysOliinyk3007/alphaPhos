@@ -18,7 +18,6 @@ import pytest
 
 import alphaphos as ap
 
-
 # ---------------------------------------------------------------------------
 # Fixture: minimal synthetic Spectronaut-style PSM DataFrame
 # ---------------------------------------------------------------------------
@@ -61,9 +60,7 @@ def _make_synthetic_psm() -> pd.DataFrame:
                     "EG.TotalQuantity (Settings)": 2000 + hash(sample) % 500,
                     "PEP.PeptidePosition": "570",
                     "EG.PTMAssayProbability": 0.92,
-                    "EG.PTMLocalizationProbabilities": (
-                        "_ASGQGS[Phospho (STY): 92.0%]PGVK_"
-                    ),
+                    "EG.PTMLocalizationProbabilities": ("_ASGQGS[Phospho (STY): 92.0%]PGVK_"),
                     "PG.Genes": "SIK1B",
                     "PG.ProteinGroups": "A0A0B4J2F2",
                 }
@@ -76,9 +73,7 @@ def _make_synthetic_psm() -> pd.DataFrame:
                 "EG.TotalQuantity (Settings)": 500 + hash(sample) % 200,
                 "PEP.PeptidePosition": "584",
                 "EG.PTMAssayProbability": 0.80,
-                "EG.PTMLocalizationProbabilities": (
-                    "_LMNVT[Phospho (STY): 80.0%]PVLK_"
-                ),
+                "EG.PTMLocalizationProbabilities": ("_LMNVT[Phospho (STY): 80.0%]PVLK_"),
                 "PG.Genes": "SIK1B",
                 "PG.ProteinGroups": "A0A0B4J2F2",
             }
@@ -132,6 +127,7 @@ def collapsed():
 class TestCollapseSitesEndToEnd:
     def test_returns_anndata(self, collapsed):
         import anndata as ad
+
         assert isinstance(collapsed, ad.AnnData)
 
     def test_shape_samples_x_sites(self, collapsed):
@@ -220,7 +216,8 @@ class TestSettingsValidation:
         cdf = _make_synthetic_conditions()
         with pytest.raises(NotImplementedError, match="search_engine"):
             ap.collapse_sites(
-                psm_df, condition_df=cdf,
+                psm_df,
+                condition_df=cdf,
                 advanced={"search_engine": "Diann"},
             )
 
@@ -229,7 +226,8 @@ class TestSettingsValidation:
         cdf = _make_synthetic_conditions()
         with pytest.raises(ValueError, match="search_engine must be one of"):
             ap.collapse_sites(
-                psm_df, condition_df=cdf,
+                psm_df,
+                condition_df=cdf,
                 advanced={"search_engine": "Mascot"},
             )
 
@@ -238,7 +236,8 @@ class TestSettingsValidation:
         cdf = _make_synthetic_conditions()
         with pytest.raises(ValueError, match="aggregation_method"):
             ap.collapse_sites(
-                psm_df, condition_df=cdf,
+                psm_df,
+                condition_df=cdf,
                 advanced={"aggregation_method": "geomean"},
             )
 
@@ -255,7 +254,8 @@ class TestSettingsValidation:
 
 class TestResolveSettings:
     def test_defaults(self):
-        from alphaphos import resolve_settings, DEFAULT_COLLAPSE_SETTINGS
+        from alphaphos import DEFAULT_COLLAPSE_SETTINGS, resolve_settings
+
         s = resolve_settings(None)
         assert s == DEFAULT_COLLAPSE_SETTINGS
         # Returned copy, not the same object
@@ -263,6 +263,7 @@ class TestResolveSettings:
 
     def test_partial_override(self):
         from alphaphos import resolve_settings
+
         s = resolve_settings({"cutoff": 0.65, "aggregation_method": "median"})
         assert s["cutoff"] == 0.65
         assert s["aggregation_method"] == "median"
@@ -270,5 +271,6 @@ class TestResolveSettings:
 
     def test_type_error_on_non_dict(self):
         from alphaphos import resolve_settings
+
         with pytest.raises(TypeError):
             resolve_settings("not a dict")

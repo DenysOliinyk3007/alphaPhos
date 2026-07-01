@@ -17,7 +17,6 @@ from alphaphos.preprocess._collapse.keys import (
     resolve_short_key_collisions,
 )
 
-
 # ---------------------------------------------------------------------------
 # Key builders
 # ---------------------------------------------------------------------------
@@ -113,11 +112,12 @@ class TestResolveShortKeyCollisions:
     def test_three_way_collision(self):
         shorts = ["G|S1|M1"] * 3
         fulls = ["P3|G|S1|M1", "P1|G|S1|M1", "P2|G|S1|M1"]
-        resolved, collisions = resolve_short_key_collisions(shorts, fulls)
+        resolved, _collisions = resolve_short_key_collisions(shorts, fulls)
         assert resolved == ["G|S1|M1#3", "G|S1|M1", "G|S1|M1#2"]
 
     def test_length_mismatch_raises(self):
         import pytest
+
         with pytest.raises(ValueError):
             resolve_short_key_collisions(["A", "B"], ["X"])
 

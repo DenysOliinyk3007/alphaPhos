@@ -17,7 +17,6 @@ from alphaphos.preprocess._collapse.aggregation import (
     consolidate,
 )
 
-
 # ---------------------------------------------------------------------------
 # consolidate (Hogrebe ratio imputation + sum)
 # ---------------------------------------------------------------------------
@@ -83,7 +82,7 @@ class TestConsolidate:
         m = np.array(
             [
                 [10.0, np.nan, 30.0],  # gap at pos 1
-                [5.0, 12.0, 15.0],     # complete
+                [5.0, 12.0, 15.0],  # complete
             ]
         )
         out = consolidate(m)

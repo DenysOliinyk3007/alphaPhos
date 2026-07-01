@@ -66,7 +66,7 @@ class TestComputeSelectivity:
                 ],
             }
         )
-        out = compute_selectivity(
-            df, sample_col="SampleID", precursor_col="PrecursorId"
-        ).set_index("sample")
+        out = compute_selectivity(df, sample_col="SampleID", precursor_col="PrecursorId").set_index(
+            "sample"
+        )
         assert out.loc["s1", "phospho_selectivity_pct"] == 50.0

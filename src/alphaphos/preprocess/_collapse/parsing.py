@@ -27,7 +27,6 @@ from typing import Any
 
 import pandas as pd
 
-
 # ---------------------------------------------------------------------------
 # EG.PrecursorId parsing
 # ---------------------------------------------------------------------------
@@ -261,9 +260,7 @@ def parse_localization_probabilities(loc_string: Any) -> dict[int, float]:
     return result
 
 
-def rank_select_positions(
-    loc_dict: dict[int, float], n: int
-) -> tuple[list[int], list[float]]:
+def rank_select_positions(loc_dict: dict[int, float], n: int) -> tuple[list[int], list[float]]:
     """Return the top ``n`` (position, probability) pairs by descending prob.
 
     Ties are broken by ascending position (matches the legacy R script's

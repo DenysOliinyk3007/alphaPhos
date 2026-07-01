@@ -41,7 +41,6 @@ Pipeline overview (per stage docstrings below have full detail):
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -60,7 +59,6 @@ from alphaphos.preprocess._collapse.parsing import (
     extract_sequence_modifications,
     parse_localization_probabilities,
 )
-
 
 _NULL_LOGGER = logging.getLogger("alphaphos.preprocess._collapse.site_pipeline")
 
@@ -125,9 +123,7 @@ def prepare_psms(psm_df: pd.DataFrame, *, logger: logging.Logger = _NULL_LOGGER)
     if "PG.Genes" in df.columns:
         underscore_count = df["PG.Genes"].astype(str).str.contains("_", na=False).sum()
         if underscore_count > 0:
-            df["PG.Genes"] = df["PG.Genes"].astype(str).str.replace(
-                "_", "#", regex=False
-            )
+            df["PG.Genes"] = df["PG.Genes"].astype(str).str.replace("_", "#", regex=False)
             logger.warning(
                 "%d gene names contained underscores and have been temporarily "
                 "replaced with '#' (restored at output).",
@@ -146,7 +142,9 @@ def prepare_psms(psm_df: pd.DataFrame, *, logger: logging.Logger = _NULL_LOGGER)
     df = df[df["phospho_count"] > 0].copy()
     logger.info(
         "Phospho filter: %d -> %d rows (%d non-phospho dropped).",
-        n_before, len(df), n_before - len(df),
+        n_before,
+        len(df),
+        n_before - len(df),
     )
 
     # Per-position loc probabilities (optional: only if the column exists).
@@ -230,9 +228,9 @@ def explode_to_sites(
         df["PTM_localization"] = loc_series
         fallback = df["PTM_localization"].isna()
         # Where per-site parsing produced NaN, use the joint prob as a stand-in.
-        df.loc[fallback, "PTM_localization"] = df.loc[
-            fallback, "EG.PTMAssayProbability"
-        ].astype(float)
+        df.loc[fallback, "PTM_localization"] = df.loc[fallback, "EG.PTMAssayProbability"].astype(
+            float
+        )
 
         n_per_site = int((~fallback).sum())
         n_fallback = int(fallback.sum())
@@ -240,7 +238,9 @@ def explode_to_sites(
         logger.info(
             "Per-site localization: %d rows with per-site prob, %d fell back to joint "
             "prob (%.1f%% fallback).",
-            n_per_site, n_fallback, pct,
+            n_per_site,
+            n_fallback,
+            pct,
         )
         df = df.drop(columns=["_loc_dict"])
     else:
@@ -290,7 +290,8 @@ def build_precursor_pivots(
 
     logger.info(
         "Quant pivot: %d keys x %d samples (%d NaN cells).",
-        quant_wide.shape[0], quant_wide.shape[1],
+        quant_wide.shape[0],
+        quant_wide.shape[1],
         int(quant_wide.isna().sum().sum()),
     )
 
@@ -378,7 +379,9 @@ def compute_site_metadata(
     meta["peptide_start"] = meta["peptide_start"].astype(np.int64)
     logger.info(
         "Peptide-position filter: %d -> %d sites (%d dropped for missing position).",
-        n_before, len(meta), n_before - len(meta),
+        n_before,
+        len(meta),
+        n_before - len(meta),
     )
 
     # Also drop rows where PTM_0_aa is 'X' (out-of-range or non-STY).
@@ -502,15 +505,13 @@ def aggregate_precursors_to_sites(
     site_loc = loc_indexed.groupby(level=0).max()
 
     # Deduplicate metadata to one row per full_key.
-    site_meta_dedup = (
-        site_meta.reset_index()
-        .drop_duplicates("full_key")
-        .set_index("full_key")
-    )
+    site_meta_dedup = site_meta.reset_index().drop_duplicates("full_key").set_index("full_key")
 
     logger.info(
         "Aggregated (%s) to %d sites x %d samples.",
-        aggregation_method, len(site_quant), len(sample_cols),
+        aggregation_method,
+        len(site_quant),
+        len(sample_cols),
     )
     return site_quant, site_loc, site_meta_dedup
 
@@ -602,7 +603,8 @@ def resolve_short_keys(site_meta: pd.DataFrame) -> tuple[pd.DataFrame, list]:
     """
     resolved, collisions = resolve_short_key_collisions(
         site_meta["short_key"].tolist(),
-        site_meta.index.tolist() if site_meta.index.name == "full_key"
+        site_meta.index.tolist()
+        if site_meta.index.name == "full_key"
         else site_meta["full_key"].tolist(),
     )
     site_meta = site_meta.copy()

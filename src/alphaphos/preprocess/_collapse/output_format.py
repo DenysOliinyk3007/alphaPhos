@@ -51,7 +51,7 @@ def assemble_anndata(
     short_key_collisions: list | None = None,
     version: str = "0.0.0",
     logger: logging.Logger = _NULL_LOGGER,
-) -> "ad.AnnData":
+) -> ad.AnnData:
     """Build an ``AnnData`` from collapse pipeline outputs.
 
     Parameters
@@ -174,7 +174,9 @@ def assemble_anndata(
 
     logger.info(
         "Assembled AnnData: %d samples x %d sites; obs cols=%s; layers=%s.",
-        adata.n_obs, adata.n_vars,
-        list(adata.obs.columns), list(adata.layers.keys()),
+        adata.n_obs,
+        adata.n_vars,
+        list(adata.obs.columns),
+        list(adata.layers.keys()),
     )
     return adata

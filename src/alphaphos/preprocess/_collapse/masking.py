@@ -33,7 +33,6 @@ import logging
 import numpy as np
 import pandas as pd
 
-
 _NULL_LOGGER = logging.getLogger("alphaphos.preprocess._collapse.masking")
 
 
@@ -71,7 +70,9 @@ def mask_per_run(
     n_after = int(masked.notna().sum().sum())
     logger.info(
         "per_run mask (cutoff=%.2f): %d/%d cells masked (%.1f%%).",
-        cutoff, n_before - n_after, n_before,
+        cutoff,
+        n_before - n_after,
+        n_before,
         100 * (n_before - n_after) / n_before if n_before else 0.0,
     )
     return masked
@@ -101,7 +102,10 @@ def filter_by_global_max(
     loc_kept = site_loc.loc[keep]
     logger.info(
         "global_max filter (cutoff=%.2f): %d -> %d sites (%d dropped).",
-        cutoff, n_before, len(quant_kept), n_before - len(quant_kept),
+        cutoff,
+        n_before,
+        len(quant_kept),
+        n_before - len(quant_kept),
     )
     return quant_kept, loc_kept
 
@@ -157,9 +161,7 @@ def mask_condition_aware(
         (site, condition). Attached to ``adata.uns`` for diagnostics.
     """
     if "sample" not in condition_df.columns or "condition" not in condition_df.columns:
-        raise ValueError(
-            "condition_df must contain both 'sample' and 'condition' columns."
-        )
+        raise ValueError("condition_df must contain both 'sample' and 'condition' columns.")
     if not 0 < condition_threshold <= 1:
         raise ValueError(f"condition_threshold must be in (0, 1], got {condition_threshold}")
     if not 0 <= classI_cutoff <= 1:
@@ -195,7 +197,10 @@ def mask_condition_aware(
     logger.info(
         "condition mask (classI_cutoff=%.2f, condition_threshold=%.2f): "
         "%d/%d cells masked (%.1f%%).",
-        classI_cutoff, condition_threshold, n_before - n_after, n_before,
+        classI_cutoff,
+        condition_threshold,
+        n_before - n_after,
+        n_before,
         100 * (n_before - n_after) / n_before if n_before else 0.0,
     )
 
@@ -226,7 +231,9 @@ def drop_all_nan_sites(
     n_after = len(keep_idx)
     logger.info(
         "Drop all-NaN sites: %d -> %d (%d removed).",
-        n_before, n_after, n_before - n_after,
+        n_before,
+        n_after,
+        n_before - n_after,
     )
     out = [site_quant.loc[keep_idx]]
     for df in others:

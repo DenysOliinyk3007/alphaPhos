@@ -41,7 +41,6 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-
 # ---------------------------------------------------------------------------
 # String builders (pure, no state)
 # ---------------------------------------------------------------------------
@@ -136,12 +135,7 @@ def build_modified_sequence(clean_sequence: str, phospho_position: int) -> str:
         return clean_sequence
 
     idx = phospho_position - 1
-    return (
-        clean_sequence[:idx]
-        + clean_sequence[idx].lower()
-        + "*"
-        + clean_sequence[idx + 1 :]
-    )
+    return clean_sequence[:idx] + clean_sequence[idx].lower() + "*" + clean_sequence[idx + 1 :]
 
 
 def get_phospho_amino_acid(sequence: str, position: int) -> str:

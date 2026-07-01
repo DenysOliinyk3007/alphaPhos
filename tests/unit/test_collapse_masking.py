@@ -78,7 +78,7 @@ class TestFilterByGlobalMax:
     def test_drops_low_max_sites(self, small_site_matrices):
         quant, loc, _ = small_site_matrices
         # site1 max=0.99, site2 max=0.99, site3 max=0.99 -> nothing dropped
-        out_q, out_loc = filter_by_global_max(quant, loc, cutoff=0.75)
+        out_q, _out_loc = filter_by_global_max(quant, loc, cutoff=0.75)
         assert list(out_q.index) == ["site1", "site2", "site3"]
 
     def test_drops_when_max_below_cutoff(self, small_site_matrices):
@@ -105,9 +105,7 @@ class TestMaskConditionAware:
         # site1 is classI in ctrl (>=2/3) and in treated (>=2/3), even though
         # one rep per group has low loc.
         loc = pd.DataFrame([[0.90, 0.90, 0.20, 0.85, 0.85, 0.30]], index=idx, columns=cols)
-        cdf = pd.DataFrame(
-            {"sample": cols, "condition": ["ctrl"] * 3 + ["treated"] * 3}
-        )
+        cdf = pd.DataFrame({"sample": cols, "condition": ["ctrl"] * 3 + ["treated"] * 3})
         masked, decision = mask_condition_aware(
             quant, loc, condition_df=cdf, classI_cutoff=0.75, condition_threshold=0.5
         )
@@ -148,12 +146,8 @@ class TestMaskConditionAware:
 class TestDropAllNanSites:
     def test_drops_rows(self):
         idx = pd.Index(["site1", "site2", "site3"], name="full_key")
-        quant = pd.DataFrame(
-            {"s1": [1.0, np.nan, 3.0], "s2": [1.0, np.nan, 3.0]}, index=idx
-        )
-        loc = pd.DataFrame(
-            {"s1": [0.9, 0.9, 0.9], "s2": [0.9, 0.9, 0.9]}, index=idx
-        )
+        quant = pd.DataFrame({"s1": [1.0, np.nan, 3.0], "s2": [1.0, np.nan, 3.0]}, index=idx)
+        loc = pd.DataFrame({"s1": [0.9, 0.9, 0.9], "s2": [0.9, 0.9, 0.9]}, index=idx)
         meta = pd.DataFrame({"gene": ["G1", "G2", "G3"]}, index=idx)
         q_new, loc_new, meta_new = drop_all_nan_sites(quant, loc, meta)
         assert list(q_new.index) == ["site1", "site3"]
