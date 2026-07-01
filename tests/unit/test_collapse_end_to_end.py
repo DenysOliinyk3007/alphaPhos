@@ -274,3 +274,109 @@ class TestResolveSettings:
 
         with pytest.raises(TypeError):
             resolve_settings("not a dict")
+
+
+# ---------------------------------------------------------------------------
+# quantification_level + fallback + top_n_attribution wiring
+# ---------------------------------------------------------------------------
+
+
+class TestQuantificationLevelWiring:
+    def test_default_ms2_falls_back_to_auto_and_warns(self):
+        # Fixture only has EG.TotalQuantity (Settings) -> falls back MS2 -> auto.
+        psm_df = _make_synthetic_psm()
+        cdf = _make_synthetic_conditions()
+        with pytest.warns(UserWarning, match="quantification_level='MS2' unavailable"):
+            adata = ap.collapse_sites(
+                psm_df,
+                condition_df=cdf,
+                advanced={"localization_strategy": "per_run"},
+            )
+        stats = adata.uns["alphaphos"]["stats"]
+        assert stats["quantification_level_used"] == "auto"
+        assert stats["quantification_column_used"] == "EG.TotalQuantity (Settings)"
+
+    def test_explicit_ms1_falls_back_to_auto(self):
+        psm_df = _make_synthetic_psm()
+        cdf = _make_synthetic_conditions()
+        with pytest.warns(UserWarning, match="quantification_level='MS1' unavailable"):
+            adata = ap.collapse_sites(
+                psm_df,
+                condition_df=cdf,
+                advanced={"quantification_level": "MS1", "localization_strategy": "per_run"},
+            )
+        assert adata.uns["alphaphos"]["stats"]["quantification_level_used"] == "auto"
+
+    def test_auto_no_fallback_no_warning(self):
+        psm_df = _make_synthetic_psm()
+        cdf = _make_synthetic_conditions()
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", UserWarning)  # any UserWarning = test fail
+            adata = ap.collapse_sites(
+                psm_df,
+                condition_df=cdf,
+                advanced={"quantification_level": "auto", "localization_strategy": "per_run"},
+            )
+        assert adata.uns["alphaphos"]["stats"]["quantification_level_used"] == "auto"
+
+    def test_ms2_direct_hit_when_ms2_column_present(self):
+        psm_df = _make_synthetic_psm()
+        cdf = _make_synthetic_conditions()
+        # Add an FG.MS2Quantity column with 2x the (Settings) intensity;
+        # collapse should pick MS2 and use those values.
+        psm_df["FG.MS2Quantity"] = psm_df["EG.TotalQuantity (Settings)"] * 2.0
+        adata = ap.collapse_sites(
+            psm_df,
+            condition_df=cdf,
+            advanced={"quantification_level": "MS2", "localization_strategy": "per_run"},
+        )
+        stats = adata.uns["alphaphos"]["stats"]
+        assert stats["quantification_column_used"] == "FG.MS2Quantity"
+        assert stats["quantification_level_used"] == "MS2"
+
+    def test_invalid_quantification_level_raises(self):
+        psm_df = _make_synthetic_psm()
+        cdf = _make_synthetic_conditions()
+        with pytest.raises(ValueError, match="quantification_level must be one of"):
+            ap.collapse_sites(psm_df, condition_df=cdf, advanced={"quantification_level": "MS3"})
+
+
+class TestTopNAttributionWiring:
+    def test_default_enabled_and_stats_recorded(self):
+        psm_df = _make_synthetic_psm()
+        cdf = _make_synthetic_conditions()
+        adata = ap.collapse_sites(
+            psm_df,
+            condition_df=cdf,
+            advanced={"localization_strategy": "per_run"},
+        )
+        stats = adata.uns["alphaphos"]["stats"]
+        assert "n_psms_after_top_n" in stats
+        assert adata.uns["alphaphos"]["pipeline_params"]["top_n_attribution"] is True
+
+    def test_disable_skips_filter(self):
+        psm_df = _make_synthetic_psm()
+        cdf = _make_synthetic_conditions()
+        adata_on = ap.collapse_sites(
+            psm_df,
+            condition_df=cdf,
+            advanced={"localization_strategy": "per_run", "top_n_attribution": True},
+        )
+        adata_off = ap.collapse_sites(
+            psm_df,
+            condition_df=cdf,
+            advanced={"localization_strategy": "per_run", "top_n_attribution": False},
+        )
+        # With top_n off, no rows are dropped by the dedup filter,
+        # so its row count should be >= the top_n=True count.
+        n_on = adata_on.uns["alphaphos"]["stats"]["n_psms_after_top_n"]
+        n_off = adata_off.uns["alphaphos"]["stats"]["n_psms_after_top_n"]
+        assert n_off >= n_on
+
+    def test_bad_top_n_value_raises(self):
+        psm_df = _make_synthetic_psm()
+        cdf = _make_synthetic_conditions()
+        with pytest.raises(ValueError, match="top_n_attribution must be bool"):
+            ap.collapse_sites(psm_df, condition_df=cdf, advanced={"top_n_attribution": "yes"})

@@ -1,68 +1,128 @@
 """Spectronaut PSM-level report reader.
 
-Reads Spectronaut Normal-report exports (Parquet or TSV) into a normalized
-pandas DataFrame ready for downstream collapse. Handles:
+Reads a Spectronaut Normal-report export (Parquet or TSV) into a DataFrame
+ready for the collapse pipeline. Two design goals:
 
-- Both Spectronaut column-name conventions: dot (``R.FileName``) and
-  underscore (``R_FileName``). Parquet exports tend to use underscores;
-  TSV exports tend to use dots. We normalize to dot form so downstream
-  consumers (notably ``PeptideCollapse_v4``) see consistent names.
-- The ``(Settings)`` and ``(MS1)``/``(MS2)`` suffixes embedded in column
-  names by Spectronaut.
-- Type coercion for columns Spectronaut exports as text (e.g. ``EG.Qvalue``
-  with values like ``"2.97e-20"``).
-- Quant-level routing: ``"auto"`` reads whatever the search was configured
-  to produce (``EG.TotalQuantity (Settings)``); ``"MS1"`` and ``"MS2"``
-  require explicit raw-quant columns to be present.
+1. **Minimal memory footprint** -- the reader prunes columns AT LOAD TIME
+   using the pyarrow / pandas ``columns=`` (parquet) or ``usecols=`` (TSV)
+   argument. A raw Spectronaut Normal report typically has 30-50+ columns;
+   we consume ~15. Skipping the rest at read time avoids materializing
+   them into memory at all. Typical saving: 2-3x on large reports.
 
-The returned frame has a guaranteed ``EG.TotalQuantity (Settings)`` column
-holding the chosen quant level, so existing pipelines (``PeptideCollapse_v4``)
-work unchanged regardless of which level the caller requested.
+2. **Just-read-and-normalize** -- the reader applies BOUNDARY filters
+   (decoy drop, contaminant drop, q-value cutoffs) and normalizes column
+   names to the dotted convention. It does NOT pick the quant column and
+   does NOT run top-N attribution -- those belong to :mod:`collapse` where
+   they can be tuned via ``advanced`` and where a user has a chance to
+   ``.head()`` the raw PSM output first.
+
+Configuration via a settings dict, mirroring the pattern in
+:mod:`alphaphos.preprocess.collapse`::
+
+    import alphaphos as ap
+
+    # 1) Defaults -- decoy drop on, contaminants dropped, no q-value cutoffs
+    psm = ap.read_spectronaut("report.parquet")
+
+    # 2) Selective override
+    psm = ap.read_spectronaut(
+        "report.parquet",
+        advanced={"eg_qvalue_max": 0.01, "drop_contaminants": False},
+    )
+
+    # 3) Full customization -- inspect + edit the defaults
+    ios = dict(ap.DEFAULT_IO_SETTINGS)
+    ios["drop_decoys"] = False
+    psm = ap.read_spectronaut("report.parquet", advanced=ios)
+
+Unknown keys in ``advanced`` raise, so typos surface immediately.
+
+The returned DataFrame carries ``.attrs`` populated with lineage
+counts (rows loaded, rows after each filter, source path, engine) so
+downstream tooling (the QC dashboard's PSM funnel) can render the
+provenance.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+import logging
 from pathlib import Path
-from typing import Literal
+from typing import Any
 
 import numpy as np
 import pandas as pd
 
-REQUIRED_DOTTED: tuple[str, ...] = (
-    "R.FileName",
-    "EG.PrecursorId",
-    "PEP.PeptidePosition",
-    "EG.PTMAssayProbability",
-    "PG.Genes",
-    "PG.ProteinGroups",
+from alphaphos.io.schemas import (
+    REQUIRED_COLUMNS,
+    all_needed_columns,
 )
 
+logger = logging.getLogger("alphaphos.io.spectronaut")
 
-QuantLevel = Literal["auto", "MS1", "MS2"]
+
+# ---------------------------------------------------------------------------
+# Public defaults
+# ---------------------------------------------------------------------------
 
 
-# Candidate column names per quant level, ordered by preference.
-# alphaphos picks the first one present in the dataframe.
-QUANT_COLUMN_CANDIDATES: dict[str, tuple[str, ...]] = {
-    "auto": ("EG.TotalQuantity (Settings)", "FG.Quantity"),
-    "MS1": (
-        "FG.MS1Quantity",
-        "FG.MS1RawQuantity",
-        "EG.MS1Quantity",
-        "EG.RawIntensityMS1",
-    ),
-    "MS2": (
-        "FG.MS2Quantity",
-        "FG.MS2RawQuantity",
-        "EG.MS2Quantity",
-        "EG.RawIntensityMS2",
-    ),
+DEFAULT_IO_SETTINGS: dict[str, Any] = {
+    "drop_decoys": True,  # drop EG.IsDecoy==True rows if col present
+    "drop_contaminants": True,  # drop rows whose PG is entirely contam
+    "contaminants_fasta": None,  # None -> bundled MaxQuant fasta
+    "contaminant_prefixes": ("CON__", "Cont_", "contam_"),
+    "eg_qvalue_max": None,  # drop EG.Qvalue > threshold if set
+    "pg_qvalue_max": None,  # drop PG.Qvalue > threshold if set
 }
+
+
+# ---------------------------------------------------------------------------
+# Settings resolution
+# ---------------------------------------------------------------------------
+
+
+def resolve_io_settings(advanced: dict[str, Any] | None) -> dict[str, Any]:
+    """Merge ``advanced`` overrides on top of :data:`DEFAULT_IO_SETTINGS`.
+
+    Unknown keys and bad values raise ``ValueError`` naming the allowed set.
+    Returns a fresh dict.
+    """
+    settings = dict(DEFAULT_IO_SETTINGS)
+    if advanced is None:
+        return settings
+    if not isinstance(advanced, dict):
+        raise TypeError(f"'advanced' must be a dict or None, got {type(advanced).__name__}")
+    unknown = set(advanced) - set(DEFAULT_IO_SETTINGS)
+    if unknown:
+        raise ValueError(
+            f"Unknown keys in 'advanced': {sorted(unknown)}. "
+            f"Allowed: {sorted(DEFAULT_IO_SETTINGS)}."
+        )
+    settings.update(advanced)
+
+    # Type / range checks (fail-fast).
+    for bool_key in ("drop_decoys", "drop_contaminants"):
+        if not isinstance(settings[bool_key], bool):
+            raise ValueError(f"{bool_key} must be bool, got {type(settings[bool_key]).__name__}")
+    for prob_key in ("eg_qvalue_max", "pg_qvalue_max"):
+        v = settings[prob_key]
+        if v is not None and not (isinstance(v, (int, float)) and 0 <= float(v) <= 1):
+            raise ValueError(f"{prob_key} must be None or a float in [0, 1], got {v!r}")
+    if not isinstance(settings["contaminant_prefixes"], (tuple, list)):
+        raise ValueError("contaminant_prefixes must be a tuple / list of strings")
+
+    return settings
+
+
+# ---------------------------------------------------------------------------
+# Column-name normalization
+# ---------------------------------------------------------------------------
 
 
 def _to_dotted_column(name: str) -> str:
     """Spectronaut underscore-form column name -> dotted form.
+
+    Spectronaut TSV exports use ``R.FileName`` style; parquet exports often
+    use ``R_FileName`` style. Downstream code expects the dotted form.
 
     Examples
     --------
@@ -70,210 +130,234 @@ def _to_dotted_column(name: str) -> str:
     'R.FileName'
     >>> _to_dotted_column("EG_TotalQuantity_(Settings)")
     'EG.TotalQuantity (Settings)'
-    >>> _to_dotted_column("FG_PeakRTs_(MS2)")
-    'FG.PeakRTs (MS2)'
-    >>> _to_dotted_column("R.FileName")
+    >>> _to_dotted_column("R.FileName")   # already dotted -- passthrough
     'R.FileName'
     """
     if "_" not in name or name.startswith("_"):
         return name
-    # First underscore is the prefix-table separator (R_/PG_/PEP_/EG_/FG_/F_)
+    # First underscore is the R_/PG_/PEP_/EG_/FG_ prefix separator.
     i = name.index("_")
     out = name[:i] + "." + name[i + 1 :]
-    # Remaining "_(" sequences are Spectronaut's flag suffixes ((Settings), (MS1), (MS2))
+    # Any remaining "_(" pattern is Spectronaut's flag suffix separator.
     return out.replace("_(", " (")
 
 
-def _normalize_column_names(df: pd.DataFrame) -> pd.DataFrame:
-    mapping = {c: _to_dotted_column(c) for c in df.columns}
-    mapping = {k: v for k, v in mapping.items() if k != v}
-    if not mapping:
-        return df
-    return df.rename(columns=mapping)
+# ---------------------------------------------------------------------------
+# Column scanning (schema-only, no data materialized)
+# ---------------------------------------------------------------------------
+
+
+def _scan_available_columns(path: Path, engine: str) -> dict[str, str]:
+    """Return ``{dotted_name: raw_column_name}`` for columns we care about.
+
+    Reads ONLY the file schema (parquet) or first header line (TSV) --
+    no data is materialized. Filters to the intersection of what the file
+    contains and :func:`all_needed_columns(engine)`. Handles both dotted
+    and underscored raw column-name conventions.
+
+    Returns
+    -------
+    dict[str, str]
+        Keys are dotted (canonical) column names. Values are the RAW column
+        names in the file, so the caller can pass them straight to
+        ``pd.read_parquet(columns=...)`` or ``pd.read_csv(usecols=...)``.
+    """
+    if path.suffix.lower() == ".parquet":
+        import pyarrow.parquet as pq
+
+        raw_names = pq.read_schema(str(path)).names
+    else:
+        # TSV / TXT: read only the header line to enumerate columns.
+        with open(path, encoding="utf-8", errors="replace") as f:
+            header = f.readline().rstrip("\r\n").split("\t")
+        raw_names = header
+
+    needed = all_needed_columns(engine)
+    mapping: dict[str, str] = {}
+    for raw in raw_names:
+        dotted = _to_dotted_column(raw)
+        if dotted in needed:
+            # Only take the first occurrence if a file has both raw and
+            # dotted variants of the same column (Spectronaut sometimes ships
+            # duplicate columns after a re-export). Deterministic tie-break.
+            mapping.setdefault(dotted, raw)
+    return mapping
 
 
 def _coerce_dtypes(df: pd.DataFrame) -> pd.DataFrame:
-    """Coerce columns that Spectronaut occasionally exports with wrong dtype."""
-    # EG.Qvalue and PG.Qvalue can be string in some Spectronaut versions
-    # (e.g. "2.97e-20" stored as text). Coerce to float for downstream filtering.
-    for col in ("EG.Qvalue", "PG.Qvalue", "EG.PEP", "EG.Cscore"):
+    """Coerce Spectronaut string-typed numeric columns to float.
+
+    Some Spectronaut versions export q-values, EG.CScore etc. as strings
+    (e.g. ``"2.97e-20"``). We coerce these so filters work reliably.
+    """
+    for col in ("EG.Qvalue", "PG.Qvalue"):
         if col in df.columns and df[col].dtype == object:
             df[col] = pd.to_numeric(df[col], errors="coerce")
     return df
 
 
-def _pick_quant_column(df: pd.DataFrame, quant_level: QuantLevel) -> str:
-    """Return the canonical quant column name for the requested level."""
-    candidates = QUANT_COLUMN_CANDIDATES[quant_level]
-    for c in candidates:
-        if c in df.columns:
-            return c
-    raise ValueError(
-        f"Cannot find a {quant_level!r} quant column. Looked for any of "
-        f"{list(candidates)}; got columns {sorted(df.columns)}"
-    )
-
-
-def _validate_required(df: pd.DataFrame, extra_required: Iterable[str] = ()) -> None:
-    required = tuple(REQUIRED_DOTTED) + tuple(extra_required)
-    missing = [c for c in required if c not in df.columns]
-    if missing:
-        raise ValueError(
-            f"Spectronaut report is missing required column(s): {missing}. "
-            f"Got: {sorted(df.columns)}"
-        )
+# ---------------------------------------------------------------------------
+# Public reader
+# ---------------------------------------------------------------------------
 
 
 def read_psm(
     path: str | Path,
-    quant_level: QuantLevel = "auto",
     *,
-    drop_decoys: bool = True,
-    drop_non_phospho: bool = False,
-    eg_qvalue_max: float | None = None,
-    pg_qvalue_max: float | None = None,
-    top_n_attribution: bool = True,
-    drop_contaminants: bool = True,
-    contaminants_fasta: str | Path | None = None,
-    contaminant_prefixes: tuple[str, ...] = ("CON__", "Cont_", "contam_"),
+    advanced: dict[str, Any] | None = None,
 ) -> pd.DataFrame:
-    """Read a Spectronaut Normal-report PSM file (Parquet or TSV).
+    """Read a Spectronaut Normal-report PSM file.
+
+    Prunes columns AT READ TIME to just what alphaPhos needs (union of
+    required + optional + all quant candidates), applies the configured
+    boundary filters, and returns a normalized DataFrame with lineage
+    counts in ``.attrs``.
 
     Parameters
     ----------
-    path
-        Path to a Spectronaut Normal-report export. ``.parquet`` and
-        ``.tsv``/``.txt`` are supported.
-    quant_level
-        Which Spectronaut quant column to feed downstream:
-
-        - ``"auto"`` (default): uses ``EG.TotalQuantity (Settings)``,
-          i.e. whatever MS level the Spectronaut search was configured for.
-          The resulting frame's ``alphaphos_quant_level`` attribute is set
-          to ``"settings"``.
-        - ``"MS1"``: requires an explicit MS1 quant column (e.g.
-          ``FG.MS1Quantity``). Errors if none is present.
-        - ``"MS2"``: requires an explicit MS2 quant column (e.g.
-          ``FG.MS2Quantity``). Errors if none is present.
-
-        Regardless of choice, the chosen quant is written into a column
-        named ``EG.TotalQuantity (Settings)`` so existing pipelines
-        (``PeptideCollapse_v4``) consume it without modification.
-    drop_decoys
-        If True (default) and an ``EG.IsDecoy`` column is present, drop
-        rows where it is True.
-    drop_non_phospho
-        If True, drop rows whose ``EG.PrecursorId`` does not contain
-        ``[Phospho (STY)]``. Default False (caller may want non-phospho
-        for selectivity calculations).
-    eg_qvalue_max, pg_qvalue_max
-        Optional q-value cutoffs. If set, rows above the threshold are
-        dropped. q-value columns are coerced to float first if needed.
-    top_n_attribution
-        If True (default), apply the top-N attribution filter (Spectronaut
-        over-export dedup; see ``alphaphos.preprocess.filter_to_top_n_positions``)
-        immediately after loading. This is the validated correct behavior:
-        agreement with Spectronaut native PTM site report is r=0.98 with the
-        filter on vs. r=0.93 (with a long right tail) without it. Pass
-        ``False`` only when you specifically need the raw per-candidate-
-        position rows (e.g. for advanced fragment-level work). The filter is
-        silently skipped when ``EG.PTMLocalizationProbabilities`` is absent
-        from the report (the column it needs to evaluate top-N).
-    drop_contaminants
-        If True (default), drop rows whose ``PG.ProteinGroups`` consists
-        entirely of contaminant proteins (trypsin, BSA, keratins, etc.).
-        See :func:`alphaphos.preprocess.contaminants.filter_contaminants`.
-    contaminants_fasta
-        Optional path to a contaminants FASTA. When ``None`` (default),
-        uses the bundled MaxQuant ``contaminants.fasta`` (246 entries).
-    contaminant_prefixes
-        Protein-ID prefixes that mark a contaminant by convention. Default
-        ``("CON__", "Cont_", "contam_")``.
+    path : str | Path
+        Path to a ``.parquet`` or ``.tsv``/``.txt`` Spectronaut Normal report.
+    advanced : dict, optional
+        Overrides for :data:`DEFAULT_IO_SETTINGS`. Unknown keys raise.
 
     Returns
     -------
-    pd.DataFrame
-        Normalized PSM table with dotted column names. The chosen quant
-        is in ``EG.TotalQuantity (Settings)``. The frame carries a
-        ``.attrs`` dict recording: ``source_path``, ``alphaphos_quant_level``,
-        ``alphaphos_quant_column``, ``n_rows_loaded``, ``n_rows_returned``,
-        ``top_n_attribution_applied``, ``n_rows_after_top_n``,
-        ``contaminants_filter_applied``, ``n_rows_after_contaminant_filter``.
+    pandas.DataFrame
+        PSM rows with dotted column names. All Spectronaut quant column
+        variants that were present in the file are preserved (collapse
+        picks one later). ``df.attrs`` records lineage::
+
+            source_path            -- str, absolute path read
+            engine                 -- "SN"
+            n_rows_loaded          -- int, rows before any filter
+            n_rows_after_decoys    -- int, only if drop_decoys=True
+            n_rows_after_qvalue    -- int, only if q-value cutoffs set
+            n_rows_after_contaminants -- int, only if drop_contaminants=True
+            n_rows_returned        -- int, final row count
+            columns_read           -- list[str], dotted names actually loaded
+            columns_dropped        -- int, count of columns pruned at read time
+
+    Raises
+    ------
+    FileNotFoundError
+        If ``path`` doesn't exist.
+    ValueError
+        On bad settings or missing required columns.
     """
+    settings = resolve_io_settings(advanced)
+    engine = "SN"
+
     p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(f"Spectronaut report not found: {p}")
+
+    # ------- column pruning: figure out what to read before reading anything -------
+    col_map = _scan_available_columns(p, engine)
+    if not col_map:
+        raise ValueError(
+            f"No usable columns found in {p}. Is this actually a Spectronaut "
+            f"Normal report? Expected e.g. one of {sorted(REQUIRED_COLUMNS[engine])}."
+        )
+
+    raw_cols_to_read = list(col_map.values())
+
+    # Track how many columns we skipped for the attrs.
     if p.suffix.lower() == ".parquet":
-        df = pd.read_parquet(p)
-    elif p.suffix.lower() in (".tsv", ".txt"):
-        df = pd.read_csv(p, sep="\t", low_memory=False)
+        import pyarrow.parquet as pq
+
+        n_total_cols = len(pq.read_schema(str(p)).names)
     else:
-        raise ValueError(f"Unsupported file extension {p.suffix!r}; expected .parquet or .tsv")
+        with open(p, encoding="utf-8", errors="replace") as f:
+            n_total_cols = len(f.readline().rstrip("\r\n").split("\t"))
+    n_dropped_cols = n_total_cols - len(raw_cols_to_read)
+
+    # ------- load, materializing only the pruned column set -------
+    if p.suffix.lower() == ".parquet":
+        df = pd.read_parquet(p, columns=raw_cols_to_read)
+    elif p.suffix.lower() in (".tsv", ".txt"):
+        df = pd.read_csv(p, sep="\t", usecols=raw_cols_to_read, low_memory=False)
+    else:
+        raise ValueError(
+            f"Unsupported file extension {p.suffix!r}; expected .parquet, .tsv, or .txt"
+        )
 
     n_loaded = len(df)
-    df = _normalize_column_names(df)
+
+    # ------- normalize columns to dotted form -------
+    df = df.rename(columns={raw: dotted for dotted, raw in col_map.items()})
     df = _coerce_dtypes(df)
-    _validate_required(df)
 
-    # Pick the quant column and make sure it's in the canonical slot.
-    quant_col = _pick_quant_column(df, quant_level)
-    if quant_col != "EG.TotalQuantity (Settings)":
-        df = df.copy()
-        df["EG.TotalQuantity (Settings)"] = df[quant_col]
-    elif quant_level != "auto":
-        # User asked for MS1/MS2 explicitly but only the Settings column matches.
-        # Trust them but make the choice visible in the metadata.
-        pass
+    # ------- validate required columns arrived -------
+    missing = set(REQUIRED_COLUMNS[engine]) - set(df.columns)
+    if missing:
+        raise ValueError(
+            f"Spectronaut report is missing required column(s): {sorted(missing)}. "
+            f"Present columns (dotted): {sorted(df.columns)}"
+        )
 
-    # Optional row filters
-    if drop_decoys and "EG.IsDecoy" in df.columns:
+    # ------- boundary filters -------
+    n_after_decoys = None
+    if settings["drop_decoys"] and "EG.IsDecoy" in df.columns:
         df = df.loc[~df["EG.IsDecoy"].astype(bool)]
-    if drop_non_phospho:
-        is_phospho = df["EG.PrecursorId"].str.contains(r"\[Phospho \(STY\)\]", regex=True, na=False)
-        df = df.loc[is_phospho]
-    if eg_qvalue_max is not None and "EG.Qvalue" in df.columns:
-        df = df.loc[df["EG.Qvalue"].fillna(np.inf) <= eg_qvalue_max]
-    if pg_qvalue_max is not None and "PG.Qvalue" in df.columns:
-        df = df.loc[df["PG.Qvalue"].fillna(np.inf) <= pg_qvalue_max]
+        n_after_decoys = len(df)
+        logger.info("Dropped decoys: %d rows remaining.", n_after_decoys)
+
+    n_after_qvalue = None
+    if settings["eg_qvalue_max"] is not None and "EG.Qvalue" in df.columns:
+        df = df.loc[df["EG.Qvalue"].fillna(np.inf) <= settings["eg_qvalue_max"]]
+        n_after_qvalue = len(df)
+    if settings["pg_qvalue_max"] is not None and "PG.Qvalue" in df.columns:
+        df = df.loc[df["PG.Qvalue"].fillna(np.inf) <= settings["pg_qvalue_max"]]
+        n_after_qvalue = len(df)
 
     df = df.reset_index(drop=True)
 
-    # Contaminant filter: drop rows whose protein group is entirely contaminants
-    contaminants_applied = False
-    if drop_contaminants:
-        # Local import keeps io ← preprocess dep explicit and avoids any
-        # chance of circular import at package-load time.
+    n_after_contam = None
+    if settings["drop_contaminants"]:
+        # Local import avoids a preprocess <-> io circular at package load.
         from alphaphos.preprocess.contaminants import filter_contaminants
 
         df = filter_contaminants(
             df,
-            contaminants_fasta=contaminants_fasta,
-            prefix_patterns=contaminant_prefixes,
+            contaminants_fasta=settings["contaminants_fasta"],
+            prefix_patterns=tuple(settings["contaminant_prefixes"]),
         )
-        contaminants_applied = True
-    n_after_contaminants = len(df)
+        n_after_contam = len(df)
+        logger.info("Dropped contaminants: %d rows remaining.", n_after_contam)
 
-    # Top-N attribution dedup (Spectronaut over-exports the same peptide
-    # measurement as multiple candidate-position rows; this filter keeps only
-    # the rows whose PrecId-encoded positions match the top-N by per-row loc
-    # probability). Validated against Spectronaut native PTM site report
-    # (Pearson r=0.98) and the canonical R consolidate() (r=1.000).
-    n_before_top_n = len(df)
-    attribution_applied = False
-    if top_n_attribution:
-        if "EG.PTMLocalizationProbabilities" in df.columns:
-            # Local import: keeps io <- preprocess directional dep explicit and
-            # avoids any chance of circular import at package-load time.
-            from alphaphos.preprocess.attribution import filter_to_top_n_positions
-
-            df = filter_to_top_n_positions(df)
-            attribution_applied = True
-
+    # ------- stamp lineage -------
     df.attrs["source_path"] = str(p)
-    df.attrs["alphaphos_quant_level"] = quant_level
-    df.attrs["alphaphos_quant_column"] = quant_col
+    df.attrs["engine"] = engine
     df.attrs["n_rows_loaded"] = n_loaded
+    if n_after_decoys is not None:
+        df.attrs["n_rows_after_decoys"] = n_after_decoys
+    if n_after_qvalue is not None:
+        df.attrs["n_rows_after_qvalue"] = n_after_qvalue
+    if n_after_contam is not None:
+        df.attrs["n_rows_after_contaminants"] = n_after_contam
     df.attrs["n_rows_returned"] = len(df)
-    df.attrs["top_n_attribution_applied"] = attribution_applied
-    df.attrs["n_rows_after_top_n"] = len(df) if attribution_applied else n_before_top_n
-    df.attrs["contaminants_filter_applied"] = contaminants_applied
-    df.attrs["n_rows_after_contaminant_filter"] = n_after_contaminants
+    df.attrs["columns_read"] = sorted(col_map)
+    df.attrs["columns_dropped"] = n_dropped_cols
+
+    logger.info(
+        "read_spectronaut(%s): %d rows, %d cols kept / %d dropped at read time.",
+        p.name,
+        len(df),
+        len(col_map),
+        n_dropped_cols,
+    )
     return df
+
+
+# ---------------------------------------------------------------------------
+# Backwards-compat shim: keep the old free function name available (still
+# aliased as ``alphaphos.read_spectronaut`` at the package root).
+# ---------------------------------------------------------------------------
+
+
+# Re-export types for tests
+__all__ = [
+    "DEFAULT_IO_SETTINGS",
+    "resolve_io_settings",
+    "read_psm",
+]

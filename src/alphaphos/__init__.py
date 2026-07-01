@@ -31,7 +31,13 @@ for domain-specific tooling.
 __version__ = "0.0.0"
 
 # Public entry points, re-exported for convenience.
-from alphaphos.io.spectronaut import read_psm as read_spectronaut
+from alphaphos.io.spectronaut import (
+    DEFAULT_IO_SETTINGS,
+    resolve_io_settings,
+)
+from alphaphos.io.spectronaut import (
+    read_psm as read_spectronaut,
+)
 from alphaphos.kinase.annotation import add_kinase_windows, load_fasta
 from alphaphos.preprocess.anndata import to_anndata
 from alphaphos.preprocess.collapse import (
@@ -52,6 +58,8 @@ def generate_dashboard(*args, **kwargs):  # pragma: no cover
 __all__ = [
     "__version__",
     "read_spectronaut",
+    "DEFAULT_IO_SETTINGS",
+    "resolve_io_settings",
     "collapse_sites",
     "DEFAULT_COLLAPSE_SETTINGS",
     "resolve_settings",

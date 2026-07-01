@@ -60,6 +60,7 @@ except ImportError:  # pragma: no cover
     ad = None  # type: ignore[assignment]
 
 from alphaphos import __version__ as _alphaphos_version
+from alphaphos.io.schemas import resolve_quant_column
 from alphaphos.preprocess._collapse.masking import (
     VALID_STRATEGIES,
     drop_all_nan_sites,
@@ -89,6 +90,8 @@ logger = logging.getLogger("alphaphos.preprocess.collapse")
 
 DEFAULT_COLLAPSE_SETTINGS: dict[str, Any] = {
     "search_engine": "SN",  # "SN" | "Diann" | "Fragpipe" | "Peaks" (only SN implemented)
+    "quantification_level": "MS2",  # "MS2" | "MS1" | "auto" (fallback chain per schemas.py)
+    "top_n_attribution": True,  # Spectronaut over-export dedup (safe default; on)
     "cutoff": 0.75,  # loc cutoff for per_run / global_max
     "classI_cutoff": 0.75,  # loc cutoff for the condition-aware mask
     "condition_threshold": 0.50,  # min fraction of Class-I reps to keep condition
@@ -100,6 +103,7 @@ DEFAULT_COLLAPSE_SETTINGS: dict[str, Any] = {
 }
 
 _ALLOWED_ENGINES = ("SN", "Diann", "Fragpipe", "Peaks")
+_ALLOWED_QUANT_LEVELS = ("MS2", "MS1", "auto")
 
 
 # ---------------------------------------------------------------------------
@@ -144,6 +148,15 @@ def resolve_settings(advanced: dict[str, Any] | None) -> dict[str, Any]:
     if settings["search_engine"] not in _ALLOWED_ENGINES:
         raise ValueError(
             f"search_engine must be one of {_ALLOWED_ENGINES}, got {settings['search_engine']!r}"
+        )
+    if settings["quantification_level"] not in _ALLOWED_QUANT_LEVELS:
+        raise ValueError(
+            f"quantification_level must be one of {_ALLOWED_QUANT_LEVELS}, "
+            f"got {settings['quantification_level']!r}"
+        )
+    if not isinstance(settings["top_n_attribution"], bool):
+        raise ValueError(
+            f"top_n_attribution must be bool, got {type(settings['top_n_attribution']).__name__}"
         )
     if settings["localization_strategy"] not in VALID_STRATEGIES:
         raise ValueError(
@@ -266,6 +279,20 @@ def collapse_sites(
 
     # -- Selectivity: per-sample phospho fraction from RAW PSMs (before any filter).
     selectivity = compute_selectivity(data)
+
+    # -- Pre-stage A: pick the quant column (fallback chain per schemas.py; warn on fallback)
+    data, chosen_quant_col, quant_level_used = _select_quantification_column(
+        data,
+        engine=settings["search_engine"],
+        requested_level=settings["quantification_level"],
+    )
+    stats["quantification_column_used"] = chosen_quant_col
+    stats["quantification_level_used"] = quant_level_used
+
+    # -- Pre-stage B: top-N attribution dedup (Spectronaut over-export fix; on by default)
+    if settings["top_n_attribution"]:
+        data = _apply_top_n_attribution(data)
+    stats["n_psms_after_top_n"] = len(data)
 
     # -- Stage 1-2: parse + explode
     prepared = prepare_psms(data, logger=logger)
@@ -401,3 +428,92 @@ def _configure_logger(verbose: bool) -> None:
     handler.setFormatter(logging.Formatter("[%(levelname)s] %(name)s: %(message)s"))
     logger.addHandler(handler)
     logger.setLevel(logging.INFO)
+
+
+# ---------------------------------------------------------------------------
+# Pre-collapse stages: quant-column selection + top-N attribution
+#
+# These run BEFORE ``prepare_psms`` because they choose / prune what
+# ``prepare_psms`` consumes. Kept in this module (rather than under
+# ``_collapse``) because they compose engine settings with schema knowledge
+# and are logically part of the entry-point wiring.
+# ---------------------------------------------------------------------------
+
+
+def _select_quantification_column(
+    df: pd.DataFrame,
+    *,
+    engine: str,
+    requested_level: str,
+) -> tuple[pd.DataFrame, str, str]:
+    """Pick the quant column, copy it into the canonical slot for downstream.
+
+    Uses :func:`alphaphos.io.schemas.resolve_quant_column` to walk the
+    ``MS2 -> MS1 -> auto`` fallback chain. If a fallback was needed, emits
+    a ``UserWarning`` AND logs a warning so the substitution is visible
+    both to end users and in server-side logs.
+
+    ``prepare_psms`` downstream reads ``EG.TotalQuantity (Settings)``; we
+    copy the chosen column's values into that slot so the rest of the
+    pipeline is agnostic to the source column.
+
+    Returns
+    -------
+    (df, chosen_col, level_used)
+        Modified DataFrame (only touched if the source column was NOT
+        already the canonical slot), the actual source column name, and
+        the level the source column belongs to.
+    """
+    import warnings
+
+    available = set(df.columns)
+    chosen_col, level_used = resolve_quant_column(
+        available, engine=engine, requested_level=requested_level
+    )
+    if level_used != requested_level:
+        msg = (
+            f"quantification_level={requested_level!r} unavailable in the input; "
+            f"falling back to level={level_used!r} via column {chosen_col!r}."
+        )
+        warnings.warn(msg, UserWarning, stacklevel=3)
+        logger.warning(msg)
+
+    if chosen_col != "EG.TotalQuantity (Settings)":
+        df = df.copy()
+        df["EG.TotalQuantity (Settings)"] = df[chosen_col]
+
+    logger.info("Using quantification column: %r (level=%s)", chosen_col, level_used)
+    return df, chosen_col, level_used
+
+
+def _apply_top_n_attribution(df: pd.DataFrame) -> pd.DataFrame:
+    """Apply the Spectronaut top-N over-export dedup, if the loc string is present.
+
+    Spectronaut exports the same peptide measurement as N separate rows,
+    one per candidate localization position. This filter drops the extras,
+    keeping only the rows whose ``EG.PrecursorId``-encoded positions equal
+    the top-N from the per-row ``EG.PTMLocalizationProbabilities`` string.
+    Validated at Pearson r = 0.98 vs Spectronaut's native PTM Site Report.
+
+    Silently no-ops when ``EG.PTMLocalizationProbabilities`` is absent
+    (older Spectronaut exports, or reports that were pruned before load).
+    """
+    if "EG.PTMLocalizationProbabilities" not in df.columns:
+        logger.info(
+            "Skipping top_n_attribution: EG.PTMLocalizationProbabilities column not present."
+        )
+        return df
+
+    # Local import: keeps preprocess -> preprocess dep explicit, avoids
+    # any circular concerns at package-load time.
+    from alphaphos.preprocess.attribution import filter_to_top_n_positions
+
+    n_before = len(df)
+    df = filter_to_top_n_positions(df)
+    logger.info(
+        "top_n_attribution dedup: %d -> %d rows (%d dropped).",
+        n_before,
+        len(df),
+        n_before - len(df),
+    )
+    return df
