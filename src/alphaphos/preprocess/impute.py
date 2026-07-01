@@ -36,6 +36,8 @@ from typing import TYPE_CHECKING, Literal
 import numpy as np
 import pandas as pd
 
+from alphaphos.constants import LAYER_INTENSITY_LOG2
+
 if TYPE_CHECKING:
     import anndata as ad
 
@@ -83,7 +85,7 @@ def impute_knn_site_based(
     *,
     n_neighbors: int | None = None,
     weights: Literal["uniform", "distance"] = "uniform",
-    layer: str | None = None,
+    layer: str | None = LAYER_INTENSITY_LOG2,
     copy: bool = False,
 ) -> ad.AnnData | None:
     """Site-based KNN imputation (the right direction for phospho 3v3 data).
@@ -104,7 +106,11 @@ def impute_knn_site_based(
     weights
         ``"uniform"`` (default, Dublin) or ``"distance"``.
     layer
-        Which layer to impute. ``None`` (default) uses ``adata.X``.
+        Which layer to impute. Default ``"intensity_log2"`` -- the canonical
+        log2 slot produced by ``collapse_sites``, and the slot every
+        downstream step (``diff_exp_limma``, viz, QC) reads by default.
+        Pass ``None`` to target ``adata.X`` instead (they start equal after
+        ``collapse_sites`` but diverge once any layer is mutated).
     copy
         If True, return a modified copy; otherwise mutate in-place
         and return ``None``.
@@ -141,7 +147,7 @@ def impute_hybrid(
     gaussian_std_offset: float = 1.8,
     gaussian_std_factor: float = 0.3,
     gaussian_seed: int = 42,
-    layer: str | None = None,
+    layer: str | None = LAYER_INTENSITY_LOG2,
     return_audit: bool = False,
     copy: bool = False,
 ) -> ad.AnnData | None | tuple[ad.AnnData | None, pd.DataFrame]:
@@ -182,7 +188,11 @@ def impute_hybrid(
     gaussian_seed
         RNG seed for reproducible Gaussian draws.
     layer
-        Which layer to impute. ``None`` (default) uses ``adata.X``.
+        Which layer to impute. Default ``"intensity_log2"`` -- the canonical
+        log2 slot produced by ``collapse_sites``, and the slot every
+        downstream step (``diff_exp_limma``, viz, QC) reads by default.
+        Pass ``None`` to target ``adata.X`` instead (they start equal after
+        ``collapse_sites`` but diverge once any layer is mutated).
     return_audit
         If True, also return a per-cell DataFrame logging which strategy
         was applied (only for missing cells).

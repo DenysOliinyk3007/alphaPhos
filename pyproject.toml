@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "alphaPhos"
-version = "0.4.0"
+version = "0.5.1"
 description = "Phosphoproteomics analysis toolkit — IO, preprocessing, PTM site mapping, statistics, KSEA, enrichment, acquisition, QC and visualization."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -35,6 +35,10 @@ dependencies = [
 [project.optional-dependencies]
 r = [
     "rpy2>=3.5",
+]
+stats = [
+    "inmoose>=0.9.1",
+    "patsy>=0.5",
 ]
 dev = [
     "ruff>=0.6",

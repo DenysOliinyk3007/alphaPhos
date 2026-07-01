@@ -28,7 +28,7 @@ See :func:`collapse_sites` for the settings dict; see
 for domain-specific tooling.
 """
 
-__version__ = "0.4.0"
+__version__ = "0.5.1"
 
 # Public entry points, re-exported for convenience.
 from alphaphos.io.diann import (
@@ -59,6 +59,7 @@ from alphaphos.preprocess.collapse import (
 )
 from alphaphos.preprocess.filter import filter_by_completeness
 from alphaphos.preprocess.impute import impute_hybrid, impute_knn_site_based
+from alphaphos.stats.diff_exp import DEFAULT_STATS_SETTINGS, diff_exp_limma
 
 
 # QC dashboard: only imported lazily to avoid pulling bokeh at package import.
@@ -86,6 +87,8 @@ __all__ = [
     "filter_by_completeness",
     "impute_hybrid",
     "impute_knn_site_based",
+    "diff_exp_limma",
+    "DEFAULT_STATS_SETTINGS",
     "add_kinase_windows",
     "load_fasta",
     "to_anndata",

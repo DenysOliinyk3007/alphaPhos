@@ -12,6 +12,80 @@ While in `0.x`, breaking API changes may appear in any MINOR bump (`0.1 → 0.2`
 
 _Nothing yet._
 
+## [0.5.1] - 2026-07-01
+
+### Changed
+
+- **`impute_hybrid` and `impute_knn_site_based` default `layer` is now
+  `"intensity_log2"`** (was `None`, which meant ``.X``). This closes a
+  silent-wrong-result trap: `collapse_sites` initialises both `.X` and
+  `layers["intensity_log2"]` with the same values, but the two diverge
+  once any layer is mutated. With the old default, calling
+  `impute_hybrid(adata)` would fill `.X` while leaving the log2 layer
+  full of NaN -- and `diff_exp_limma` (which defaults to
+  `layer="intensity_log2"`) would then trip the NaN guard on the
+  stale layer. If the NaN guard were relaxed in the future, wrong
+  stats would be reported without any warning. Aligning the default
+  makes the whole `filter -> impute -> diff_exp` chain read/write the
+  same slot. Pass `layer=None` explicitly to keep the old behaviour.
+
+### Validated on real data
+
+- End-to-end pipeline verified on the EGF diff-exp benchmark (Spectronaut
+  TSV, 3x withEGF vs 3x woEGF, 621k PSMs -> 34,227 collapsed sites -> 15,186
+  after ``keep_strategy="each"`` at ``min_valid_frac=2/3`` -> 3,999 cells
+  imputed -> 2,057 sites at FDR<0.05 with limma). Top hits include the
+  canonical EGF-pathway substrates (MAPK7/ERK5 activation loop
+  T733/S731, EP300, DAB2, WIPF1, RSK1 hydrophobic-motif S732). Site
+  positions faithfully carry Spectronaut's ``EG.ProteinPTMLocations``
+  through the collapse.
+
+## [0.5.0] - 2026-07-01
+
+### Added
+
+- **Two-group moderated t-test via limma**
+  (`alphaphos.stats.diff_exp.diff_exp_limma`, re-exported as
+  `ap.diff_exp_limma`) with `DEFAULT_STATS_SETTINGS`. Wraps
+  `inmoose`'s limma port: `lmFit -> contrasts_fit -> eBayes ->
+  topTable`. Returns a per-site DataFrame indexed by
+  `adata.var_names` with columns
+  `log2fc, se, t_stat, p_value, fdr, B, ave_expr`. The contrast
+  convention (`log2fc = mean(treatment) - mean(control)`) is stamped
+  on `result.attrs["contrast_direction"]` so downstream plotting code
+  never has to guess the sign.
+- **Batch / nuisance adjustment** via `covariates=` (list of
+  `adata.obs` columns) -- design becomes `~ 0 + condition + covar_1
+  + ...`. Categorical covariates are patsy-dummy-coded automatically.
+- **`[stats]` optional extra** in `pyproject.toml`
+  (`inmoose>=0.9.1`, `patsy>=0.5`). Core install stays lean; the
+  stats module ImportErrors with a clear install hint if the extra
+  is missing.
+
+### Validation guards
+`diff_exp_limma` refuses to run when the inputs would silently give
+wrong results:
+
+- **Non-log-scale input**: rejects a layer whose median exceeds
+  ~30 (a linear-scale MS intensity is typically 1e6+; a log2 one is
+  10-30).
+- **NaN in the tested layer**: rejects and points at
+  `filter_by_completeness` + `impute_hybrid`.
+- **Duplicate `var_names`**: would silently misalign rows after the
+  `topTable` sort; rejected upfront.
+- **Log** a warning when either group has fewer than 3 replicates
+  (moderated statistics still run but interpretation is fragile).
+
+### Known
+- **ANOVA / multi-contrast F-test intentionally deferred.** inmoose
+  0.9.1 has a `KeyError: -2` bug in `_ebayes` when `df_prior` comes
+  back as scalar `inf` (pathological homogeneous variance across
+  features). Real biological data with heterogeneous per-site
+  variance does not hit this, but the multi-contrast path has not
+  yet been regression-tested against R limma. When
+  `diff_exp_limma` does hit that path, the raw `KeyError: -2` is
+  translated into a targeted `RuntimeError` explaining the cause.
+
 ## [0.4.0] - 2026-07-01
 
 ### Added

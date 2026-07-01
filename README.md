@@ -2,7 +2,7 @@
 
 Phosphoproteomics analysis toolkit.
 
-**Status:** pre-alpha (v0.4.0). Structure scaffolded; modules being extracted from prior scripts.
+**Status:** pre-alpha (v0.5.1). Structure scaffolded; modules being extracted from prior scripts.
 
 ## Scope
 
@@ -12,11 +12,12 @@ A Python library for reproducible phosphoproteomics analysis
 
 ```bash
 pip install -e .                # core (Python-only)
-pip install -e ".[r]"           # + R backend for limma and PTM-SEA
+pip install -e ".[stats]"       # + inmoose for the limma two-group test
+pip install -e ".[r]"           # + R backend for PTM-SEA
 pip install -e ".[dev,docs]"    # development
 ```
 
-R/rpy2 is **optional**. Without it, `alphaphos.stats.limma` and `alphaphos.enrichment.ptmsea` are unavailable; everything else works.
+`inmoose` (Python limma) is behind the `[stats]` extra; without it, `ap.diff_exp_limma` raises `ImportError` and everything else works. `rpy2` remains optional for R-backed enrichment (`alphaphos.enrichment.ptmsea`).
 
 ## Layout
 
