@@ -16,7 +16,8 @@ Sequence format
 ---------------
 The Yaffe library expects 15-mers (±7 around a central S/T/Y), with the
 center residue being s/t/y. alphaPhos's ``kinase_sequence`` column (set by
-``collapse_sites(fasta_path=...)``) uses the format
+:func:`alphaphos.add_kinase_windows` -- a separate step after
+:func:`alphaphos.collapse_sites`) uses the format
 ``"_<left>*<X>*<right>_"`` with explicit ``*`` markers around the phospho
 residue. The conversion is trivial — just strip the ``*`` characters.
 Error sentinels (FASTA_ERROR:, POSITION_ERROR:, etc.) are silently dropped.
@@ -43,8 +44,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# PeptideCollapse sentinels when FASTA-lookup fails (see
-# alphaphos.preprocess.collapse._create_kinase_sequence). Skip these.
+# Sentinel strings emitted by alphaphos.kinase.annotation.extract_window
+# when FASTA lookup or position validation fails. Skip these.
 _ERROR_PREFIXES = (
     "FASTA_ERROR:",
     "POSITION_ERROR:",
@@ -114,7 +115,8 @@ def score_kinases(
     ----------
     adata
         AnnData whose ``var`` contains a ``kinase_sequence`` column
-        (populated by ``collapse_sites(fasta_path=...)``).
+        (populated by :func:`alphaphos.add_kinase_windows` after
+        :func:`alphaphos.collapse_sites`).
     sequence_col
         ``var`` column holding the alphaPhos-format kinase sequences.
     varm_prefix
@@ -139,9 +141,9 @@ def score_kinases(
 
     if sequence_col not in adata.var.columns:
         raise ValueError(
-            f"adata.var must contain {sequence_col!r}. Re-run "
-            f"collapse_sites(fasta_path='proteome.fasta', ...) to populate it "
-            f"(or pass an explicit sequence_col)."
+            f"adata.var must contain {sequence_col!r}. Call "
+            f"alphaphos.add_kinase_windows(adata, fasta_path='proteome.fasta') "
+            f"first to populate it (or pass an explicit sequence_col)."
         )
 
     # Convert alphaPhos -> Yaffe format and filter to valid odd-length sequences

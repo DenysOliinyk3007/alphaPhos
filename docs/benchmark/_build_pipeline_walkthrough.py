@@ -231,6 +231,7 @@ STEP4_CODE = """adata = to_anndata(
     loc_per_run=loc_per_run,
     condition_df=condition_df,
     decision_table=decision_table,
+    psm_attrs=dict(df.attrs),       # propagate PSM-level row counts for the QC waterfall
 )
 
 print(f"adata: {adata.n_obs} samples x {adata.n_vars} sites")
@@ -712,7 +713,52 @@ else:
     adata.uns["alphaphos_dose_response"] = curves.copy()
 """
 
-STEP10_MD = """## §14. Save the analysed AnnData
+STEP_QC_MD = """## §14. QC dashboard (one-call HTML)
+
+`alphaphos.qc.generate_dashboard(adata, output)` writes a single,
+self-contained, interactive HTML file with all phospho-aware QC panels:
+
+- **§1 Pipeline waterfall** — row counts at each filter step
+- **§2 Sample QC grid** — S/T/Y composition, localization distribution,
+  multiplicity, missingness, n_classI, per-condition CV by AA
+- **§3 Reproducibility** — replicate correlation matrix (Pearson r),
+  hierarchically clustered for sample order
+- **§4 Class I + contaminants** — per-cell binary vs condition-aware
+  policy comparison, optional contaminant breakdown
+- **§5 Imputation** — MAR vs MNAR cells per sample (when hybrid imputer
+  audit is provided)
+- **§6 Provenance** — pipeline parameters from `adata.uns['alphaphos']`
+
+Built on bokeh — every plot is hover/zoom/pan interactive. Open the
+output HTML in any browser, share, or archive.
+"""
+
+STEP_QC_CODE = """from pathlib import Path
+from alphaphos.qc import generate_dashboard
+
+out_path = Path("D:/Projects/alphaPhos/test_data/qc_dashboard.html")
+
+# Optional: pass the raw PSM df to enable the contaminant panel.
+# (we already used df_raw with drop_contaminants=False if you have it;
+# otherwise leave psm_df=None)
+psm_df_optional = None  # or: read_psm(PSM_TSV, drop_contaminants=False, ...)
+
+# Optional: pass impute_hybrid's audit DataFrame to enable the MAR/MNAR panel.
+# Re-run impute with return_audit=True if you want this.
+impute_audit_optional = None
+
+dashboard_path = generate_dashboard(
+    adata,
+    output_path=out_path,
+    psm_df=psm_df_optional,
+    impute_audit=impute_audit_optional,
+    title="alphaPhos QC | EGF nanoPhos benchmark",
+)
+print(f"Wrote dashboard: {dashboard_path}  ({dashboard_path.stat().st_size:,} bytes)")
+print("Open it in your browser to inspect interactively.")
+"""
+
+STEP10_MD = """## §15. Save the analysed AnnData
 
 `adata.write_h5ad` persists everything in one HDF5 file:
 - `.X` (imputed log2 quants)
@@ -801,6 +847,8 @@ def main():
         nbf.v4.new_code_cell(STEP_NETWORK_KSEA_CODE),
         nbf.v4.new_markdown_cell(STEP_DOSE_MD),
         nbf.v4.new_code_cell(STEP_DOSE_CODE),
+        nbf.v4.new_markdown_cell(STEP_QC_MD),
+        nbf.v4.new_code_cell(STEP_QC_CODE),
         nbf.v4.new_markdown_cell(STEP10_MD),
         nbf.v4.new_code_cell(STEP10_CODE),
         nbf.v4.new_markdown_cell(OUTRO_MD),

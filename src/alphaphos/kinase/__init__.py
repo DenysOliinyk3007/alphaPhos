@@ -3,6 +3,13 @@ generic alphapepttools downstream stack.
 
 Submodules:
 
+- ``alphaphos.kinase.annotation`` — FASTA-based ±N residue window
+  annotation of a collapsed AnnData. Attaches ``adata.var["kinase_sequence"]``,
+  which is the input format expected by the Yaffe library scoring and by
+  the KSEA workflows in this subpackage. Decoupled from
+  :func:`alphaphos.collapse_sites` so non-human data (and any workflow not
+  needing kinase-level analysis) doesn't have to touch a FASTA.
+
 - ``alphaphos.kinase.library`` — per-site PWM-based kinase prediction using
   the Yaffe Kinase Library (Johnson et al. *Nature* 2023; 311 Ser/Thr + 78
   tyrosine kinases). Sequence-based, predicts upstream kinase for ANY
@@ -20,6 +27,11 @@ Submodules:
     foreground/background.
 """
 
+from alphaphos.kinase.annotation import (
+    add_kinase_windows,
+    extract_window,
+    load_fasta,
+)
 from alphaphos.kinase.enrichment import (
     kinase_enrichment_binary,
     kinase_enrichment_from_diffexp,
@@ -31,6 +43,10 @@ from alphaphos.kinase.library import (
 )
 
 __all__ = [
+    # FASTA-based kinase-window annotation (adds adata.var["kinase_sequence"])
+    "add_kinase_windows",
+    "extract_window",
+    "load_fasta",
     # Per-site PWM prediction
     "predict_kinases",
     "score_kinases",

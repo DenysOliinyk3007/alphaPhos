@@ -11,7 +11,11 @@ from alphaphos.preprocess.classify import (
     META_COLS,
     apply_condition_aware_classI_mask,
 )
-from alphaphos.preprocess.collapse import PeptideCollapse, collapse_sites
+from alphaphos.preprocess.collapse import (
+    DEFAULT_COLLAPSE_SETTINGS,
+    collapse_sites,
+    resolve_settings,
+)
 from alphaphos.preprocess.contaminants import (
     filter_contaminants,
     get_default_contaminants_fasta,
@@ -32,15 +36,17 @@ __all__ = [
     "filter_contaminants",
     "get_default_contaminants_fasta",
     "parse_fasta_accessions",
-    # Site-level collapse (Hogrebe consolidate ported to Python)
-    "collapse_sites",  # one-call function — returns (sites, loc_per_run)
-    "PeptideCollapse",  # class form — for fine-grained access to stats etc.
-    # Condition-aware Class I masking (per-condition majority rule)
+    # Site-level collapse -- returns a ready-to-use AnnData in one call.
+    "collapse_sites",
+    "DEFAULT_COLLAPSE_SETTINGS",
+    "resolve_settings",
+    # Condition-aware Class I masking (legacy shape; used internally by collapse
+    # for now, exposed as a public helper for callers with externally-collapsed data).
     "apply_condition_aware_classI_mask",
     "META_COLS",
     # Imputation (phospho-aware; complements alphapepttools.pp.impute_*)
     "impute_knn_site_based",  # Dublin-equivalent; legacy-parity path
     "impute_hybrid",  # MAR (site-KNN) + MNAR (downshifted Gaussian) per cell
-    # AnnData export (for scverse / alphapepttools downstream)
+    # AnnData construction escape hatch -- use collapse_sites in normal workflows.
     "to_anndata",
 ]

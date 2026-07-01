@@ -168,6 +168,7 @@ def to_anndata(
     decision_table: pd.DataFrame | None = None,
     main_layer: str = "intensity_log2",
     classI_cutoff: float = 0.75,
+    psm_attrs: dict | None = None,
 ):
     """Convert ``collapse_sites`` output to an AnnData object.
 
@@ -199,6 +200,13 @@ def to_anndata(
     classI_cutoff
         Threshold for the ``n_classI_samples`` / ``fraction_classI`` QC
         columns. Default 0.75 matches Spectronaut's Class I convention.
+    psm_attrs
+        Optional dict of PSM-level row counts and metadata from
+        ``read_psm()``'s ``df.attrs`` (e.g. ``n_rows_loaded``,
+        ``n_rows_after_top_n``, ``n_rows_after_contaminant_filter``).
+        When provided, lands in ``adata.uns["source_attrs"]`` and powers
+        the QC dashboard's pipeline-waterfall plot. Without this, only
+        post-collapse stages will appear in the waterfall.
 
     Returns
     -------
@@ -334,7 +342,12 @@ def to_anndata(
         "pipeline_params": pipeline_params,
         "processing_timestamp": _dt.datetime.now(_dt.timezone.utc).isoformat(),
     }
-    if hasattr(sites, "attrs") and sites.attrs:
+    # source_attrs: prefer an explicit psm_attrs dict (passed in by the
+    # user from read_psm's df.attrs), fall back to whatever non-pipeline
+    # keys are on sites.attrs.
+    if psm_attrs is not None:
+        adata.uns["source_attrs"] = dict(psm_attrs)
+    elif hasattr(sites, "attrs") and sites.attrs:
         adata.uns["source_attrs"] = {
             k: v for k, v in sites.attrs.items() if k != "alphaphos_pipeline"
         }
