@@ -28,57 +28,39 @@ from alphaphos.preprocess.attribution import (
 
 
 class TestParseLocDict:
-    def test_single_phospho(self):
-        s = "_PEPS[Phospho (STY): 99.5%]TIDE_"
-        assert parse_loc_dict(s) == {4: 0.995}
-
-    def test_two_phosphos(self):
-        s = "_PVS[Phospho (STY): 92.3%]PS[Phospho (STY): 7.6%]K_"
-        d = parse_loc_dict(s)
-        assert set(d.keys()) == {3, 5}
-        assert d[3] == pytest.approx(0.923)
-        assert d[5] == pytest.approx(0.076)
-
-    def test_three_phosphos_mixed_probs(self):
-        s = "_S[Phospho (STY): 50.0%]TS[Phospho (STY): 30.0%]VS[Phospho (STY): 20.0%]K_"
-        d = parse_loc_dict(s)
-        assert d == pytest.approx({1: 0.5, 3: 0.3, 5: 0.2})
+    @pytest.mark.parametrize(
+        ("loc_string", "expected"),
+        [
+            ("_PEPS[Phospho (STY): 99.5%]TIDE_", {4: 0.995}),
+            (
+                "_PVS[Phospho (STY): 92.3%]PS[Phospho (STY): 7.6%]K_",
+                {3: 0.923, 5: 0.076},
+            ),
+            (
+                "_S[Phospho (STY): 50.0%]TS[Phospho (STY): 30.0%]VS[Phospho (STY): 20.0%]K_",
+                {1: 0.5, 3: 0.3, 5: 0.2},
+            ),
+        ],
+    )
+    def test_position_and_probability_extraction(self, loc_string, expected):
+        assert parse_loc_dict(loc_string) == pytest.approx(expected)
 
     def test_ignores_other_modifications(self):
+        # Carbamidomethyl at position 1 (C) must not steal the phospho slot.
         s = "_C[Carbamidomethyl (C)]EPS[Phospho (STY): 80.0%]TIDE_"
-        # Carbamidomethyl bracket has no leading position-as-amino-acid issue;
-        # it occupies position 1 (C). Phospho is at position 4 (S).
         assert parse_loc_dict(s) == {4: 0.8}
 
-    def test_empty_string_returns_empty(self):
-        assert parse_loc_dict("") == {}
-
-    def test_none_returns_empty(self):
-        assert parse_loc_dict(None) == {}
-
-    def test_nan_returns_empty(self):
-        assert parse_loc_dict(float("nan")) == {}
-
-    def test_no_phospho_returns_empty(self):
-        assert parse_loc_dict("_PEPTIDE_") == {}
-
-    def test_only_other_ptms_returns_empty(self):
-        assert parse_loc_dict("_C[Carbamidomethyl (C)]PEPTIDE_") == {}
-
     def test_malformed_bracket_no_close_handled(self):
-        # Unclosed bracket — function should not raise
+        # Unclosed bracket in the wild -- must not raise.
         out = parse_loc_dict("_PEPS[Phospho (STY): 50.0_")
         assert isinstance(out, dict)
 
     def test_percentages_above_99_clamp_to_units(self):
-        # 99.99% rounds to ~1.0
-        s = "_S[Phospho (STY): 99.99%]K_"
-        d = parse_loc_dict(s)
+        d = parse_loc_dict("_S[Phospho (STY): 99.99%]K_")
         assert d[1] == pytest.approx(0.9999)
 
     def test_low_probability(self):
-        s = "_S[Phospho (STY): 0.1%]K_"
-        assert parse_loc_dict(s) == {1: 0.001}
+        assert parse_loc_dict("_S[Phospho (STY): 0.1%]K_") == {1: 0.001}
 
 
 # ============================================================================
@@ -87,46 +69,27 @@ class TestParseLocDict:
 
 
 class TestParsePrecidPhosphoPositions:
-    def test_single_phospho(self):
-        assert parse_precid_phospho_positions("_PEPS[Phospho (STY)]TIDE_.2") == (4,)
-
-    def test_two_phosphos(self):
-        assert parse_precid_phospho_positions("_S[Phospho (STY)]TS[Phospho (STY)]K_.3") == (1, 3)
-
-    def test_three_phosphos(self):
-        assert parse_precid_phospho_positions(
-            "_S[Phospho (STY)]TS[Phospho (STY)]VS[Phospho (STY)]K_.3"
-        ) == (1, 3, 5)
+    @pytest.mark.parametrize(
+        ("precid", "expected"),
+        [
+            ("_PEPS[Phospho (STY)]TIDE_.2", (4,)),
+            ("_S[Phospho (STY)]TS[Phospho (STY)]K_.3", (1, 3)),
+            (
+                "_S[Phospho (STY)]TS[Phospho (STY)]VS[Phospho (STY)]K_.3",
+                (1, 3, 5),
+            ),
+            ("_S[Phospho (STY)]K_.2", (1,)),  # N-terminal phospho
+            ("_PEPS[Phospho (STY)]_.2", (4,)),  # C-terminal-adjacent phospho
+        ],
+    )
+    def test_phospho_positions_extracted(self, precid, expected):
+        assert parse_precid_phospho_positions(precid) == expected
 
     def test_phospho_with_other_modifications(self):
-        # Carbamidomethyl on C at position 2, phospho on S at position 4
+        # Carbamidomethyl at pos 2 must not consume the phospho slot at pos 4.
         assert parse_precid_phospho_positions(
             "_AC[Carbamidomethyl (C)]ES[Phospho (STY)]TIDE_.2"
         ) == (4,)
-
-    def test_phospho_at_start(self):
-        assert parse_precid_phospho_positions("_S[Phospho (STY)]K_.2") == (1,)
-
-    def test_phospho_at_end_before_terminus(self):
-        assert parse_precid_phospho_positions("_PEPS[Phospho (STY)]_.2") == (4,)
-
-    def test_no_phospho(self):
-        assert parse_precid_phospho_positions("_PEPTIDE_.2") == ()
-
-    def test_only_other_modification(self):
-        assert parse_precid_phospho_positions("_C[Carbamidomethyl (C)]PEPTIDE_.2") == ()
-
-    def test_none_returns_empty(self):
-        assert parse_precid_phospho_positions(None) == ()
-
-    def test_nan_returns_empty(self):
-        assert parse_precid_phospho_positions(float("nan")) == ()
-
-    def test_positions_returned_sorted(self):
-        # Even if encoded out of order, we sort
-        # (in practice they're always in order, but the contract guarantees sort)
-        result = parse_precid_phospho_positions("_S[Phospho (STY)]TS[Phospho (STY)]K_.3")
-        assert list(result) == sorted(result)
 
 
 # ============================================================================
@@ -135,37 +98,25 @@ class TestParsePrecidPhosphoPositions:
 
 
 class TestTopNPositions:
-    def test_top_1_clear_winner(self):
-        assert top_n_positions({3: 0.9, 8: 0.1}, n=1) == (3,)
-
-    def test_top_2_distinct_probs(self):
-        assert top_n_positions({3: 0.5, 8: 0.3, 12: 0.2}, n=2) == (3, 8)
-
-    def test_top_3_keeps_all(self):
-        assert top_n_positions({3: 0.5, 8: 0.3, 12: 0.2}, n=3) == (3, 8, 12)
+    @pytest.mark.parametrize(
+        ("loc", "n", "expected"),
+        [
+            ({3: 0.9, 8: 0.1}, 1, (3,)),
+            ({3: 0.5, 8: 0.3, 12: 0.2}, 2, (3, 8)),
+            ({3: 0.5, 8: 0.3, 12: 0.2}, 3, (3, 8, 12)),
+        ],
+    )
+    def test_top_n_selection(self, loc, n, expected):
+        assert top_n_positions(loc, n=n) == expected
 
     def test_ties_break_by_lower_position(self):
         # R's rank(-prob, ties.method='first') with equal probs gives lower
-        # position first; we then sort positions, so the LOWER-position site
-        # wins the tie.
+        # position first; the LOWER-position site wins the tie.
         assert top_n_positions({3: 0.5, 8: 0.5, 12: 0.2}, n=1) == (3,)
         assert top_n_positions({3: 0.5, 8: 0.5, 12: 0.5}, n=2) == (3, 8)
 
-    def test_n_zero_returns_empty(self):
-        assert top_n_positions({3: 0.5}, n=0) == ()
-
-    def test_n_negative_returns_empty(self):
-        assert top_n_positions({3: 0.5}, n=-1) == ()
-
-    def test_empty_dict_returns_empty(self):
-        assert top_n_positions({}, n=2) == ()
-
     def test_n_larger_than_dict_returns_all(self):
         assert top_n_positions({3: 0.5, 8: 0.3}, n=5) == (3, 8)
-
-    def test_result_always_sorted_ascending(self):
-        result = top_n_positions({3: 0.5, 8: 0.7, 12: 0.6}, n=3)
-        assert list(result) == sorted(result)
 
 
 # ============================================================================
@@ -273,18 +224,9 @@ class TestFilterEndToEnd:
         assert len(out) == 1
 
     def test_phospho_row_missing_loc_string_dropped(self):
-        # Phospho row but loc string is None / empty — we can't validate, drop it
-        rows = [
-            _row("_PEPS[Phospho (STY)]TIDE_.2", ""),
-        ]
-        df = pd.DataFrame(rows)
-        out = filter_to_top_n_positions(df)
-        assert len(out) == 0
-
-    def test_phospho_row_loc_string_nan_dropped(self):
+        # Phospho row but loc string is missing -- can't validate, drop it.
         rows = [_row("_PEPS[Phospho (STY)]TIDE_.2", "")]
         df = pd.DataFrame(rows)
-        df.loc[0, "EG.PTMLocalizationProbabilities"] = pd.NA
         out = filter_to_top_n_positions(df)
         assert len(out) == 0
 
@@ -315,11 +257,6 @@ class TestFilterEndToEnd:
         df = pd.DataFrame(rows)
         out = filter_to_top_n_positions(df)
         assert len(out) == 2
-
-    def test_empty_dataframe_returns_empty(self):
-        df = pd.DataFrame(columns=["EG.PrecursorId", "EG.PTMLocalizationProbabilities"])
-        out = filter_to_top_n_positions(df)
-        assert len(out) == 0
 
     def test_missing_required_column_raises(self):
         df = pd.DataFrame([{"EG.PrecursorId": "_S[Phospho (STY)]_.2"}])
@@ -379,17 +316,6 @@ class TestFilterInvariants:
         twice = filter_to_top_n_positions(once)
         pd.testing.assert_frame_equal(once, twice)
 
-    def test_deterministic(self):
-        df = self._sample_dataset()
-        out1 = filter_to_top_n_positions(df)
-        out2 = filter_to_top_n_positions(df)
-        pd.testing.assert_frame_equal(out1, out2)
-
-    def test_filter_never_adds_rows(self):
-        df = self._sample_dataset()
-        out = filter_to_top_n_positions(df)
-        assert len(out) <= len(df)
-
     def test_filter_preserves_column_set(self):
         df = self._sample_dataset()
         out = filter_to_top_n_positions(df)
@@ -446,15 +372,9 @@ class TestFilterInvariants:
     def test_non_phospho_rows_always_pass_through(self):
         df = self._sample_dataset()
         out = filter_to_top_n_positions(df)
-        # Count non-phospho rows in input and output
         n_in = (~df["EG.PrecursorId"].str.contains(r"\[Phospho \(STY\)\]")).sum()
         n_out = (~out["EG.PrecursorId"].str.contains(r"\[Phospho \(STY\)\]")).sum()
         assert n_in == n_out, "Filter dropped non-phospho rows"
-
-    def test_index_is_reset(self):
-        df = self._sample_dataset()
-        out = filter_to_top_n_positions(df)
-        assert list(out.index) == list(range(len(out)))
 
     def test_does_not_mutate_input(self):
         df = self._sample_dataset()

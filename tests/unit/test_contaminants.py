@@ -163,16 +163,12 @@ class TestFilterContaminants:
         out = filter_contaminants(df, contaminants_fasta=mini_fasta)
         assert out["PG.ProteinGroups"].tolist() == ["P12345"]
 
-    def test_keeps_empty_protein_group(self, mini_fasta):
-        df = pd.DataFrame({"PG.ProteinGroups": ["", "P12345"]})
+    def test_keeps_rows_with_unknown_protein_group(self, mini_fasta):
+        # Empty and NaN both trip the same "no info to decide, default keep"
+        # branch.  Test with a mixed input to cover both in one shot.
+        df = pd.DataFrame({"PG.ProteinGroups": ["", float("nan"), "P12345"]})
         out = filter_contaminants(df, contaminants_fasta=mini_fasta)
-        # Both kept — empty means we have no info to decide; default to keep
-        assert len(out) == 2
-
-    def test_keeps_nan_protein_group(self, mini_fasta):
-        df = pd.DataFrame({"PG.ProteinGroups": [float("nan"), "P12345"]})
-        out = filter_contaminants(df, contaminants_fasta=mini_fasta)
-        assert len(out) == 2
+        assert len(out) == 3
 
     def test_missing_protein_groups_column_is_no_op(self, mini_fasta):
         df = pd.DataFrame({"other_col": [1, 2, 3]})

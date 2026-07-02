@@ -78,63 +78,30 @@ class TestConsolidate:
 
     def test_partial_impute_when_other_row_has_signal(self):
         # Row 0 has a gap that row 1 CAN fill (row 1 has value at that position).
-        # Row 1 has no gaps.
         m = np.array(
             [
-                [10.0, np.nan, 30.0],  # gap at pos 1
-                [5.0, 12.0, 15.0],  # complete
+                [10.0, np.nan, 30.0],
+                [5.0, 12.0, 15.0],
             ]
         )
         out = consolidate(m)
-        # Row 0 should be imputed: ratio(row0/row1) via shared positions
-        # (0 and 2) is median(10/5, 30/15) = median(2, 2) = 2, so row0[1] ~ 2*12 = 24.
-        # Then sum: [15, 36, 45].
+        # Row 0 imputed via row 1: ratio via shared positions is 2, so
+        # row0[1] ~ 24; sum with row 1 -> [15, 36, 45].
         assert np.allclose(out, [15.0, 36.0, 45.0])
-
-    def test_returns_correct_shape(self):
-        m = np.array([[1.0, 2.0], [3.0, 4.0]])
-        assert consolidate(m).shape == (2,)
 
 
 # ---------------------------------------------------------------------------
 # aggregate_by_key -- dispatch tests
+# Numeric correctness of each aggregation method (sum / median / mean /
+# consolidate) is verified end-to-end in tests/integration/test_collapse_spiked.py
+# (TestAggregationMethods). Only the "unknown method raises" pure-code path
+# needs a unit test here.
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture
-def small_wide_df():
-    # 2 sites (A, B), 3 samples (s1, s2, s3), 2 precursor rows per site
+def test_unknown_method_raises():
     df = pd.DataFrame(
-        {"s1": [10.0, 20.0, 5.0, 15.0], "s2": [30.0, 40.0, 25.0, 35.0], "s3": [1.0, 2.0, 3.0, 4.0]},
-        index=pd.Index(["A", "A", "B", "B"], name="key"),
+        {"s1": [1.0, 2.0]}, index=pd.Index(["A", "A"], name="key")
     )
-    return df
-
-
-class TestAggregateByKey:
-    def test_sum(self, small_wide_df):
-        out = aggregate_by_key(small_wide_df, "sum", ["s1", "s2", "s3"])
-        assert list(out.index) == ["A", "B"]
-        assert out.loc["A", "s1"] == 30.0  # 10 + 20
-        assert out.loc["B", "s2"] == 60.0  # 25 + 35
-
-    def test_median(self, small_wide_df):
-        out = aggregate_by_key(small_wide_df, "median", ["s1", "s2", "s3"])
-        assert out.loc["A", "s1"] == 15.0  # median(10, 20)
-        assert out.loc["B", "s2"] == 30.0  # median(25, 35)
-
-    def test_mean(self, small_wide_df):
-        out = aggregate_by_key(small_wide_df, "mean", ["s1", "s2", "s3"])
-        assert out.loc["A", "s1"] == 15.0
-        assert out.loc["B", "s3"] == 3.5
-
-    def test_consolidate(self, small_wide_df):
-        # With no missing values, consolidate degenerates to per-sample sum.
-        out = aggregate_by_key(small_wide_df, "consolidate", ["s1", "s2", "s3"])
-        # Row order in output depends on sort-by-median; check by index label.
-        assert out.loc["A", "s1"] == 30.0
-        assert out.loc["B", "s1"] == 20.0
-
-    def test_unknown_method_raises(self, small_wide_df):
-        with pytest.raises(ValueError, match="aggregation method"):
-            aggregate_by_key(small_wide_df, "sqrt-of-count", ["s1"])
+    with pytest.raises(ValueError, match="aggregation method"):
+        aggregate_by_key(df, "sqrt-of-count", ["s1"])

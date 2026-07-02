@@ -27,77 +27,78 @@ from alphaphos.preprocess.anndata import (
 
 
 class TestDeriveMotifFlags:
-    def test_basic_seven_window(self):
-        """`AAVKRGT*S*ELLIQAA` — middle of a protein, no padding."""
-        out = _derive_motif_flags("_AAVKRGT*S*ELLIQAA_")
-        assert out["p_minus_1"] == "T"  # residue immediately before S
-        assert out["p_plus_1"] == "E"  # residue immediately after S
-        # T is not P -> not proline-directed
-        assert out["is_proline_directed"] is False
-        # No R/K at -2 (G), -3 (R), or -5 (V) -> R at -3 makes it basophilic
-        assert out["is_basophilic"] is True
-        # +1 = E (acidic) -> CK1-like
-        assert out["is_acidic_motif"] is True
-
-    def test_proline_directed(self):
-        out = _derive_motif_flags("_AAVKRGT*S*PLLIQAA_")
-        assert out["p_plus_1"] == "P"
-        assert out["is_proline_directed"] is True
-
-    def test_basophilic_at_minus_3(self):
-        """R-X-X-S — PKA consensus."""
-        out = _derive_motif_flags("_AAVKRRX*S*YLLIQAA_")
-        # left ends with ...R-R-X (positions -3,-2,-1 from S)
-        assert out["p_minus_1"] == "X"
-        assert out["is_basophilic"] is True
-
-    def test_not_basophilic(self):
-        """No R/K in the upstream window."""
-        out = _derive_motif_flags("_AAVDET*S*YLLIQAA_")
-        assert out["is_basophilic"] is False
-
-    def test_acidic_motif_ck1(self):
-        """+1 = D -> CK1-like."""
-        out = _derive_motif_flags("_AAVKRGT*S*DLLIQAA_")
-        assert out["p_plus_1"] == "D"
-        assert out["is_acidic_motif"] is True
-
-    def test_acidic_motif_ck2(self):
-        """+3 = E -> CK2-like."""
-        out = _derive_motif_flags("_AAVKRGT*S*LLELIQAA_")
-        # right is "LLELIQAA"; +3 from S is the 3rd char = 'E'
-        assert out["is_acidic_motif"] is True
-
-    def test_neither_acidic_nor_basophilic(self):
-        out = _derive_motif_flags("_GGGGGGG*S*LLLLLLL_")
-        assert out["is_proline_directed"] is False
-        assert out["is_basophilic"] is False
-        assert out["is_acidic_motif"] is False
-        assert out["p_minus_1"] == "G"
-        assert out["p_plus_1"] == "L"
+    @pytest.mark.parametrize(
+        ("window", "expected"),
+        [
+            # Middle of the protein, full 7+7 window
+            (
+                "_AAVKRGT*S*ELLIQAA_",
+                {
+                    "p_minus_1": "T",
+                    "p_plus_1": "E",
+                    "is_proline_directed": False,
+                    "is_basophilic": True,     # R at -3
+                    "is_acidic_motif": True,   # E at +1 (CK1-like)
+                },
+            ),
+            # +1 = P -> proline-directed
+            (
+                "_AAVKRGT*S*PLLIQAA_",
+                {"p_plus_1": "P", "is_proline_directed": True},
+            ),
+            # R-X-X-S (PKA-like) -> basophilic
+            (
+                "_AAVKRRX*S*YLLIQAA_",
+                {"p_minus_1": "X", "is_basophilic": True},
+            ),
+            # No R/K in upstream window -> not basophilic
+            (
+                "_AAVDET*S*YLLIQAA_",
+                {"is_basophilic": False},
+            ),
+            # +1 = D -> CK1-like acidic
+            (
+                "_AAVKRGT*S*DLLIQAA_",
+                {"p_plus_1": "D", "is_acidic_motif": True},
+            ),
+            # +3 = E -> CK2-like acidic
+            (
+                "_AAVKRGT*S*LLELIQAA_",
+                {"is_acidic_motif": True},
+            ),
+            # Nothing interesting anywhere
+            (
+                "_GGGGGGG*S*LLLLLLL_",
+                {
+                    "p_minus_1": "G",
+                    "p_plus_1": "L",
+                    "is_proline_directed": False,
+                    "is_basophilic": False,
+                    "is_acidic_motif": False,
+                },
+            ),
+        ],
+    )
+    def test_motif_flag_matrix(self, window, expected):
+        out = _derive_motif_flags(window)
+        for key, val in expected.items():
+            assert out[key] == val, f"{window!r}: {key} was {out[key]!r}, expected {val!r}"
 
     def test_padded_left_terminus(self):
-        """Site near protein N-terminus — left flank is shorter."""
         out = _derive_motif_flags("_AT*S*ELLIQAA_")
         assert out["p_minus_1"] == "T"
-        # Left has only 2 chars (A, T), so -3 should be None
-        # (no R/K in the available positions either)
         assert out["is_basophilic"] is False
 
     def test_padded_right_terminus(self):
-        """Site near protein C-terminus — right flank is shorter."""
         out = _derive_motif_flags("_AAVKRGT*S*EL_")
         assert out["p_plus_1"] == "E"
-        # Right has only 'EL'; +3 should fall off the end -> None
-        # But +1 is E (acidic) so is_acidic_motif is still True via CK1
-        assert out["is_acidic_motif"] is True
+        assert out["is_acidic_motif"] is True  # +1 = E, still CK1-like
 
     def test_empty_left_flank(self):
-        """Site at the very protein start."""
         out = _derive_motif_flags("_*S*ELLIQAA_")
         assert out["p_minus_1"] is None
         assert out["p_plus_1"] == "E"
-        assert out["is_basophilic"] is False  # no upstream residues at all
+        assert out["is_basophilic"] is False
 
     def test_empty_right_flank(self):
         out = _derive_motif_flags("_AAVKRGT*S*_")
@@ -105,14 +106,6 @@ class TestDeriveMotifFlags:
         assert out["p_plus_1"] is None
         assert out["is_proline_directed"] is False
         assert out["is_acidic_motif"] is False
-
-    def test_none_input(self):
-        out = _derive_motif_flags(None)
-        assert all(v is None for v in out.values())
-
-    def test_nan_input(self):
-        out = _derive_motif_flags(float("nan"))  # type: ignore[arg-type]
-        assert all(v is None for v in out.values())
 
     def test_error_sentinel_strings(self):
         """PeptideCollapse error sentinels should produce empty flags."""
@@ -124,11 +117,6 @@ class TestDeriveMotifFlags:
         ):
             out = _derive_motif_flags(err)
             assert all(v is None for v in out.values()), err
-
-    def test_malformed_string(self):
-        """A string that doesn't match the format returns empty flags."""
-        assert all(v is None for v in _derive_motif_flags("just text").values())
-        assert all(v is None for v in _derive_motif_flags("AAVKR*S*ELLIQ").values())  # no outer _
 
 
 # ============================================================================

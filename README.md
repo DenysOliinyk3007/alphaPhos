@@ -2,7 +2,7 @@
 
 Phosphoproteomics analysis toolkit.
 
-**Status:** pre-alpha (v0.5.2). Structure scaffolded; modules being extracted from prior scripts.
+**Status:** pre-alpha (v0.6.1). Structure scaffolded; modules being extracted from prior scripts.
 
 ## Scope
 

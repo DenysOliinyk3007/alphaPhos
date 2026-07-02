@@ -25,14 +25,16 @@ from alphaphos.io.spectronaut import (
 
 
 class TestToDottedColumn:
-    def test_underscore_form(self):
-        assert _to_dotted_column("R_FileName") == "R.FileName"
-
-    def test_dotted_passthrough(self):
-        assert _to_dotted_column("R.FileName") == "R.FileName"
-
-    def test_flag_suffix_converted(self):
-        assert _to_dotted_column("EG_TotalQuantity_(Settings)") == "EG.TotalQuantity (Settings)"
+    @pytest.mark.parametrize(
+        ("input_col", "expected"),
+        [
+            ("R_FileName", "R.FileName"),
+            ("R.FileName", "R.FileName"),
+            ("EG_TotalQuantity_(Settings)", "EG.TotalQuantity (Settings)"),
+        ],
+    )
+    def test_normalization(self, input_col, expected):
+        assert _to_dotted_column(input_col) == expected
 
 
 # ---------------------------------------------------------------------------
@@ -53,23 +55,18 @@ class TestResolveIOSettings:
         assert s["eg_qvalue_max"] == 0.01
         assert s["drop_contaminants"] is True  # default preserved
 
-    def test_unknown_key_raises(self):
-        with pytest.raises(ValueError, match="Unknown keys"):
-            resolve_io_settings({"drop_decys": True})  # typo
-
-    def test_non_dict_raises(self):
-        with pytest.raises(TypeError):
-            resolve_io_settings("not a dict")
-
-    def test_bad_bool_raises(self):
-        with pytest.raises(ValueError, match="drop_decoys must be bool"):
-            resolve_io_settings({"drop_decoys": 1})  # int not bool
-
-    def test_bad_qvalue_raises(self):
-        with pytest.raises(ValueError, match="eg_qvalue_max"):
-            resolve_io_settings({"eg_qvalue_max": 1.5})
-        with pytest.raises(ValueError, match="pg_qvalue_max"):
-            resolve_io_settings({"pg_qvalue_max": -0.1})
+    @pytest.mark.parametrize(
+        ("bad_settings", "exc_type", "match"),
+        [
+            ({"drop_decys": True}, ValueError, "Unknown keys"),  # typo
+            ({"drop_decoys": 1}, ValueError, "drop_decoys must be bool"),
+            ({"eg_qvalue_max": 1.5}, ValueError, "eg_qvalue_max"),
+            ({"pg_qvalue_max": -0.1}, ValueError, "pg_qvalue_max"),
+        ],
+    )
+    def test_validation_raises(self, bad_settings, exc_type, match):
+        with pytest.raises(exc_type, match=match):
+            resolve_io_settings(bad_settings)
 
     def test_qvalue_none_allowed(self):
         s = resolve_io_settings({"eg_qvalue_max": None})

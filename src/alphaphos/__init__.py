@@ -28,7 +28,7 @@ See :func:`collapse_sites` for the settings dict; see
 for domain-specific tooling.
 """
 
-__version__ = "0.5.2"
+__version__ = "0.6.1"
 
 # Public entry points, re-exported for convenience.
 from alphaphos.io.diann import (
@@ -52,6 +52,10 @@ from alphaphos.io.spectronaut import (
 )
 from alphaphos.kinase.annotation import add_kinase_windows, load_fasta
 from alphaphos.preprocess.anndata import to_anndata
+from alphaphos.preprocess.batch_correct import (
+    DEFAULT_COMBAT_SETTINGS,
+    batch_correct_combat,
+)
 from alphaphos.preprocess.collapse import (
     DEFAULT_COLLAPSE_SETTINGS,
     collapse_sites,
@@ -87,6 +91,8 @@ __all__ = [
     "filter_by_completeness",
     "impute_hybrid",
     "impute_knn_site_based",
+    "batch_correct_combat",
+    "DEFAULT_COMBAT_SETTINGS",
     "diff_exp_limma",
     "DEFAULT_STATS_SETTINGS",
     "add_kinase_windows",

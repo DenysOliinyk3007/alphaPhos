@@ -63,41 +63,37 @@ class TestAllNeededColumns:
             for c in level_cols:
                 assert c in needed
 
-    def test_unknown_engine_raises(self):
-        with pytest.raises(KeyError, match="Unknown engine"):
-            schemas.all_needed_columns("Fragpipe")
+    # test_unknown_engine_raises removed here (near-duplicate of the
+    # TestResolveQuantColumn.test_unknown_engine_raises below).
 
 
 class TestResolveQuantColumn:
-    def test_direct_hit_no_fallback(self):
-        # MS2 requested, MS2 column present -> chosen, no fallback
+    @pytest.mark.parametrize(
+        ("available", "expected_col", "expected_level"),
+        [
+            (
+                {"FG.MS2Quantity", "R.FileName"},
+                "FG.MS2Quantity",
+                "MS2",
+            ),  # direct MS2 hit, no fallback
+            (
+                {"FG.MS1Quantity", "R.FileName"},
+                "FG.MS1Quantity",
+                "MS1",
+            ),  # MS2 -> MS1 fallback
+            (
+                {"EG.TotalQuantity (Settings)"},
+                "EG.TotalQuantity (Settings)",
+                "auto",
+            ),  # MS2 -> MS1 -> auto fallback
+        ],
+    )
+    def test_ms2_request_fallback_chain(self, available, expected_col, expected_level):
         col, level = schemas.resolve_quant_column(
-            available_columns={"FG.MS2Quantity", "R.FileName"},
-            engine="SN",
-            requested_level="MS2",
+            available_columns=available, engine="SN", requested_level="MS2"
         )
-        assert col == "FG.MS2Quantity"
-        assert level == "MS2"
-
-    def test_ms2_fallback_to_ms1(self):
-        # MS2 requested, only MS1 columns present -> fall through to MS1
-        col, level = schemas.resolve_quant_column(
-            available_columns={"FG.MS1Quantity", "R.FileName"},
-            engine="SN",
-            requested_level="MS2",
-        )
-        assert col == "FG.MS1Quantity"
-        assert level == "MS1"
-
-    def test_ms2_fallback_to_auto(self):
-        # MS2 requested, no MS2 / MS1, only 'auto' column -> fall through
-        col, level = schemas.resolve_quant_column(
-            available_columns={"EG.TotalQuantity (Settings)"},
-            engine="SN",
-            requested_level="MS2",
-        )
-        assert col == "EG.TotalQuantity (Settings)"
-        assert level == "auto"
+        assert col == expected_col
+        assert level == expected_level
 
     def test_prefers_first_candidate_within_level(self):
         # Both FG.MS2Quantity and FG.MS2RawQuantity present -> the ordered

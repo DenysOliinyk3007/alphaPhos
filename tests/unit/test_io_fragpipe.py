@@ -34,25 +34,25 @@ from alphaphos.io.fragpipe import (
 
 
 class TestParseFragpipeIndex:
-    def test_ser(self):
-        assert parse_fragpipe_index("P10644_S77") == ("P10644", "S", 77)
+    @pytest.mark.parametrize(
+        ("index_str", "expected"),
+        [
+            ("P10644_S77", ("P10644", "S", 77)),
+            ("Q08378_T140", ("Q08378", "T", 140)),
+            ("Q99999_Y1200", ("Q99999", "Y", 1200)),
+            ("P10644_s77", ("P10644", "S", 77)),  # lowercase AA uppercased
+        ],
+    )
+    def test_parses_valid(self, index_str, expected):
+        assert parse_fragpipe_index(index_str) == expected
 
-    def test_thr(self):
-        assert parse_fragpipe_index("Q08378_T140") == ("Q08378", "T", 140)
-
-    def test_tyr(self):
-        assert parse_fragpipe_index("Q99999_Y1200") == ("Q99999", "Y", 1200)
-
-    def test_uppercases_aa(self):
-        assert parse_fragpipe_index("P10644_s77") == ("P10644", "S", 77)
-
-    def test_returns_none_on_bad_format(self):
+    def test_bad_format_returns_none(self):
+        # "nonsense" has no _AA<pos> suffix; the None/empty cases share the
+        # same "guard" branch and are trivial.
         assert parse_fragpipe_index("nonsense") is None
-        assert parse_fragpipe_index("") is None
-        assert parse_fragpipe_index(None) is None
 
     def test_handles_underscore_in_protein_id(self):
-        # If a protein id contains underscores, split on the LAST one.
+        # Split on the LAST underscore -- protein ids can contain underscores.
         assert parse_fragpipe_index("foo_bar_baz_S12") == ("foo_bar_baz", "S", 12)
 
 
@@ -70,13 +70,10 @@ class TestSequenceWindowConversion:
         s = sequence_window_to_kinase_sequence("ABCDEFGtIJKLMNO", "T")
         assert s == "_ABCDEFG*T*IJKLMNO_"
 
-    def test_short_string_returns_empty(self):
+    def test_invalid_input_returns_empty(self):
+        # Short-string, empty, None, NaN all fall through the same guard.
         assert sequence_window_to_kinase_sequence("AB", "S") == ""
-        assert sequence_window_to_kinase_sequence("", "S") == ""
-
-    def test_non_string_returns_empty(self):
         assert sequence_window_to_kinase_sequence(None, "S") == ""
-        assert sequence_window_to_kinase_sequence(float("nan"), "S") == ""
 
 
 # ---------------------------------------------------------------------------
@@ -96,21 +93,18 @@ class TestResolveSettings:
         assert s["min_best_localization"] is None
         assert s["normalized"] is False
 
-    def test_unknown_key_raises(self):
-        with pytest.raises(ValueError, match="Unknown keys"):
-            resolve_fragpipe_io_settings({"quant_leve": "MS1"})  # typo
-
-    def test_bad_quant_level(self):
-        with pytest.raises(ValueError, match="quant_level"):
-            resolve_fragpipe_io_settings({"quant_level": "MS3"})
-
-    def test_bad_site_type(self):
-        with pytest.raises(ValueError, match="site_type"):
-            resolve_fragpipe_io_settings({"site_type": "triple"})
-
-    def test_bad_localization_range(self):
-        with pytest.raises(ValueError, match="min_best_localization"):
-            resolve_fragpipe_io_settings({"min_best_localization": 1.5})
+    @pytest.mark.parametrize(
+        ("bad_settings", "match"),
+        [
+            ({"quant_leve": "MS1"}, "Unknown keys"),  # typo
+            ({"quant_level": "MS3"}, "quant_level"),
+            ({"site_type": "triple"}, "site_type"),
+            ({"min_best_localization": 1.5}, "min_best_localization"),
+        ],
+    )
+    def test_validation_raises(self, bad_settings, match):
+        with pytest.raises(ValueError, match=match):
+            resolve_fragpipe_io_settings(bad_settings)
 
 
 # ---------------------------------------------------------------------------

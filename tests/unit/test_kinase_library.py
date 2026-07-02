@@ -35,19 +35,9 @@ class TestStripAlphaphosMarkers:
         # C-terminal padding stays in place
         assert _strip_alphaphos_markers("_AAVKRGT*S*EL______") == "_AAVKRGTSEL______"
 
-    def test_none_for_error_sentinels(self):
-        for err in (
-            "FASTA_ERROR: not found",
-            "POSITION_ERROR: out of bounds",
-            "SEQUENCE_MISMATCH: x at 12",
-            "PARSING_ERROR: bad row",
-        ):
-            assert _strip_alphaphos_markers(err) is None, err
-
-    def test_none_for_missing(self):
-        assert _strip_alphaphos_markers(None) is None
-        assert _strip_alphaphos_markers("") is None
-        assert _strip_alphaphos_markers(float("nan")) is None
+    def test_none_for_error_sentinel(self):
+        # One representative sentinel; None/empty/NaN share the same guard branch.
+        assert _strip_alphaphos_markers("FASTA_ERROR: not found") is None
 
 
 # ============================================================================

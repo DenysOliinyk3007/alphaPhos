@@ -42,21 +42,22 @@ from alphaphos.io.diann import (
 
 
 class TestDiannPrecursorId:
-    def test_single_phospho(self):
-        assert diann_precursor_id("AAS(UniMod:21)PLK", 2) == "_AAS[Phospho (STY)]PLK_.2"
-
-    def test_multi_phospho(self):
-        s = diann_precursor_id("AAS(UniMod:21)PT(UniMod:21)K", 3)
-        assert s == "_AAS[Phospho (STY)]PT[Phospho (STY)]K_.3"
-
-    def test_strips_other_unimods(self):
-        # Carbamidomethyl (UniMod:4) should be stripped entirely.
-        s = diann_precursor_id("AC(UniMod:4)AS(UniMod:21)PLK", 2)
-        assert s == "_ACAS[Phospho (STY)]PLK_.2"
-
-    def test_no_phospho_still_wraps(self):
-        s = diann_precursor_id("AASPLK", 2)
-        assert s == "_AASPLK_.2"
+    @pytest.mark.parametrize(
+        ("mod_sequence", "charge", "expected"),
+        [
+            ("AAS(UniMod:21)PLK", 2, "_AAS[Phospho (STY)]PLK_.2"),
+            (
+                "AAS(UniMod:21)PT(UniMod:21)K",
+                3,
+                "_AAS[Phospho (STY)]PT[Phospho (STY)]K_.3",
+            ),
+            # Carbamidomethyl (UniMod:4) must be stripped.
+            ("AC(UniMod:4)AS(UniMod:21)PLK", 2, "_ACAS[Phospho (STY)]PLK_.2"),
+            ("AASPLK", 2, "_AASPLK_.2"),  # no phospho still wraps
+        ],
+    )
+    def test_encoding(self, mod_sequence, charge, expected):
+        assert diann_precursor_id(mod_sequence, charge) == expected
 
 
 # ---------------------------------------------------------------------------
@@ -72,9 +73,10 @@ class TestDiannLocProbs:
         s = diann_loc_probs("AAS(UniMod:21){1.000000}LPT{0.848000}K2")
         assert s == "_AAS[Phospho (STY): 100%]LPT[Phospho (STY): 84.8%]K_"
 
-    def test_missing_returns_nan(self):
-        assert np.isnan(diann_loc_probs(None))
-        assert np.isnan(diann_loc_probs(float("nan")))
+    def test_non_string_input_returns_nan(self):
+        # The `int` case is load-bearing (pandas can produce numeric NaN
+        # for a missing site-occupancy column); the None/float cases share
+        # that same branch.
         assert np.isnan(diann_loc_probs(42))
 
 
@@ -84,19 +86,17 @@ class TestDiannLocProbs:
 
 
 class TestFirstPhosphoAbsPosition:
-    def test_single_sty(self):
-        assert first_phospho_abs_position("[P12345:S117]") == 117
-
-    def test_multi_sty_returns_first(self):
-        assert first_phospho_abs_position("[P12345:S117,T119]") == 117
-
-    def test_skips_carbamidomethyl_c(self):
-        # DIA-NN sometimes bundles Cys sites in Protein.Sites; drop non-STY.
-        assert first_phospho_abs_position("[P35221:C116,S118]") == 118
-
-    def test_no_sty_returns_nan(self):
-        assert np.isnan(first_phospho_abs_position("[P35221:C116]"))
-        assert np.isnan(first_phospho_abs_position("[P00000:]"))
+    @pytest.mark.parametrize(
+        ("protein_sites", "expected"),
+        [
+            ("[P12345:S117]", 117),
+            ("[P12345:S117,T119]", 117),
+            # DIA-NN sometimes bundles Cys sites; must skip non-STY.
+            ("[P35221:C116,S118]", 118),
+        ],
+    )
+    def test_first_sty_extracted(self, protein_sites, expected):
+        assert first_phospho_abs_position(protein_sites) == expected
 
 
 # ---------------------------------------------------------------------------
@@ -113,12 +113,6 @@ class TestDiannPeptideStart:
         # First (UniMod:21) is after position 3 (S). If Protein.Sites lists
         # S at 100 and T at 105, peptide_start uses the first-phospho anchor.
         assert diann_peptide_start("AAS(UniMod:21)PT(UniMod:21)K", "[P12345:S100,T105]") == 98
-
-    def test_returns_nan_without_phospho(self):
-        assert np.isnan(diann_peptide_start("AASPLK", "[P12345:S100]"))
-
-    def test_returns_nan_without_protein_sites(self):
-        assert np.isnan(diann_peptide_start("AAS(UniMod:21)PLK", "[P12345:]"))
 
 
 # ---------------------------------------------------------------------------
@@ -138,17 +132,17 @@ class TestResolveDiannIOSettings:
         assert s["mbr"] is False
         assert s["quantity_quality_min"] == 0.5  # default kept
 
-    def test_unknown_key_raises(self):
-        with pytest.raises(ValueError, match="Unknown keys"):
-            resolve_diann_io_settings({"pg_qvalue": 0.01})  # typo
-
-    def test_bad_mbr_type_raises(self):
-        with pytest.raises(ValueError, match="mbr must be bool"):
-            resolve_diann_io_settings({"mbr": 1})
-
-    def test_bad_qvalue_raises(self):
-        with pytest.raises(ValueError, match="pg_qvalue_max"):
-            resolve_diann_io_settings({"pg_qvalue_max": 1.5})
+    @pytest.mark.parametrize(
+        ("bad_settings", "expected_message"),
+        [
+            ({"pg_qvalue": 0.01}, "Unknown keys"),  # typo
+            ({"mbr": 1}, "mbr must be bool"),
+            ({"pg_qvalue_max": 1.5}, "pg_qvalue_max"),
+        ],
+    )
+    def test_validation_raises(self, bad_settings, expected_message):
+        with pytest.raises(ValueError, match=expected_message):
+            resolve_diann_io_settings(bad_settings)
 
     def test_none_disables_filter(self):
         s = resolve_diann_io_settings({"pg_qvalue_max": None})

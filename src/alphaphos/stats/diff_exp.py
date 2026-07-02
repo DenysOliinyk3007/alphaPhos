@@ -28,7 +28,14 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
-from alphaphos.constants import LAYER_INTENSITY_LOG2
+from alphaphos.constants import (
+    LAYER_INTENSITY_LOG2,
+    LAYER_INTENSITY_LOG2_PRECOMBAT,
+    LOG_SCALE_MEDIAN_CEILING,
+    MIN_REPLICATES_WARNING,
+    UNS_ALPHAPHOS,
+    UNS_BATCH_CORRECTION,
+)
 
 if TYPE_CHECKING:
     import anndata as ad
@@ -60,8 +67,6 @@ DEFAULT_STATS_SETTINGS: dict = {
     "winsor_tail_p": (0.05, 0.1),
 }
 
-MIN_REPLICATES_WARNING = 3
-LOG_SCALE_MEDIAN_CEILING = 30.0
 INMOOSE_TOPTABLE_COLS = {
     "log2FoldChange": "log2fc",
     "lfcSE": "se",
@@ -146,6 +151,7 @@ def diff_exp_limma(
         covariates=covariates,
         layer=layer,
     )
+    _refuse_double_batch_correction(adata, covariates=covariates, layer=layer)
 
     sample_mask = adata.obs[condition_column].isin([treatment, control]).to_numpy()
     if not sample_mask.any():
@@ -190,6 +196,47 @@ def diff_exp_limma(
         treatment=treatment,
         control=control,
         contrast_string=contrast_string,
+    )
+
+
+def _refuse_double_batch_correction(
+    adata: ad.AnnData,
+    *,
+    covariates: list[str] | None,
+    layer: str | None,
+) -> None:
+    # If ComBat has already been applied to the layer we're testing and the
+    # caller adds the same batch column as a covariate, the batch effect
+    # gets subtracted twice: once from the data, once from the model.
+    # Result is anti-conservative p-values (inflated false positives).
+    bc = adata.uns.get(UNS_ALPHAPHOS, {}).get(UNS_BATCH_CORRECTION)
+    if not bc:
+        return
+    corrected_layer = bc.get("layer")
+    if corrected_layer != layer:
+        # Different layer -- e.g. testing the untouched precombat slot -- is fine.
+        return
+    prior_batch_col = bc.get("batch_column")
+    if prior_batch_col not in (covariates or ()):
+        return
+    raise ValueError(
+        f"Double batch correction detected. adata.layers[{layer!r}] has "
+        f"already been ComBat-corrected on batch column "
+        f"{prior_batch_col!r} (see adata.uns[{UNS_ALPHAPHOS!r}]"
+        f"[{UNS_BATCH_CORRECTION!r}]), and you passed "
+        f"covariates=[{prior_batch_col!r}] to diff_exp_limma. Subtracting "
+        "the same batch effect twice (once from the data, once in the "
+        "linear model) gives anti-conservative p-values.\n\n"
+        "Community convention: use ComBat for visualisation only, and "
+        "run stats on the raw data with batch as a limma covariate.\n\n"
+        "Fix -- pick ONE of:\n"
+        f"  A) Statistically preferred: test the pre-correction layer\n"
+        f"     with the batch covariate:\n"
+        f"        diff_exp_limma(..., covariates=[{prior_batch_col!r}], "
+        f"layer={LAYER_INTENSITY_LOG2_PRECOMBAT!r})\n"
+        f"  B) Test the ComBat-corrected layer WITHOUT the batch covariate:\n"
+        f"        diff_exp_limma(..., covariates=None)  # (or drop "
+        f"{prior_batch_col!r} from covariates)"
     )
 
 

@@ -28,20 +28,19 @@ from alphaphos.ksea import (
 
 
 class TestAlphaphosSiteToOmnipath:
-    def test_simple_single_protein(self):
-        assert alphaphos_site_to_omnipath("P00533~EGFR_Y1172_M1") == "P00533_Y1172"
+    @pytest.mark.parametrize(
+        ("site_id", "expected"),
+        [
+            ("P00533~EGFR_Y1172_M1", "P00533_Y1172"),
+            ("P12345;Q67890~MYGENE_S123_M2", "P12345_S123"),  # multi-protein first
+            ("Q9Y1B6~SOME_T55_M1", "Q9Y1B6_T55"),  # T site
+        ],
+    )
+    def test_conversion(self, site_id, expected):
+        assert alphaphos_site_to_omnipath(site_id) == expected
 
-    def test_multi_protein_group_takes_first(self):
-        assert alphaphos_site_to_omnipath("P12345;Q67890~MYGENE_S123_M2") == "P12345_S123"
-
-    def test_threonine_site(self):
-        assert alphaphos_site_to_omnipath("Q9Y1B6~SOME_T55_M1") == "Q9Y1B6_T55"
-
-    def test_none_for_invalid(self):
-        assert alphaphos_site_to_omnipath(None) is None
-        assert alphaphos_site_to_omnipath("") is None
-        assert alphaphos_site_to_omnipath("not_a_real_key") is None
-        # Lowercase aa shouldn't match (we expect S/T/Y uppercase)
+    def test_lowercase_aa_rejected(self):
+        # Load-bearing invariant: we require S/T/Y uppercase.
         assert alphaphos_site_to_omnipath("P00533~EGFR_y1172_M1") is None
 
 

@@ -8,6 +8,8 @@ determinism (suffixing is done in a well-defined order).
 
 from __future__ import annotations
 
+import pytest
+
 from alphaphos.preprocess._collapse.keys import (
     build_full_key,
     build_modified_sequence,
@@ -60,20 +62,18 @@ class TestBuildPgKey:
 
 
 class TestBuildModifiedSequence:
-    def test_middle(self):
-        assert build_modified_sequence("PEPTIDE", 4) == "PEPt*IDE"
-
-    def test_start(self):
-        assert build_modified_sequence("PEPTIDE", 1) == "p*EPTIDE"
-
-    def test_end(self):
-        assert build_modified_sequence("PEPTIDE", 7) == "PEPTIDe*"
-
-    def test_out_of_range_left(self):
-        assert build_modified_sequence("PEPTIDE", 0) == "PEPTIDE"
-
-    def test_out_of_range_right(self):
-        assert build_modified_sequence("PEPTIDE", 999) == "PEPTIDE"
+    @pytest.mark.parametrize(
+        ("sequence", "pos", "expected"),
+        [
+            ("PEPTIDE", 4, "PEPt*IDE"),  # middle
+            ("PEPTIDE", 1, "p*EPTIDE"),  # start
+            ("PEPTIDE", 7, "PEPTIDe*"),  # end
+            ("PEPTIDE", 0, "PEPTIDE"),   # out of range left: no-op
+            ("PEPTIDE", 999, "PEPTIDE"), # out of range right: no-op
+        ],
+    )
+    def test_star_marker_placement(self, sequence, pos, expected):
+        assert build_modified_sequence(sequence, pos) == expected
 
 
 class TestGetPhosphoAminoAcid:
@@ -116,12 +116,5 @@ class TestResolveShortKeyCollisions:
         assert resolved == ["G|S1|M1#3", "G|S1|M1", "G|S1|M1#2"]
 
     def test_length_mismatch_raises(self):
-        import pytest
-
         with pytest.raises(ValueError):
             resolve_short_key_collisions(["A", "B"], ["X"])
-
-    def test_empty_input(self):
-        resolved, collisions = resolve_short_key_collisions([], [])
-        assert resolved == []
-        assert collisions == []

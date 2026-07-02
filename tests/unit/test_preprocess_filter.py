@@ -56,25 +56,17 @@ def sample_adata():
 
 
 class TestGlobalFilter:
-    def test_permissive_keeps_all(self, sample_adata):
-        # 0.0 threshold keeps every site (all have at least one value).
-        out = filter_by_completeness(sample_adata, min_valid_frac=0.0)
-        assert list(out.var_names) == ["A", "B", "C", "D"]
-
-    def test_strict_keeps_only_complete(self, sample_adata):
-        # 1.0 threshold requires every sample to have a value; only A passes.
-        out = filter_by_completeness(sample_adata, min_valid_frac=1.0)
-        assert list(out.var_names) == ["A"]
-
-    def test_moderate_threshold(self, sample_adata):
-        # 0.7 -> A (100%) and B (83%) pass; C (33%) and D (50%) fail.
-        out = filter_by_completeness(sample_adata, min_valid_frac=0.7)
-        assert list(out.var_names) == ["A", "B"]
-
-    def test_default_strategy_is_all(self, sample_adata):
-        # keep_strategy not passed -> "all" implied.
-        out = filter_by_completeness(sample_adata, min_valid_frac=0.7)
-        assert list(out.var_names) == ["A", "B"]
+    @pytest.mark.parametrize(
+        ("threshold", "expected"),
+        [
+            (0.0, ["A", "B", "C", "D"]),  # permissive: all pass
+            (0.7, ["A", "B"]),  # moderate: A (100%) + B (83%)
+            (1.0, ["A"]),  # strict: only A has every sample observed
+        ],
+    )
+    def test_threshold_gates_correctly(self, sample_adata, threshold, expected):
+        out = filter_by_completeness(sample_adata, min_valid_frac=threshold)
+        assert list(out.var_names) == expected
 
 
 # ---------------------------------------------------------------------------
@@ -173,30 +165,32 @@ class TestLayers:
 
 
 class TestValidation:
-    def test_bad_min_valid_frac_range(self, sample_adata):
-        with pytest.raises(ValueError, match="min_valid_frac"):
-            filter_by_completeness(sample_adata, min_valid_frac=1.5)
-
-    def test_bad_strategy(self, sample_adata):
-        with pytest.raises(ValueError, match="keep_strategy"):
-            filter_by_completeness(sample_adata, min_valid_frac=0.5, keep_strategy="most")
-
-    def test_all_with_group_raises(self, sample_adata):
-        with pytest.raises(ValueError, match="global"):
-            filter_by_completeness(
-                sample_adata,
-                min_valid_frac=0.5,
-                group_column="condition",
-                keep_strategy="all",
-            )
-
-    def test_any_without_group_raises(self, sample_adata):
-        with pytest.raises(ValueError, match="requires group_column"):
-            filter_by_completeness(sample_adata, min_valid_frac=0.5, keep_strategy="any")
-
-    def test_each_without_group_raises(self, sample_adata):
-        with pytest.raises(ValueError, match="requires group_column"):
-            filter_by_completeness(sample_adata, min_valid_frac=0.5, keep_strategy="each")
+    @pytest.mark.parametrize(
+        ("kwargs", "match"),
+        [
+            ({"min_valid_frac": 1.5}, "min_valid_frac"),
+            ({"min_valid_frac": 0.5, "keep_strategy": "most"}, "keep_strategy"),
+            (
+                {
+                    "min_valid_frac": 0.5,
+                    "group_column": "condition",
+                    "keep_strategy": "all",
+                },
+                "global",
+            ),
+            (
+                {"min_valid_frac": 0.5, "keep_strategy": "any"},
+                "requires group_column",
+            ),
+            (
+                {"min_valid_frac": 0.5, "keep_strategy": "each"},
+                "requires group_column",
+            ),
+        ],
+    )
+    def test_validation_raises(self, sample_adata, kwargs, match):
+        with pytest.raises(ValueError, match=match):
+            filter_by_completeness(sample_adata, **kwargs)
 
     def test_missing_group_column_raises(self, sample_adata):
         with pytest.raises(KeyError, match="not in adata.obs"):

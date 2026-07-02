@@ -143,6 +143,7 @@ OBS_PHOSPHO_SELECTIVITY_PCT = "phospho_selectivity_pct"
 
 LAYER_INTENSITY_LOG2 = "intensity_log2"
 LAYER_LOCALIZATION = "localization"
+LAYER_INTENSITY_LOG2_PRECOMBAT = "intensity_log2_precombat"
 
 
 # ---------------------------------------------------------------------------
@@ -151,3 +152,16 @@ LAYER_LOCALIZATION = "localization"
 
 UNS_ALPHAPHOS = "alphaphos"
 UNS_SOURCE_ATTRS = "source_attrs"
+UNS_BATCH_CORRECTION = "batch_correction"
+
+
+# ---------------------------------------------------------------------------
+# Numeric heuristics used across analysis modules
+# ---------------------------------------------------------------------------
+
+# Log2-scale MS intensities sit in the ~10-30 range; linear-scale is 1e5+.
+# A median above this ceiling is a strong signal that log-transform was skipped.
+LOG_SCALE_MEDIAN_CEILING = 30.0
+
+# limma / ComBat both give unstable estimates below this per-group replicate count.
+MIN_REPLICATES_WARNING = 3

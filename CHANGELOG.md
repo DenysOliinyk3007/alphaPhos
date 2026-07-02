@@ -12,6 +12,103 @@ While in `0.x`, breaking API changes may appear in any MINOR bump (`0.1 → 0.2`
 
 _Nothing yet._
 
+## [0.6.1] - 2026-07-02
+
+### Tests
+
+- **Introduced a real+spiked integration-test framework** for the
+  collapse module.  ``tests/data/egf_mini.tsv`` (1.2 MB filtered
+  slice of the EGF benchmark, 9 real proteins, all 6 samples),
+  ``tests/fixtures/synthetic_psms.py`` (a factory that emits
+  Spectronaut-format PSM rows byte-identical to real exports), and
+  ``tests/integration/test_collapse_spiked.py`` (31 tests covering
+  M1-M4 multiplicity, mixed modifications, all three localization
+  strategies, all four aggregation methods, multi-protein groups,
+  weird biology, and rejected bad inputs).  These tests spike
+  synthetic PSMs into the real EGF data and assert on the exact site
+  keys, intensities, and multiplicities that collapse emits.
+- **Pruned the unit test suite** from 454 to 396 tests (-13%).
+  Consolidated near-identical tests into ``@pytest.mark.parametrize``
+  matrices; removed defensive trivialities (empty/None/NaN input
+  guards where the behavior is obvious); removed unit tests whose
+  behavior is now covered by the spike-in integration suite. Biggest
+  cuts:
+    - ``test_collapse_end_to_end.py``: 27 → 14 (13 tests overlapped
+      with integration).
+    - ``test_collapse_aggregation.py``: 13 → 8 (the four aggregation
+      dispatch tests are covered end-to-end).
+    - ``test_collapse_masking.py``: 8 → 4 (the three localization
+      strategies are covered end-to-end).
+    - ``test_attribution.py``: 54 → 35 (parametrized loc-prob and
+      precid parsers; dropped tautologies like
+      ``test_result_always_sorted_ascending``).
+  No test that exercised a real invariant was removed.
+
+## [0.6.0] - 2026-07-02
+
+### Added
+
+- **ComBat batch-effect correction**
+  (`alphaphos.preprocess.batch_correct.batch_correct_combat`, re-exported
+  as `ap.batch_correct_combat`) with `DEFAULT_COMBAT_SETTINGS`. Wraps
+  `inmoose.pycombat.pycombat_norm`: empirical-Bayes adjustment of
+  per-site batch means and variances on the canonical
+  `intensity_log2` layer. Preserves biology via `covariates=[...]`.
+- **Pre-correction layer kept by default**
+  (`keep_precombat=True`) -- ComBat writes to `intensity_log2` and
+  copies the pre-correction values to
+  `layers["intensity_log2_precombat"]`. Both are then addressable
+  from downstream analysis, per AnnData conventions.
+- **Provenance stamp**:
+  `adata.uns["alphaphos"]["batch_correction"]` records method,
+  batch column, covariates, `ref_batch`, `par_prior`, `mean_only`,
+  target layer, batch sizes, and the inmoose version.
+- **Double-correction guard in `diff_exp_limma`**: reads the
+  provenance stamp and refuses to run when the user passes the
+  same batch column as a limma covariate AND the tested layer is
+  the ComBat-corrected one. Error message spells out both valid
+  fixes:
+    A. (statistically preferred) test the `intensity_log2_precombat`
+       layer with the batch covariate;
+    B. test the ComBat-corrected layer without a batch covariate
+       (fine for visualisation, anti-conservative for stats).
+
+### Validation guards
+`batch_correct_combat` refuses to run when inputs would silently mislead:
+
+- Fewer than 2 batch levels OR a batch with <2 samples (ComBat
+  cannot estimate a batch effect from a singleton).
+- NaN in the target layer -> pointer to
+  `filter_by_completeness` + `impute_hybrid`.
+- Non-log-scale data (median > `LOG_SCALE_MEDIAN_CEILING = 30`).
+- Duplicate `var_names`.
+- Covariate equal to the batch column (self-adjust).
+- `ref_batch` that is not actually a level.
+- Unknown `advanced` keys.
+- Warns when any batch has fewer than 3 replicates
+  (`MIN_REPLICATES_WARNING = 3`) or when a covariate level appears
+  in only one batch (confounded).
+
+### Refactored
+
+- **`LOG_SCALE_MEDIAN_CEILING` and `MIN_REPLICATES_WARNING` hoisted
+  to `alphaphos.constants`** -- shared between
+  `stats.diff_exp` and `preprocess.batch_correct` rather than
+  duplicated per module.
+
+### Validated on real data
+- On the EGF benchmark with an injected synthetic batch effect
+  (`b1` = 4 samples, `b2` = 2 samples with a +2 log2 site-wide shift):
+    - Path A (raw layer + limma batch covariate): 1,839 sig sites at
+      FDR<0.05.
+    - Path B (ComBat-corrected + limma, no batch covariate): 3,593
+      sig sites -- strict superset of Path A (0 unique to Path A,
+      1,754 extra in Path B).
+  The Path-B > Path-A gap is the textbook anti-conservative-p-value
+  phenomenon (ComBat drains batch variance out of the residuals,
+  inflating t-stats), which is why the guard defaults to steering
+  users toward Path A for statistics.
+
 ## [0.5.2] - 2026-07-02
 
 ### Fixed

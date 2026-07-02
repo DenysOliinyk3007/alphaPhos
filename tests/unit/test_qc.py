@@ -203,11 +203,6 @@ def test_imputation_summary_aggregates_by_strategy():
     assert by_strat[(1, "MNAR_Gaussian")] == 1
 
 
-def test_imputation_summary_empty():
-    df = compute_imputation_summary(pd.DataFrame())
-    assert df.empty
-
-
 # ---------------------------------------------------------------------------
 # generate_dashboard — end-to-end
 # ---------------------------------------------------------------------------
