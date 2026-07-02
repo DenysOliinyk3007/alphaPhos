@@ -12,6 +12,17 @@ While in `0.x`, breaking API changes may appear in any MINOR bump (`0.1 → 0.2`
 
 _Nothing yet._
 
+## [0.6.2] - 2026-07-02
+
+### Removed
+
+- **`[r]` optional extra (rpy2)** -- dead scaffolding. No code in the
+  package ever imported ``rpy2``; the ``alphaphos.enrichment`` module
+  (which the extra was reserved for) is still an empty ``__init__.py``.
+  Also removed the paired ``requires_r`` pytest marker and the README
+  references.  If R-backed PTM-SEA is added later, the extra can come
+  back at that point.
+
 ## [0.6.1] - 2026-07-02
 
 ### Tests

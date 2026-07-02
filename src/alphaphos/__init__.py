@@ -28,7 +28,7 @@ See :func:`collapse_sites` for the settings dict; see
 for domain-specific tooling.
 """
 
-__version__ = "0.6.1"
+__version__ = "0.6.2"
 
 # Public entry points, re-exported for convenience.
 from alphaphos.io.diann import (

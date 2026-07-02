@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "alphaPhos"
-version = "0.6.1"
+version = "0.6.2"
 description = "Phosphoproteomics analysis toolkit — IO, preprocessing, PTM site mapping, statistics, KSEA, enrichment, acquisition, QC and visualization."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -33,9 +33,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-r = [
-    "rpy2>=3.5",
-]
 stats = [
     "inmoose>=0.9.1",
     "patsy>=0.5",
@@ -94,7 +91,6 @@ addopts = "-ra --strict-markers"
 markers = [
     "regression: golden-snapshot regression tests against legacy pipelines",
     "slow: tests that take more than a few seconds",
-    "requires_r: tests that need an R/rpy2 install",
 ]
 
 [tool.coverage.run]
