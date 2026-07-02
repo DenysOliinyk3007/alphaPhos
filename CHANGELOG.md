@@ -14,6 +14,22 @@ _Nothing yet._
 
 ## [0.6.2] - 2026-07-02
 
+### Added
+
+- **End-to-end EGF walkthrough notebook** at
+  ``examples/egf_walkthrough.py`` (jupytext percent format; opens as a
+  Jupyter notebook and pairs with an ``.ipynb`` if you convert). Runs
+  the full pipeline on the ``test_data/benchmark/EGF_diff_exp.tsv``
+  Spectronaut report:
+    read -> collapse -> filter -> impute -> QC dashboard ->
+    kinase-window FASTA annotation -> ComBat batch correction (with a
+    fake batch to show the correction) -> limma differential
+    expression -> volcano plot -> Yaffe-library PWM scoring -> KSEA
+    kinase-activity inference via OmniPath. Each optional-dep section
+    is guarded with try/except. Verified end-to-end: top-KSEA kinases
+    are the canonical EGF signature (EGF receptor, MK2, Src-family,
+    JAK2, BRAF).
+
 ### Removed
 
 - **`[r]` optional extra (rpy2)** -- dead scaffolding. No code in the
@@ -22,6 +38,16 @@ _Nothing yet._
   Also removed the paired ``requires_r`` pytest marker and the README
   references.  If R-backed PTM-SEA is added later, the extra can come
   back at that point.
+
+### Known limitations surfaced by the walkthrough
+
+- **``alphaphos.ksea.alphaphos_site_to_omnipath`` is stale**: still
+  expects the pre-0.1.0 ``Protein~Gene_Site_Mult`` site-key format
+  (with ``~`` and ``_`` delimiters), but the current pipeline emits
+  ``Protein|Gene|Site|Mult`` (with ``|``).  The notebook works around
+  this by building the OmniPath-format identifier manually and passing
+  ``convert_site_ids=False`` to ``kinase_activity_ulm``.  A future
+  patch should update the converter to accept the new format.
 
 ## [0.6.1] - 2026-07-02
 

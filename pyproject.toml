@@ -83,6 +83,10 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["F401", "F811"]
+# Example notebooks (jupytext percent-format) use trailing expressions to
+# print the last value (standard Jupyter idiom) and Unicode chars in
+# markdown strings (×, ≥, ...).  Neither is a real defect in that context.
+"examples/*" = ["B018", "F541", "RUF001"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
