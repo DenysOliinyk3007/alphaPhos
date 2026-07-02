@@ -12,6 +12,20 @@ While in `0.x`, breaking API changes may appear in any MINOR bump (`0.1 → 0.2`
 
 _Nothing yet._
 
+## [0.6.3] - 2026-07-02
+
+### Added
+
+- **Proteome FASTAs now committed** at ``resources/fastas/``: human
+  (13.7 MB), mouse (11.7 MB), Chinese hamster / CHO (11.6 MB). Sourced
+  from UniProt (CC-BY 4.0). The ``ap.add_kinase_windows`` step and the
+  ``examples/egf_walkthrough`` notebook now work out of the box for any
+  collaborator who clones the repo -- no extra download step.
+  ``resources/fastas/*.fasta`` was removed from ``.gitignore``.
+  Attribution added to the README.
+- **``examples/egf_walkthrough.ipynb``** -- Jupyter notebook version of
+  the walkthrough, paired with the existing ``.py`` percent-format file.
+
 ## [0.6.2] - 2026-07-02
 
 ### Added

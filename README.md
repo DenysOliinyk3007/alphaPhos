@@ -2,7 +2,7 @@
 
 Phosphoproteomics analysis toolkit.
 
-**Status:** pre-alpha (v0.6.2). Standard 2-condition workflows (Spectronaut / DIA-NN / FragPipe → sites → filter → impute → optional ComBat → limma) are covered end-to-end and validated on real data. Multi-contrast ANOVA, PCA/UMAP, and PTM-SEA enrichment are not yet implemented.
+**Status:** pre-alpha (v0.6.3). Standard 2-condition workflows (Spectronaut / DIA-NN / FragPipe → sites → filter → impute → optional ComBat → limma) are covered end-to-end and validated on real data. Multi-contrast ANOVA, PCA/UMAP, and PTM-SEA enrichment are not yet implemented.
 
 ## Install
 
@@ -81,6 +81,20 @@ result = ap.diff_exp_limma(
 - **`.var` schema carries 9 legacy/internal columns** (`PTM_group`, `PTM_0_pos_val`, `UPD_seq`, `pg_key`, ...) with no downstream consumers. Slated for cleanup in a future minor.
 - **`peptide_start = 0` silently emits `S0`** rather than rejecting. Locked by a characterization test; will surface if a future validator lands.
 - **`EG.PTMAssayProbability` is not used as a filter anywhere.** Peptide-level assay confidence has to be gated upstream in Spectronaut.
+
+## Bundled proteome FASTAs
+
+The `resources/fastas/` directory ships **human**, **mouse**, and
+**Chinese hamster (CHO)** proteomes (~37 MB total, needed by
+`ap.add_kinase_windows` for sequence-window annotation). Sourced from
+[UniProt](https://www.uniprot.org/) — CC-BY 4.0. Please cite UniProt if
+you use these downstream:
+
+> The UniProt Consortium. *UniProt: the Universal Protein
+> Knowledgebase in 2023.* Nucleic Acids Res. 51:D523-D531 (2023).
+
+The versions here are pinned snapshots; refresh from UniProt when you
+need a newer release.
 
 ## License
 
