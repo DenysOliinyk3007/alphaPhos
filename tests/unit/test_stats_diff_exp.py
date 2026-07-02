@@ -14,7 +14,16 @@ import pandas as pd
 import pytest
 
 from alphaphos.constants import LAYER_INTENSITY_LOG2
-from alphaphos.stats.diff_exp import DEFAULT_STATS_SETTINGS, diff_exp_limma
+from alphaphos.stats.diff_exp import (
+    _HAS_STATS_DEPS,
+    DEFAULT_STATS_SETTINGS,
+    diff_exp_limma,
+)
+
+pytestmark = pytest.mark.skipif(
+    not _HAS_STATS_DEPS,
+    reason="inmoose + patsy not installed; run `pip install alphaPhos[stats]`.",
+)
 
 TRUE_HITS = 10  # first N sites are spiked
 

@@ -12,6 +12,23 @@ While in `0.x`, breaking API changes may appear in any MINOR bump (`0.1 → 0.2`
 
 _Nothing yet._
 
+## [0.5.2] - 2026-07-02
+
+### Fixed
+
+- **CI green again after 0.5.0 / 0.5.1.** `patsy` was imported
+  unconditionally at the top of `alphaphos/stats/diff_exp.py`, but that
+  module is re-exported from ``alphaphos/__init__.py`` -- so a bare
+  `import alphaphos` on a core-only install (as CI does) crashed with
+  `ModuleNotFoundError: No module named 'patsy'` before any test could
+  run. Same failure mode as the 0.1.1 pyarrow break. Both `patsy` and
+  `inmoose.limma` are now behind a single ``try/except`` at module top
+  under a `_HAS_STATS_DEPS` flag; `diff_exp_limma()` checks the flag and
+  raises a clean `ImportError` pointing at `pip install alphaPhos[stats]`
+  when either is missing. `tests/unit/test_stats_diff_exp.py` gets a
+  module-level `skipif` on the same flag, so the file skips cleanly on
+  CI rather than erroring at collection time.
+
 ## [0.5.1] - 2026-07-01
 
 ### Changed

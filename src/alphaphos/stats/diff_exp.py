@@ -27,7 +27,6 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
-import patsy
 
 from alphaphos.constants import LAYER_INTENSITY_LOG2
 
@@ -37,7 +36,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# patsy + inmoose are gated behind the [stats] extra. Everything in this
+# module still imports cleanly without them; diff_exp_limma raises
+# ImportError with an install hint when called.
 try:
+    import patsy  # type: ignore[import-not-found]
     from inmoose.limma import (  # type: ignore[import-not-found]
         contrasts_fit,
         eBayes,
@@ -46,9 +49,9 @@ try:
         topTable,
     )
 
-    _HAS_INMOOSE = True
+    _HAS_STATS_DEPS = True
 except ImportError:  # pragma: no cover
-    _HAS_INMOOSE = False
+    _HAS_STATS_DEPS = False
 
 
 DEFAULT_STATS_SETTINGS: dict = {
@@ -126,10 +129,10 @@ def diff_exp_limma(
     KeyError
         If ``condition_column`` / ``covariates`` / ``layer`` are absent.
     """
-    if not _HAS_INMOOSE:
+    if not _HAS_STATS_DEPS:
         raise ImportError(
-            "diff_exp_limma requires inmoose. Install with "
-            "`pip install alphaPhos[stats]` or `pip install inmoose`."
+            "diff_exp_limma requires inmoose and patsy. Install with "
+            "`pip install alphaPhos[stats]`."
         )
 
     settings = _resolve_stats_settings(advanced)
