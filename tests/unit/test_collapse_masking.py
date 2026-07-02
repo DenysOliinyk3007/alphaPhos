@@ -23,12 +23,8 @@ from alphaphos.preprocess._collapse.masking import (
 
 def test_filter_by_global_max_drops_low_max_sites():
     idx = pd.Index(["site1", "site2", "site3"], name="full_key")
-    quant = pd.DataFrame(
-        {"s1": [10.0, 20.0, 30.0], "s2": [15.0, 25.0, 35.0]}, index=idx
-    )
-    loc = pd.DataFrame(
-        {"s1": [0.99, 0.99, 0.10], "s2": [0.99, 0.99, 0.20]}, index=idx
-    )
+    quant = pd.DataFrame({"s1": [10.0, 20.0, 30.0], "s2": [15.0, 25.0, 35.0]}, index=idx)
+    loc = pd.DataFrame({"s1": [0.99, 0.99, 0.10], "s2": [0.99, 0.99, 0.20]}, index=idx)
     out_q, out_loc = filter_by_global_max(quant, loc, cutoff=0.75)
     # site3 max = 0.20 < 0.75 -> dropped from both matrices.
     assert list(out_q.index) == ["site1", "site2"]
@@ -61,9 +57,7 @@ def test_mask_condition_aware_rejects_missing_condition_column():
 
 def test_drop_all_nan_sites_aligns_all_three_matrices():
     idx = pd.Index(["site1", "site2", "site3"], name="full_key")
-    quant = pd.DataFrame(
-        {"s1": [1.0, np.nan, 3.0], "s2": [1.0, np.nan, 3.0]}, index=idx
-    )
+    quant = pd.DataFrame({"s1": [1.0, np.nan, 3.0], "s2": [1.0, np.nan, 3.0]}, index=idx)
     loc = pd.DataFrame({"s1": [0.9, 0.9, 0.9], "s2": [0.9, 0.9, 0.9]}, index=idx)
     meta = pd.DataFrame({"gene": ["G1", "G2", "G3"]}, index=idx)
     q_new, loc_new, meta_new = drop_all_nan_sites(quant, loc, meta)

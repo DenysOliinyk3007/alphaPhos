@@ -153,9 +153,7 @@ class TestCopyBehavior:
         )
         assert result is not None
         # Input is unchanged
-        np.testing.assert_allclose(
-            two_batch_adata.layers[LAYER_INTENSITY_LOG2], source, rtol=0
-        )
+        np.testing.assert_allclose(two_batch_adata.layers[LAYER_INTENSITY_LOG2], source, rtol=0)
         # Returned copy is corrected
         assert not np.allclose(result.layers[LAYER_INTENSITY_LOG2], source)
 
@@ -238,9 +236,7 @@ class TestDoubleCorrectionGuard:
     def test_refuses_batch_covariate_after_combat(self, two_batch_adata):
         from alphaphos.stats.diff_exp import diff_exp_limma
 
-        batch_correct_combat(
-            two_batch_adata, batch_column="batch", covariates=["condition"]
-        )
+        batch_correct_combat(two_batch_adata, batch_column="batch", covariates=["condition"])
         with pytest.raises(ValueError, match="Double batch correction"):
             diff_exp_limma(
                 two_batch_adata,
@@ -254,9 +250,7 @@ class TestDoubleCorrectionGuard:
         # batch covariate. Guard MUST NOT trigger.
         from alphaphos.stats.diff_exp import diff_exp_limma
 
-        batch_correct_combat(
-            two_batch_adata, batch_column="batch", covariates=["condition"]
-        )
+        batch_correct_combat(two_batch_adata, batch_column="batch", covariates=["condition"])
         res = diff_exp_limma(
             two_batch_adata,
             condition_column="condition",
@@ -270,9 +264,7 @@ class TestDoubleCorrectionGuard:
         # Path B: run stats on the corrected layer WITHOUT a batch covariate.
         from alphaphos.stats.diff_exp import diff_exp_limma
 
-        batch_correct_combat(
-            two_batch_adata, batch_column="batch", covariates=["condition"]
-        )
+        batch_correct_combat(two_batch_adata, batch_column="batch", covariates=["condition"])
         res = diff_exp_limma(
             two_batch_adata,
             condition_column="condition",

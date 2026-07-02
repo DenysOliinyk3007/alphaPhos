@@ -248,8 +248,7 @@ def _resolve_stats_settings(advanced: dict | None) -> dict:
     unknown = set(advanced) - set(DEFAULT_STATS_SETTINGS)
     if unknown:
         raise ValueError(
-            f"Unknown advanced keys: {sorted(unknown)}. "
-            f"Allowed: {sorted(DEFAULT_STATS_SETTINGS)}"
+            f"Unknown advanced keys: {sorted(unknown)}. Allowed: {sorted(DEFAULT_STATS_SETTINGS)}"
         )
     out.update(advanced)
     return out
@@ -368,8 +367,7 @@ def _build_design(
     cols = list(design.design_info.column_names)
     if level_treat not in cols or level_ctrl not in cols:
         raise ValueError(
-            f"Design matrix missing expected levels {level_treat!r}/{level_ctrl!r}. "
-            f"Got: {cols}"
+            f"Design matrix missing expected levels {level_treat!r}/{level_ctrl!r}. Got: {cols}"
         )
     return design, {"treatment": level_treat, "control": level_ctrl}
 

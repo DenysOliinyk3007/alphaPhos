@@ -68,8 +68,8 @@ class TestBuildModifiedSequence:
             ("PEPTIDE", 4, "PEPt*IDE"),  # middle
             ("PEPTIDE", 1, "p*EPTIDE"),  # start
             ("PEPTIDE", 7, "PEPTIDe*"),  # end
-            ("PEPTIDE", 0, "PEPTIDE"),   # out of range left: no-op
-            ("PEPTIDE", 999, "PEPTIDE"), # out of range right: no-op
+            ("PEPTIDE", 0, "PEPTIDE"),  # out of range left: no-op
+            ("PEPTIDE", 999, "PEPTIDE"),  # out of range right: no-op
         ],
     )
     def test_star_marker_placement(self, sequence, pos, expected):

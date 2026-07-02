@@ -232,9 +232,7 @@ class TestImputeHybrid:
         a2 = _make_adata(X)
         impute_hybrid(a1, gaussian_seed=42)
         impute_hybrid(a2, gaussian_seed=7)
-        assert (
-            a1.layers[LAYER_INTENSITY_LOG2][0, 4] != a2.layers[LAYER_INTENSITY_LOG2][0, 4]
-        )
+        assert a1.layers[LAYER_INTENSITY_LOG2][0, 4] != a2.layers[LAYER_INTENSITY_LOG2][0, 4]
 
     def test_no_missing_is_no_op(self):
         X = np.array([[1.0, 2.0], [3.0, 4.0]])

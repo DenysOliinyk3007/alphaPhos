@@ -56,15 +56,11 @@ def _encode_precursor_id(
     mods_at: dict[int, str] = {}
     for p in phospho_positions:
         if base_sequence[p] not in STY:
-            raise ValueError(
-                f"phospho at position {p} lands on {base_sequence[p]!r}, not STY."
-            )
+            raise ValueError(f"phospho at position {p} lands on {base_sequence[p]!r}, not STY.")
         mods_at[p] = "Phospho (STY)"
     for p, m in (other_mods or {}).items():
         if p in mods_at:
-            raise ValueError(
-                f"position {p} already has a phospho; cannot also add {m!r}."
-            )
+            raise ValueError(f"position {p} already has a phospho; cannot also add {m!r}.")
         mods_at[p] = m
 
     out: list[str] = []
@@ -83,9 +79,7 @@ def _encode_loc_probs_string(
     """Emit ``_A_S[Phospho (STY): 56.9%]P..._``."""
     for p in loc_probs:
         if base_sequence[p] not in STY:
-            raise ValueError(
-                f"loc_probs position {p} is on {base_sequence[p]!r}, not STY."
-            )
+            raise ValueError(f"loc_probs position {p} is on {base_sequence[p]!r}, not STY.")
     out: list[str] = []
     for i, aa in enumerate(base_sequence):
         out.append(aa)
@@ -193,9 +187,7 @@ def make_phospho_psm(
         loc_probs=loc_probs,
         other_mods=other_mods,
     )
-    precursor_id = _encode_precursor_id(
-        base_sequence, phospho_positions, other_mods, charge
-    )
+    precursor_id = _encode_precursor_id(base_sequence, phospho_positions, other_mods, charge)
     loc_string = _encode_loc_probs_string(base_sequence, loc_probs, other_mods)
     pg_ids = protein_ids_semicolon or protein_id
     genes_field = genes_semicolon or gene

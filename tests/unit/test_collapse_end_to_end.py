@@ -49,9 +49,7 @@ def _make_synthetic_psm() -> pd.DataFrame:
                     "EG.TotalQuantity (Settings)": 2000 + hash(sample) % 500,
                     "PEP.PeptidePosition": "570",
                     "EG.PTMAssayProbability": 0.92,
-                    "EG.PTMLocalizationProbabilities": (
-                        "_ASGQGS[Phospho (STY): 92.0%]PGVK_"
-                    ),
+                    "EG.PTMLocalizationProbabilities": ("_ASGQGS[Phospho (STY): 92.0%]PGVK_"),
                     "PG.Genes": "SIK1B",
                     "PG.ProteinGroups": "A0A0B4J2F2",
                 }
@@ -158,7 +156,9 @@ class TestQuantificationLevelWiring:
         # from MS2 or MS1 to 'auto' and warns.
         psm_df = _make_synthetic_psm()
         cdf = _make_synthetic_conditions()
-        with pytest.warns(UserWarning, match=f"quantification_level='{requested_level}' unavailable"):
+        with pytest.warns(
+            UserWarning, match=f"quantification_level='{requested_level}' unavailable"
+        ):
             adata = ap.collapse_sites(
                 psm_df,
                 condition_df=cdf,

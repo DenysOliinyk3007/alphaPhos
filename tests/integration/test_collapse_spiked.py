@@ -381,9 +381,7 @@ class TestMultiplicityDepth:
 
 
 class TestMixedModifications:
-    def test_carbamidomethyl_C_does_not_leak_into_site_key(
-        self, base_psm_df, condition_df, runs
-    ):
+    def test_carbamidomethyl_C_does_not_leak_into_site_key(self, base_psm_df, condition_df, runs):
         # Peptide with a C at position 4 (Cam-C) and a phospho on S at 7.
         # Site key must reflect ONLY the phospho -- Cam-C is a fixed mod, no
         # site row for it.
@@ -401,9 +399,7 @@ class TestMixedModifications:
         synthetic = _synthetic_sites(adata)
         assert synthetic == ["TEST_CAM|CAMGENE|S107|M1"]
 
-    def test_oxidized_M_variant_merges_with_unoxidized(
-        self, base_psm_df, condition_df, runs
-    ):
+    def test_oxidized_M_variant_merges_with_unoxidized(self, base_psm_df, condition_df, runs):
         # Same peptide, two variants: one with Oxidation-M at position 3,
         # one without. Same phospho site (S at intra 6). The site key is
         # (Protein|Gene|Site|Mult) -- neither depends on Oxidation-M -> the two
@@ -499,7 +495,9 @@ class TestLocalizationStrategies:
     def test_condition_strategy_ctrl_masked(self, base_psm_df, condition_df, runs):
         # 3/3 EGF Class-I -> EGF cells kept; 0/3 ctrl -> ctrl cells masked to NaN.
         adata = _collapse_with(
-            base_psm_df, condition_df, self._spikes(runs),
+            base_psm_df,
+            condition_df,
+            self._spikes(runs),
             advanced={"localization_strategy": "condition"},
         )
         key = "TEST_LOC|LOCGENE|S802|M1"
@@ -514,7 +512,9 @@ class TestLocalizationStrategies:
     def test_per_run_strategy_masks_cell_by_cell(self, base_psm_df, condition_df, runs):
         # Per-run: each cell independently gates on its own loc prob.
         adata = _collapse_with(
-            base_psm_df, condition_df, self._spikes(runs),
+            base_psm_df,
+            condition_df,
+            self._spikes(runs),
             advanced={"localization_strategy": "per_run"},
         )
         key = "TEST_LOC|LOCGENE|S802|M1"
@@ -529,7 +529,9 @@ class TestLocalizationStrategies:
     def test_global_max_strategy_keeps_all_cells(self, base_psm_df, condition_df, runs):
         # global_max: any single sample above cutoff -> keep the whole site.
         adata = _collapse_with(
-            base_psm_df, condition_df, self._spikes(runs),
+            base_psm_df,
+            condition_df,
+            self._spikes(runs),
             advanced={"localization_strategy": "global_max"},
         )
         key = "TEST_LOC|LOCGENE|S802|M1"
@@ -570,7 +572,9 @@ class TestAggregationMethods:
 
     def test_sum(self, base_psm_df, condition_df, runs):
         adata = _collapse_with(
-            base_psm_df, condition_df, self._spikes(runs),
+            base_psm_df,
+            condition_df,
+            self._spikes(runs),
             advanced={"aggregation_method": "sum"},
         )
         expected = float(np.log2(1e6 + 2e6 + 3e6))
@@ -579,7 +583,9 @@ class TestAggregationMethods:
 
     def test_median(self, base_psm_df, condition_df, runs):
         adata = _collapse_with(
-            base_psm_df, condition_df, self._spikes(runs),
+            base_psm_df,
+            condition_df,
+            self._spikes(runs),
             advanced={"aggregation_method": "median"},
         )
         expected = float(np.log2(2e6))  # median of {1,2,3}e6
@@ -588,7 +594,9 @@ class TestAggregationMethods:
 
     def test_mean(self, base_psm_df, condition_df, runs):
         adata = _collapse_with(
-            base_psm_df, condition_df, self._spikes(runs),
+            base_psm_df,
+            condition_df,
+            self._spikes(runs),
             advanced={"aggregation_method": "mean"},
         )
         expected = float(np.log2(2e6))  # mean of {1,2,3}e6
@@ -600,7 +608,9 @@ class TestAggregationMethods:
         # value depends on internals; assert it stays in a plausible range
         # bounded by the input intensities.
         adata = _collapse_with(
-            base_psm_df, condition_df, self._spikes(runs),
+            base_psm_df,
+            condition_df,
+            self._spikes(runs),
             advanced={"aggregation_method": "consolidate"},
         )
         vals = self._site_log2(adata, "TEST_AGG|AGGGENE|S903|M1")
@@ -655,15 +665,15 @@ class TestMultiProteinGroup:
             genes_semicolon="P1GENE;P2GENE",
         )
         adata = _collapse_with(
-            base_psm_df, condition_df, [spike],
+            base_psm_df,
+            condition_df,
+            [spike],
             advanced={"collapse_level": "P"},
         )
         synthetic = _synthetic_sites(adata)
         assert len(synthetic) == 1
         assert synthetic[0].startswith("TEST_P1;TEST_P2|"), synthetic
-        assert (
-            adata.var.loc[synthetic[0], "protein_group_id"] == "TEST_P1;TEST_P2"
-        )
+        assert adata.var.loc[synthetic[0], "protein_group_id"] == "TEST_P1;TEST_P2"
 
 
 # ==========================================================================
@@ -748,9 +758,7 @@ class TestBadInputs:
                 intensities_per_run={"r1": 1e6},
             )
 
-    def test_collapse_drops_non_STY_phospho_from_raw_row(
-        self, base_psm_df, condition_df, runs
-    ):
+    def test_collapse_drops_non_STY_phospho_from_raw_row(self, base_psm_df, condition_df, runs):
         # Build a MALFORMED raw row that bypasses the factory guard: phospho
         # tag on an A residue (not STY). compute_site_metadata should drop it.
         from tests.fixtures.synthetic_psms import (
@@ -771,25 +779,19 @@ class TestBadInputs:
         )
         good = good.copy()
         good["EG.PrecursorId"] = "_A[Phospho (STY)]SAAAAAK_.3"
-        good["EG.PTMLocalizationProbabilities"] = (
-            "_A[Phospho (STY): 99%]SAAAAAK_"
-        )
+        good["EG.PTMLocalizationProbabilities"] = "_A[Phospho (STY): 99%]SAAAAAK_"
         good["EG.ModifiedSequence"] = "_A[Phospho (STY)]SAAAAAK_"
 
         # Manually concat -- spike_into() would re-encode via the factory.
         keep_cols = [c for c in SPECTRONAUT_COLUMNS if c in base_psm_df.columns]
-        combined = pd.concat(
-            [base_psm_df[keep_cols], good[keep_cols]], ignore_index=True
-        )
+        combined = pd.concat([base_psm_df[keep_cols], good[keep_cols]], ignore_index=True)
         combined.attrs = dict(base_psm_df.attrs)
         adata = ap.collapse_sites(combined, condition_df=condition_df)
         # The malformed row must not produce a site.
         assert "TEST_NSTY|NSTYGENE|A100|M1" not in adata.var_names
         assert not any(k.startswith("TEST_NSTY|") for k in adata.var_names)
 
-    def test_peptide_start_zero_documents_current_behavior(
-        self, base_psm_df, condition_df, runs
-    ):
+    def test_peptide_start_zero_documents_current_behavior(self, base_psm_df, condition_df, runs):
         # peptide_start=0 with intra=1 (1-indexed inside the pipeline) gives
         # absolute_position = 0 + 1 - 1 = 0.  Not a valid protein position,
         # but the current pipeline does NOT reject it -- this test just
@@ -812,9 +814,7 @@ class TestBadInputs:
         synthetic = _synthetic_sites(adata)
         assert synthetic == ["TEST_ZERO|ZEROGENE|S0|M1"]
 
-    def test_low_assay_probability_still_emits(
-        self, base_psm_df, condition_df, runs
-    ):
+    def test_low_assay_probability_still_emits(self, base_psm_df, condition_df, runs):
         # EG.PTMAssayProbability is the overall assay-level confidence,
         # NOT the site-level localization probability. The current
         # pipeline does not gate on it -- documenting that here so a

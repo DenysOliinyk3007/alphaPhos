@@ -100,8 +100,6 @@ class TestConsolidate:
 
 
 def test_unknown_method_raises():
-    df = pd.DataFrame(
-        {"s1": [1.0, 2.0]}, index=pd.Index(["A", "A"], name="key")
-    )
+    df = pd.DataFrame({"s1": [1.0, 2.0]}, index=pd.Index(["A", "A"], name="key"))
     with pytest.raises(ValueError, match="aggregation method"):
         aggregate_by_key(df, "sqrt-of-count", ["s1"])

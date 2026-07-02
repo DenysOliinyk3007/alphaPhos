@@ -37,8 +37,8 @@ class TestDeriveMotifFlags:
                     "p_minus_1": "T",
                     "p_plus_1": "E",
                     "is_proline_directed": False,
-                    "is_basophilic": True,     # R at -3
-                    "is_acidic_motif": True,   # E at +1 (CK1-like)
+                    "is_basophilic": True,  # R at -3
+                    "is_acidic_motif": True,  # E at +1 (CK1-like)
                 },
             ),
             # +1 = P -> proline-directed

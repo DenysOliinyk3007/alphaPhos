@@ -212,8 +212,7 @@ def _resolve_combat_settings(advanced: dict | None) -> dict:
     unknown = set(advanced) - set(DEFAULT_COMBAT_SETTINGS)
     if unknown:
         raise ValueError(
-            f"Unknown advanced keys: {sorted(unknown)}. "
-            f"Allowed: {sorted(DEFAULT_COMBAT_SETTINGS)}"
+            f"Unknown advanced keys: {sorted(unknown)}. Allowed: {sorted(DEFAULT_COMBAT_SETTINGS)}"
         )
     out.update(advanced)
     return out
@@ -234,15 +233,13 @@ def _validate_inputs(
         )
     if batch_column not in adata.obs.columns:
         raise KeyError(
-            f"batch_column={batch_column!r} not in adata.obs. "
-            f"Available: {list(adata.obs.columns)}"
+            f"batch_column={batch_column!r} not in adata.obs. Available: {list(adata.obs.columns)}"
         )
     batches = adata.obs[batch_column].astype(str)
     unique_batches = batches.unique()
     if len(unique_batches) < 2:
         raise ValueError(
-            f"batch_column={batch_column!r} must have >=2 levels. "
-            f"Found: {list(unique_batches)}"
+            f"batch_column={batch_column!r} must have >=2 levels. Found: {list(unique_batches)}"
         )
     counts = batches.value_counts()
     underpopulated = counts[counts < 2].index.tolist()
@@ -262,9 +259,7 @@ def _validate_inputs(
                 f"covariate={cov!r} not in adata.obs. Available: {list(adata.obs.columns)}"
             )
         if cov == batch_column:
-            raise ValueError(
-                f"covariate={cov!r} is the batch column; cannot self-adjust."
-            )
+            raise ValueError(f"covariate={cov!r} is the batch column; cannot self-adjust.")
     if layer is not None and layer not in adata.layers:
         raise KeyError(
             f"layer={layer!r} not in adata.layers. Available: {list(adata.layers.keys())}"
@@ -323,9 +318,7 @@ def _warn_on_confounding(
     # linear-model step will complain about a singular design; better to
     # warn upfront with a clear diagnosis.
     for cov in covariates:
-        crosstab = pd.crosstab(
-            adata.obs[cov].astype(str), adata.obs[batch_column].astype(str)
-        )
+        crosstab = pd.crosstab(adata.obs[cov].astype(str), adata.obs[batch_column].astype(str))
         cov_batch_counts = (crosstab > 0).sum(axis=1)
         confounded = cov_batch_counts[cov_batch_counts < 2].index.tolist()
         if confounded:

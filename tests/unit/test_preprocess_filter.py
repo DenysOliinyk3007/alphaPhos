@@ -240,8 +240,6 @@ class TestFilterThenImpute:
         assert filtered.n_vars == 2
         # impute_hybrid defaults to layer='intensity_log2'; this fixture only
         # has .X, so target that explicitly.
-        imputed, _audit = impute_hybrid(
-            filtered, layer=None, return_audit=True, copy=True
-        )
+        imputed, _audit = impute_hybrid(filtered, layer=None, return_audit=True, copy=True)
         # The single NaN in site B should have been imputed.
         assert not np.isnan(imputed.X).any()
