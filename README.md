@@ -2,7 +2,7 @@
 
 Phosphoproteomics analysis toolkit.
 
-**Status:** pre-alpha (v0.6.3). Standard 2-condition workflows (Spectronaut / DIA-NN / FragPipe → sites → filter → impute → optional ComBat → limma) are covered end-to-end and validated on real data. Multi-contrast ANOVA, PCA/UMAP, and PTM-SEA enrichment are not yet implemented.
+**Status:** pre-alpha (v0.8.0). Standard 2-condition workflows (Spectronaut / DIA-NN / FragPipe → sites → filter → impute → optional ComBat → limma → enrichment) are covered end-to-end and validated on real data. Multi-contrast ANOVA and PCA/UMAP are not yet implemented.
 
 ## Install
 
@@ -55,7 +55,7 @@ result = ap.diff_exp_limma(
 #   log2fc, se, t_stat, p_value, fdr, B, ave_expr
 ```
 
-## What ships in v0.6.2
+## What ships in v0.8.0
 
 | Module | Function | Notes |
 | --- | --- | --- |
@@ -70,7 +70,8 @@ result = ap.diff_exp_limma(
 | `alphaphos.kinase.annotation` | `add_kinase_windows`, `load_fasta` | ±7-residue windows around each site from a proteome FASTA. |
 | `alphaphos.kinase.library` | Yaffe PWM scoring | Requires the optional `kinase_library` package. |
 | `alphaphos.kinase.enrichment` | Kinase library enrichment | Same optional dep. |
-| `alphaphos.ksea` | `kinase_activity_ulm`, `_mlm`, `_ora`, `_gsea` | OmniPath-based KSEA via `decoupler` (optional). |
+| `alphaphos.enrichment.ksea` | `kinase_activity` | Kinase-activity inference via decoupler ULM (default) / MLM against OmniPath (default), curated PTM DB, or a user-supplied network. |
+| `alphaphos.enrichment.pathway` | `pathway_enrichment` | Gene-level pathway ORA via gseapy Enrichr (GO BP/MF/CC + KEGG + Reactome + Hallmark by default). Phosphoproteome background by default; proteome background preferred if available. |
 | `alphaphos.dose_response` | `fit_dose_response` | CurveCurator wrapper (optional `curve_curator`). |
 | `alphaphos.qc` | `generate_dashboard` | Bokeh QC HTML report (optional `bokeh`). |
 

@@ -24,13 +24,17 @@ Typical usage::
 
 See :func:`collapse_sites` for the settings dict; see
 :mod:`alphaphos.preprocess`, :mod:`alphaphos.kinase`, :mod:`alphaphos.qc`,
-:mod:`alphaphos.ksea`, :mod:`alphaphos.dose_response`, and :mod:`alphaphos.io`
+:mod:`alphaphos.enrichment`, :mod:`alphaphos.dose_response`, and :mod:`alphaphos.io`
 for domain-specific tooling.
 """
 
-__version__ = "0.6.3"
+__version__ = "0.8.0"
 
 # Public entry points, re-exported for convenience.
+# Expose the top-tier enrichment namespace so callers can write
+# ``ap.enrichment.kinase_activity(...)`` / ``ap.enrichment.ora(...)`` /
+# ``ap.enrichment.gsea(...)`` directly.
+from alphaphos import enrichment
 from alphaphos.io.diann import (
     DEFAULT_DIANN_IO_SETTINGS,
     resolve_diann_io_settings,
@@ -95,6 +99,7 @@ __all__ = [
     "DEFAULT_COMBAT_SETTINGS",
     "diff_exp_limma",
     "DEFAULT_STATS_SETTINGS",
+    "enrichment",
     "add_kinase_windows",
     "load_fasta",
     "to_anndata",

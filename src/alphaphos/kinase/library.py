@@ -9,8 +9,8 @@ Pipeline position
 -----------------
 This is **per-site PWM prediction** — sequence-based, works for novel
 sites that aren't in any database. Complements (does not replace) the
-network-based KSEA approach (planned, ``alphaphos.ksea``) which scores
-kinase *activities* across a differential analysis result.
+network-based KSEA approach (``alphaphos.enrichment.kinase_activity``)
+which scores kinase *activities* across a differential analysis result.
 
 Sequence format
 ---------------

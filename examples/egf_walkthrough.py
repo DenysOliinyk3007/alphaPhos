@@ -33,8 +33,8 @@
 # 10. Volcano plot (matplotlib — alphaPhos has no viz module yet)
 # 11. Kinase-motif PWM scoring (`alphaphos.kinase.library`, requires
 #     `kinase_library`)
-# 12. KSEA kinase-activity inference (`alphaphos.ksea`, requires
-#     `decoupler` + `omnipath`)
+# 12. KSEA kinase-activity inference (`alphaphos.enrichment.kinase_activity`,
+#     requires `decoupler` + `omnipath`)
 #
 # **Prerequisites:**
 #
@@ -333,49 +333,31 @@ except Exception as e:
 # %% [markdown]
 # ## 12 — KSEA (kinase activity inference)
 #
-# Optional — requires `decoupler` + a live `omnipath` fetch. Uses the
-# per-site log2FCs to score kinase activity via ULM (univariate linear
-# model) against the OmniPath kinase-substrate network.
-#
-# **Known limitation:** `alphaphos.ksea.alphaphos_site_to_omnipath` still
-# expects the pre-0.1.0 site-key format (`Protein~Gene_Site_Mult`) but
-# the current pipeline emits `Protein|Gene|Site|Mult`.  Until that
-# converter is updated we build the OmniPath-style `Protein_Site`
-# identifier manually and pass ``convert_site_ids=False``.
+# Runs `alphaphos.enrichment.ksea.kinase_activity` on the diff-exp result.
+# Wraps `decoupler`'s ULM (univariate linear model — the modern
+# replacement for the classical Wiredja 2017 KSEA z-score) against the
+# OmniPath kinase-substrate network. Auto-canonicalises the alphaphos
+# site keys to OmniPath's `Protein_AApos` format internally.
 
 # %%
 try:
-    from alphaphos.ksea import fetch_omnipath_ks_network, kinase_activity_ulm
+    from alphaphos.enrichment import kinase_activity
 
-    # Build the KSEA input frame with a `protein` column in the format
-    # KSEA expects: `<UniProt>_<AA><position>` (e.g. `P00533_Y1172`).
-    ksea_input = result[["log2fc"]].copy()
-    ksea_input["protein"] = [
-        f"{key.split('|')[0]}_{adata.var.loc[key, 'site_aa']}{int(adata.var.loc[key, 'site_position'])}"
-        for key in ksea_input.index
-    ]
-    # Fetch (and cache) the OmniPath kinase-substrate network.
-    cache = OUT_DIR / "omnipath_ks_human.parquet"
-    network = fetch_omnipath_ks_network(organism="human", cache_path=cache)
-    print(f"OmniPath network: {len(network):,} kinase-substrate rows")
-
-    ksea_result = kinase_activity_ulm(
-        ksea_input,
-        network=network,
-        id_col="protein",
+    ksea_result = kinase_activity(
+        result,  # from ap.diff_exp_limma; index is Protein|Gene|Site|Mult
         stat_col="log2fc",
-        min_targets=5,
-        convert_site_ids=False,
+        network="omnipath",
+        method="ulm",
+        min_substrates=5,
+        organism="human",
+        cache_path=OUT_DIR / "omnipath_ks_human.parquet",
     )
-    print(f"\nKSEA scored {len(ksea_result):,} kinases with >= 5 targets in the data.")
+    print(f"KSEA scored {len(ksea_result):,} kinases with >= 5 substrates.")
     print(f"KSEA columns: {list(ksea_result.columns)}")
-    # decoupler's ULM returns different columns depending on version; sort
-    # by whichever "score"-like column exists.
-    score_col = "score" if "score" in ksea_result.columns else ksea_result.columns[0]
-    top_kin = ksea_result.sort_values(score_col, ascending=False).head(10)
-    print(f"\nTop 10 activated kinases in EGF (by {score_col!r}):")
-    print(top_kin.round(4).to_string())
-    ksea_result.to_csv(OUT_DIR / "ksea_result.tsv", sep="\t")
+    top_kin = ksea_result.sort_values("score", ascending=False).head(10)
+    print("\nTop 10 activated kinases in EGF (by ULM score):")
+    print(top_kin.round(4).to_string(index=False))
+    ksea_result.to_csv(OUT_DIR / "ksea_result.tsv", sep="\t", index=False)
 except ImportError as e:
     print(f"Skipping KSEA: {e}")
 except Exception as e:
