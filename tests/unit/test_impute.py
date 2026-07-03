@@ -265,3 +265,61 @@ class TestImputeHybrid:
         impute_hybrid(adata)
         assert not np.isnan(adata.layers[LAYER_INTENSITY_LOG2]).any()
         assert np.isnan(adata.X[0, 4])  # .X untouched
+
+
+# ============================================================================
+# Return-value contract: ``adata = ap.impute_*(adata)`` must not clobber
+# ============================================================================
+
+
+class TestReturnContract:
+    """Both imputers must ALWAYS return the AnnData, so
+    ``adata = ap.impute_hybrid(adata)`` is a safe no-op-and-return."""
+
+    def _adata_with_nan(self) -> ad.AnnData:
+        return _make_adata(np.array([[1.0, np.nan, 3.0], [4.0, 5.0, np.nan], [7.0, 8.0, 9.0]]))
+
+    def test_impute_hybrid_returns_same_object_in_place(self):
+        adata = self._adata_with_nan()
+        result = impute_hybrid(adata)
+        assert result is adata
+
+    def test_impute_hybrid_returns_copy_when_copy_true(self):
+        adata = self._adata_with_nan()
+        result = impute_hybrid(adata, copy=True)
+        assert result is not adata
+
+    def test_impute_hybrid_assignment_pattern(self):
+        # The exact UX pattern the fix targets.
+        adata = self._adata_with_nan()
+        adata = impute_hybrid(adata)
+        assert adata is not None
+        assert not np.isnan(adata.layers[LAYER_INTENSITY_LOG2]).any()
+
+    def test_impute_hybrid_audit_tuple(self):
+        adata = self._adata_with_nan()
+        result, audit = impute_hybrid(adata, return_audit=True)
+        assert result is adata
+        assert isinstance(audit, pd.DataFrame)
+
+    def test_impute_hybrid_audit_tuple_with_copy(self):
+        adata = self._adata_with_nan()
+        result, audit = impute_hybrid(adata, return_audit=True, copy=True)
+        assert result is not adata
+        assert isinstance(audit, pd.DataFrame)
+
+    def test_impute_knn_returns_same_object_in_place(self):
+        adata = self._adata_with_nan()
+        result = impute_knn_site_based(adata)
+        assert result is adata
+
+    def test_impute_knn_returns_copy_when_copy_true(self):
+        adata = self._adata_with_nan()
+        result = impute_knn_site_based(adata, copy=True)
+        assert result is not adata
+
+    def test_impute_knn_assignment_pattern(self):
+        adata = self._adata_with_nan()
+        adata = impute_knn_site_based(adata)
+        assert adata is not None
+        assert not np.isnan(adata.layers[LAYER_INTENSITY_LOG2]).any()

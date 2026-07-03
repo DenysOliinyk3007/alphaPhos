@@ -27,8 +27,8 @@ adata = ap.filter_by_completeness(
     group_column="condition", keep_strategy="each",
 )
 
-# --- 3. Impute ---
-ap.impute_hybrid(adata)   # in-place; fills layers["intensity_log2"]
+# --- 3. Impute (in-place; also returns the AnnData so assignment is safe) ---
+adata = ap.impute_hybrid(adata)
 
 # --- 4. (Optional) batch correction ---
 # ap.batch_correct_combat(adata, batch_column="batch", covariates=["condition"])

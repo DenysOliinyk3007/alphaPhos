@@ -17,9 +17,10 @@ Two functions, both operating on an ``AnnData`` with shape
   where the value is below the LOD). The MAR/MNAR split is per-cell,
   driven by the site's overall abundance vs an intensity percentile.
 
-Both functions mutate ``adata`` in place by default (``copy=False``) and
-require a complete-features matrix — call
-:func:`alphaphos.filter_by_completeness` first.
+Both functions mutate ``adata`` in place by default (``copy=False``) **and**
+return it, so ``ap.impute_hybrid(adata)`` and ``adata = ap.impute_hybrid(adata)``
+both work.  Pass ``copy=True`` to receive a fresh copy instead.  Both require a
+complete-features matrix — call :func:`alphaphos.filter_by_completeness` first.
 
 The site-based KNN direction is established as correct for phospho 3v3
 designs in ``docs/benchmark/_run_imputation_benchmark.py``. The hybrid
@@ -87,7 +88,7 @@ def impute_knn_site_based(
     weights: Literal["uniform", "distance"] = "uniform",
     layer: str | None = LAYER_INTENSITY_LOG2,
     copy: bool = False,
-) -> ad.AnnData | None:
+) -> ad.AnnData:
     """Site-based KNN imputation (the right direction for phospho 3v3 data).
 
     Drop-in replacement for Dublin's ``impute_phosphosites``: same algorithm,
@@ -112,13 +113,20 @@ def impute_knn_site_based(
         Pass ``None`` to target ``adata.X`` instead (they start equal after
         ``collapse_sites`` but diverge once any layer is mutated).
     copy
-        If True, return a modified copy; otherwise mutate in-place
-        and return ``None``.
+        If ``True``, mutate a fresh copy of ``adata`` and return it.
+        If ``False`` (default), mutate ``adata`` in place.  Either way
+        the (possibly-mutated) AnnData is returned so the call is safe
+        with or without assignment::
+
+            ap.impute_knn_site_based(adata)          # in-place, return ignored
+            adata = ap.impute_knn_site_based(adata)  # equivalent, same object
+            new_ad = ap.impute_knn_site_based(adata, copy=True)   # fresh copy
 
     Returns
     -------
-    None or AnnData
-        Modified AnnData if ``copy=True``, else ``None`` (in-place).
+    AnnData
+        The mutated AnnData (same object when ``copy=False``, fresh copy
+        when ``copy=True``).
     """
     adata = adata.copy() if copy else adata
     X = adata.X if layer is None else adata.layers[layer]
@@ -135,7 +143,7 @@ def impute_knn_site_based(
         adata.X = imputed
     else:
         adata.layers[layer] = imputed
-    return adata if copy else None
+    return adata
 
 
 def impute_hybrid(
@@ -150,7 +158,7 @@ def impute_hybrid(
     layer: str | None = LAYER_INTENSITY_LOG2,
     return_audit: bool = False,
     copy: bool = False,
-) -> ad.AnnData | None | tuple[ad.AnnData | None, pd.DataFrame]:
+) -> ad.AnnData | tuple[ad.AnnData, pd.DataFrame]:
     """Per-cell hybrid MAR/MNAR imputation.
 
     Each missing cell ``(site, sample)`` is classified independently:
@@ -197,11 +205,21 @@ def impute_hybrid(
         If True, also return a per-cell DataFrame logging which strategy
         was applied (only for missing cells).
     copy
-        If True, return a modified copy; otherwise mutate in-place.
+        If ``True``, mutate a fresh copy of ``adata`` and return it.
+        If ``False`` (default), mutate ``adata`` in place.  Either way
+        the (possibly-mutated) AnnData is returned so the call is safe
+        with or without assignment::
+
+            ap.impute_hybrid(adata)          # in-place, return ignored
+            adata = ap.impute_hybrid(adata)  # equivalent, same object
+            new_ad = ap.impute_hybrid(adata, copy=True)   # fresh copy
 
     Returns
     -------
-    None | AnnData | (AnnData | None, audit DataFrame)
+    AnnData or (AnnData, audit DataFrame)
+        The mutated AnnData (same object when ``copy=False``, fresh copy
+        when ``copy=True``).  When ``return_audit=True``, a
+        ``(adata, audit)`` tuple.
     """
     adata = adata.copy() if copy else adata
     X_orig = adata.X if layer is None else adata.layers[layer]
@@ -218,10 +236,8 @@ def impute_hybrid(
         else:
             adata.layers[layer] = X
         if return_audit:
-            return (adata if copy else None), pd.DataFrame(
-                columns=["sample_idx", "site_idx", "strategy"]
-            )
-        return adata if copy else None
+            return adata, pd.DataFrame(columns=["sample_idx", "site_idx", "strategy"])
+        return adata
 
     # ---- 1. Determine MAR vs MNAR per site -------------------------------
     observed_all = X[~missing_mask]
@@ -313,6 +329,6 @@ def impute_hybrid(
                 ]
             )
         audit = pd.DataFrame(rows)
-        return (adata if copy else None), audit
+        return adata, audit
 
-    return adata if copy else None
+    return adata

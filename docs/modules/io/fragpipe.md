@@ -89,7 +89,7 @@ adata = ap.read_fragpipe_sites(
 # filter / impute / diff-exp:
 adata = ap.filter_by_completeness(adata, min_valid_frac=2/3,
                                   group_column="condition", keep_strategy="each")
-ap.impute_hybrid(adata)
+adata = ap.impute_hybrid(adata)
 result = ap.diff_exp_limma(adata, condition_column="condition",
                            comparison=("trt", "ctrl"))
 ```

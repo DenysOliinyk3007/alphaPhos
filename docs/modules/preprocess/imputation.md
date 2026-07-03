@@ -6,9 +6,17 @@ Two imputers for phosphosite quant matrices:
 - [`impute_knn_site_based`](#impute_knn_site_based) -- pure site-based KNN. Kept for
   Dublin-parity / R-limma-parity workflows.
 
-Both mutate `adata` in place by default (`copy=False`), operate on
-`layers["intensity_log2"]` by default, and require that the target layer has no
-all-NaN sites (run [`filter_by_completeness`](filter.md) first).
+Both mutate `adata` in place by default (`copy=False`) **and** return it, so both
+usage patterns are safe:
+
+```python
+ap.impute_hybrid(adata)           # in-place, return ignored
+adata = ap.impute_hybrid(adata)   # equivalent, same object, no None-trap
+adata2 = ap.impute_hybrid(adata, copy=True)   # explicit fresh copy
+```
+
+Both operate on `layers["intensity_log2"]` by default and require that the target
+layer has no all-NaN sites (run [`filter_by_completeness`](filter.md) first).
 
 ## Scientific basis
 
@@ -53,7 +61,7 @@ ap.impute_hybrid(
     layer: str | None = "intensity_log2",
     return_audit: bool = False,
     copy: bool = False,
-) -> ad.AnnData | None | tuple[ad.AnnData | None, pd.DataFrame]
+) -> ad.AnnData | tuple[ad.AnnData, pd.DataFrame]
 ```
 
 ### Parameters
@@ -69,7 +77,7 @@ ap.impute_hybrid(
 | `gaussian_seed` | `42` | RNG seed for reproducible Gaussian draws. |
 | `layer` | `"intensity_log2"` | Which layer to impute. `None` targets `adata.X`. |
 | `return_audit` | `False` | If `True`, also return a per-missing-cell DataFrame recording which strategy was applied. |
-| `copy` | `False` | If `True`, return a modified copy; else mutate in-place and return `None`. |
+| `copy` | `False` | If `True`, mutate a fresh copy and return it. If `False`, mutate in-place and return the same object. |
 
 ### Per-cell classification
 
@@ -87,10 +95,11 @@ qualifies as MNAR overall.
 
 ### Output
 
-- If `copy=False, return_audit=False`: `None` (in-place mutation).
-- If `copy=True, return_audit=False`: `AnnData` (mutated copy).
-- If `return_audit=True`: also emits a per-cell audit DataFrame with columns
-  `(site, sample, strategy, imputed_value)` for every missing cell.
+- **Always returns the AnnData.** When `copy=False` (default) it's the same object
+  passed in, mutated in place. When `copy=True`, a fresh copy.
+- If `return_audit=True`, returns a `(adata, audit)` tuple. `audit` is a per-cell
+  DataFrame with columns `(sample_idx, site_idx, strategy)` for every missing cell,
+  where `strategy` is either `"MAR_KNN"` or `"MNAR_Gaussian"`.
 
 ### Example
 
@@ -99,10 +108,12 @@ import alphaphos as ap
 
 # In-place, defaults
 ap.impute_hybrid(adata)
+# or, equivalently:
+adata = ap.impute_hybrid(adata)
 
-# Return audit trail
-result_ad, audit = ap.impute_hybrid(adata, return_audit=True, copy=True)
-print(audit["strategy"].value_counts())  # e.g. mar_knn: 340, mnar_gaussian: 82
+# Return audit trail alongside the (in-place-mutated) AnnData
+adata, audit = ap.impute_hybrid(adata, return_audit=True)
+print(audit["strategy"].value_counts())  # e.g. MAR_KNN: 340, MNAR_Gaussian: 82
 ```
 
 ---
@@ -123,7 +134,7 @@ ap.impute_knn_site_based(
     weights: Literal["uniform", "distance"] = "uniform",
     layer: str | None = "intensity_log2",
     copy: bool = False,
-) -> ad.AnnData | None
+) -> ad.AnnData
 ```
 
 ### Parameters
@@ -134,7 +145,7 @@ ap.impute_knn_site_based(
 | `n_neighbors` | `None` &rarr; `int(sqrt(n_samples))` | k. Dublin's convention. |
 | `weights` | `"uniform"` | Neighbour vote weighting. |
 | `layer` | `"intensity_log2"` | Which layer to impute. `None` targets `.X`. |
-| `copy` | `False` | If `True`, return a modified copy; else in-place. |
+| `copy` | `False` | If `True`, mutate a fresh copy and return it. If `False`, mutate in-place and return the same object. |
 
 ### When to use pure KNN over hybrid
 
@@ -150,8 +161,9 @@ default because it doesn't force below-LOD sites through a KNN borrow.
 - Both functions assume the target layer is **log2-scale**. Imputing on linear-scale data
   gives nonsense because the Gaussian downshift is calibrated in log-space `sigma`.
 - Both **require prior completeness filtering** -- an all-NaN site column raises.
-- Both mutate `adata` in place by default; set `copy=True` if you need to preserve the
-  original.
+- Both mutate `adata` in place by default and **also return it**, so
+  `adata = ap.impute_hybrid(adata)` is safe (never returns `None`). Set `copy=True`
+  when you need to preserve the original object.
 - Reproducibility: pass `gaussian_seed` (and use `weights="uniform"` for KNN) for
   deterministic output.
 

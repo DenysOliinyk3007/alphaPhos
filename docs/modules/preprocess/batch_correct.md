@@ -36,7 +36,7 @@ ap.batch_correct_combat(
     keep_precombat: bool = True,
     advanced: dict | None = None,
     copy: bool = False,
-) -> ad.AnnData | None
+) -> ad.AnnData
 ```
 
 ## Input
@@ -55,7 +55,7 @@ ap.batch_correct_combat(
 | `layer` | `"intensity_log2"` | Which layer to correct. `None` targets `.X`. |
 | `keep_precombat` | `True` | Copy pre-correction values to `layers["intensity_log2_precombat"]`. Keeps the raw log2 slot available to `diff_exp_limma` for the batch-as-covariate path. |
 | `advanced` | `None` | Overrides for `DEFAULT_COMBAT_SETTINGS`. See below. |
-| `copy` | `False` | If `True`, return a corrected copy; else mutate in-place. |
+| `copy` | `False` | If `True`, mutate a fresh copy and return it. If `False`, mutate in-place and return the same object. |
 
 ### `advanced` keys (see `DEFAULT_COMBAT_SETTINGS`)
 
@@ -67,12 +67,22 @@ ap.batch_correct_combat(
 
 ## Output
 
-- If `copy=False`: `None` (in-place). Otherwise: modified `AnnData`.
+**Always returns the AnnData.** When `copy=False` (default) it's the same object passed
+in, mutated in place; when `copy=True`, a fresh copy. Either way, on the returned object:
+
 - Target layer is now batch-corrected.
 - `layers["intensity_log2_precombat"]` populated (if `keep_precombat=True`).
 - `.uns["alphaphos"]["batch_correction"]` stamped with `{method: "combat", batch_column,
   covariates, par_prior, mean_only, ref_batch, layer, alphaphos_version}` for provenance
   and the double-correct guard.
+
+Both usage patterns are safe:
+
+```python
+ap.batch_correct_combat(adata, batch_column="batch")          # in-place
+adata = ap.batch_correct_combat(adata, batch_column="batch")  # equivalent
+new_ad = ap.batch_correct_combat(adata, batch_column="batch", copy=True)  # fresh copy
+```
 
 ## Raises
 

@@ -158,6 +158,30 @@ class TestCopyBehavior:
         assert not np.allclose(result.layers[LAYER_INTENSITY_LOG2], source)
 
 
+class TestReturnContract:
+    """Must ALWAYS return the AnnData so
+    ``adata = ap.batch_correct_combat(adata, batch_column=...)`` is safe."""
+
+    def test_returns_same_object_in_place(self, two_batch_adata):
+        result = batch_correct_combat(
+            two_batch_adata, batch_column="batch", covariates=["condition"]
+        )
+        assert result is two_batch_adata
+
+    def test_returns_copy_when_copy_true(self, two_batch_adata):
+        result = batch_correct_combat(
+            two_batch_adata, batch_column="batch", covariates=["condition"], copy=True
+        )
+        assert result is not two_batch_adata
+
+    def test_assignment_pattern(self, two_batch_adata):
+        adata = batch_correct_combat(
+            two_batch_adata, batch_column="batch", covariates=["condition"]
+        )
+        assert adata is not None
+        assert LAYER_INTENSITY_LOG2 in adata.layers
+
+
 class TestValidation:
     def test_missing_batch_column(self, two_batch_adata):
         with pytest.raises(KeyError, match="batch_column"):

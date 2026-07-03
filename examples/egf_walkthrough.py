@@ -148,7 +148,7 @@ print(f"NaN remaining: {n_nan:,} / {total:,} ({100 * n_nan / total:.1f}%)")
 # Writes to `layers["intensity_log2"]` by default.
 
 # %%
-_, audit = ap.impute_hybrid(adata, return_audit=True)
+adata, audit = ap.impute_hybrid(adata, return_audit=True)
 print(f"Cells imputed: {len(audit):,}")
 print(audit["strategy"].value_counts().to_string())
 assert not np.isnan(adata.layers["intensity_log2"]).any()
@@ -212,7 +212,7 @@ before = (
     adata.layers["intensity_log2"][b2_mask].mean() - adata.layers["intensity_log2"][~b2_mask].mean()
 )
 
-ap.batch_correct_combat(
+adata = ap.batch_correct_combat(
     adata,
     batch_column="batch",
     covariates=["condition"],
