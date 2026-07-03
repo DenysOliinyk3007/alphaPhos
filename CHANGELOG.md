@@ -12,6 +12,40 @@ While in `0.x`, breaking API changes may appear in any MINOR bump (`0.1 → 0.2`
 
 _Nothing yet._
 
+## [0.9.1] - 2026-07-03
+
+### Fixed
+
+- **`impute_hybrid`, `impute_knn_site_based`, `batch_correct_combat` now
+  always return the AnnData** -- previously they returned `None` when
+  `copy=False` (the default), which silently destroyed the reference on
+  `adata = ap.impute_hybrid(adata)`. Non-breaking: existing
+  `ap.impute_hybrid(adata)` calls still work; the fix removes the
+  footgun for anyone who assigns the return.
+
+  In-place semantics are unchanged (`copy=False` still mutates the input);
+  the object returned is now the same AnnData that was mutated (with
+  `copy=True`, still a fresh copy). `impute_hybrid(..., return_audit=True)`
+  now returns `(adata, audit)` instead of `(None, audit)` when
+  `copy=False`.
+
+  Both usage patterns are safe:
+
+  ```python
+  ap.impute_hybrid(adata)               # in-place, return ignored
+  adata = ap.impute_hybrid(adata)       # equivalent, same object
+  new_ad = ap.impute_hybrid(adata, copy=True)   # fresh copy
+  ```
+
+  Type hints updated to `-> ad.AnnData` (no more `| None`). Docstrings,
+  module docs (`docs/modules/preprocess/imputation.md`,
+  `.../batch_correct.md`, `.../index.md`), the EGF walkthrough
+  (`.py` + `.ipynb`), and the README quickstart all updated to use the
+  assignment pattern by default.
+
+- 11 new unit tests locking the return-contract into place across the
+  three functions.
+
 ## [0.9.0] - 2026-07-03
 
 ### Added

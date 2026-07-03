@@ -2,7 +2,7 @@
 
 Phosphoproteomics analysis toolkit.
 
-**Status:** pre-alpha (v0.9.0). Standard 2-condition workflows (Spectronaut / DIA-NN / FragPipe → sites → filter → impute → optional ComBat → limma → enrichment) are covered end-to-end and validated on real data. Multi-contrast ANOVA and PCA/UMAP are not yet implemented.
+**Status:** pre-alpha (v0.9.1). Standard 2-condition workflows (Spectronaut / DIA-NN / FragPipe → sites → filter → impute → optional ComBat → limma → enrichment) are covered end-to-end and validated on real data. Multi-contrast ANOVA and PCA/UMAP are not yet implemented.
 
 ## Install
 
@@ -38,11 +38,12 @@ adata = ap.filter_by_completeness(
     group_column="condition", keep_strategy="each",
 )
 
-# 5. Hybrid MAR/MNAR imputation (fills layers["intensity_log2"])
-ap.impute_hybrid(adata)
+# 5. Hybrid MAR/MNAR imputation (in-place; also returns adata so either
+#    `ap.impute_hybrid(adata)` or `adata = ap.impute_hybrid(adata)` works)
+adata = ap.impute_hybrid(adata)
 
 # 6. (Optional) ComBat batch correction if the design has a known batch column
-# ap.batch_correct_combat(adata, batch_column="batch", covariates=["condition"])
+# adata = ap.batch_correct_combat(adata, batch_column="batch", covariates=["condition"])
 
 # 7. Two-group moderated t-test via limma
 result = ap.diff_exp_limma(
@@ -55,7 +56,7 @@ result = ap.diff_exp_limma(
 #   log2fc, se, t_stat, p_value, fdr, B, ave_expr
 ```
 
-## What ships in v0.9.0
+## What ships in v0.9.1
 
 | Module | Function | Notes |
 | --- | --- | --- |

@@ -52,6 +52,25 @@ markdown_extensions:
 
 nav:
   - Home: index.md
+  - Modules:
+    - IO (import):
+      - Overview: modules/io/index.md
+      - alphaphos.io.spectronaut: modules/io/spectronaut.md
+      - alphaphos.io.diann: modules/io/diann.md
+      - alphaphos.io.fragpipe: modules/io/fragpipe.md
+    - Preprocess:
+      - Overview: modules/preprocess/index.md
+      - alphaphos.preprocess.collapse: modules/preprocess/collapse.md
+      - alphaphos.preprocess.filter: modules/preprocess/filter.md
+      - alphaphos.preprocess.impute: modules/preprocess/imputation.md
+      - alphaphos.preprocess.batch_correct: modules/preprocess/batch_correct.md
+    - Stats:
+      - alphaphos.stats.diff_exp: modules/stats/index.md
+    - Enrichment:
+      - Overview: modules/enrichment/index.md
+      - alphaphos.enrichment.ksea: modules/enrichment/ksea.md
+      - alphaphos.enrichment.pathway: modules/enrichment/pathway.md
+      - alphaphos.enrichment.pathway_gsea: modules/enrichment/pathway_gsea.md
   - Design:
     - PhosphoExperiment schema: design/phosphoexperiment.md
   - API:

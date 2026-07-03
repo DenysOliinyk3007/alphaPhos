@@ -75,7 +75,7 @@ def batch_correct_combat(
     keep_precombat: bool = True,
     advanced: dict | None = None,
     copy: bool = False,
-) -> ad.AnnData | None:
+) -> ad.AnnData:
     """Empirical-Bayes batch correction via ComBat.
 
     Parameters
@@ -110,13 +110,21 @@ def batch_correct_combat(
         - ``ref_batch`` (str or None) -- if set, use this batch as
           reference and adjust the others to match it.
     copy : bool, default False
-        If True, return a corrected copy; otherwise mutate in-place
-        and return ``None``.
+        If ``True``, mutate a fresh copy of ``adata`` and return it.
+        If ``False`` (default), mutate ``adata`` in place.  Either way
+        the (possibly-mutated) AnnData is returned so the call is safe
+        with or without assignment::
+
+            ap.batch_correct_combat(adata, batch_column="batch")          # in-place
+            adata = ap.batch_correct_combat(adata, batch_column="batch")  # equivalent
+            new_ad = ap.batch_correct_combat(adata, batch_column="batch",
+                                             copy=True)                    # fresh copy
 
     Returns
     -------
-    None or AnnData
-        AnnData (if ``copy=True``) with the target layer corrected,
+    AnnData
+        The mutated AnnData (same object when ``copy=False``, fresh copy
+        when ``copy=True``) with the target layer corrected,
         ``layers["intensity_log2_precombat"]`` populated (if
         ``keep_precombat=True``), and ``.uns["alphaphos"]["batch_correction"]``
         stamped with the provenance dict.
@@ -202,7 +210,7 @@ def batch_correct_combat(
         f" | ref_batch={settings['ref_batch']!r}" if settings["ref_batch"] else "",
     )
 
-    return adata if copy else None
+    return adata
 
 
 def _resolve_combat_settings(advanced: dict | None) -> dict:
