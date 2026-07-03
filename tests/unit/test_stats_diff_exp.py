@@ -271,3 +271,147 @@ class TestSettings:
         assert set(DEFAULT_STATS_SETTINGS) == {"trend", "robust", "winsor_tail_p"}
         assert DEFAULT_STATS_SETTINGS["trend"] is False
         assert DEFAULT_STATS_SETTINGS["robust"] is False
+
+
+# ============================================================================
+# Level sanitisation: inmoose.makeContrasts eval()s the contrast string, so
+# level names must be valid Python identifiers.  diff_exp_limma sanitises
+# non-identifier characters internally; the user's original labels must still
+# round-trip through result.attrs and the comparison= argument.
+# ============================================================================
+
+
+def _relabel_adata(adata: ad.AnnData, mapping: dict[str, str]) -> ad.AnnData:
+    """Return a copy with adata.obs["condition"] values remapped."""
+    adata = adata.copy()
+    adata.obs["condition"] = adata.obs["condition"].astype(str).map(mapping)
+    return adata
+
+
+class TestNonIdentifierConditionLevels:
+    def test_plus_minus_labels(self, two_group_adata):
+        """The exact case that triggered the bug: EGF+ / EGF-."""
+        adata = _relabel_adata(two_group_adata, {"ctrl": "EGF-", "trt": "EGF+"})
+        res = diff_exp_limma(
+            adata,
+            condition_column="condition",
+            comparison=("EGF+", "EGF-"),
+        )
+        # Sanity: spiked hits still found; original labels round-trip via attrs
+        assert len(res) == adata.n_vars
+        assert (res.loc[[f"site_{i:02d}" for i in range(TRUE_HITS)], "fdr"] < 0.05).all()
+        assert res.attrs["treatment"] == "EGF+"
+        assert res.attrs["control"] == "EGF-"
+        assert "EGF+" in res.attrs["contrast_direction"]
+        assert "EGF+" in res.attrs["contrast_string"]
+
+    def test_digit_start_labels(self, two_group_adata):
+        """1uM / 10uM: valid category label, invalid Python identifier."""
+        adata = _relabel_adata(two_group_adata, {"ctrl": "1uM", "trt": "10uM"})
+        res = diff_exp_limma(
+            adata,
+            condition_column="condition",
+            comparison=("10uM", "1uM"),
+        )
+        assert (res.loc[[f"site_{i:02d}" for i in range(TRUE_HITS)], "fdr"] < 0.05).all()
+        assert res.attrs["treatment"] == "10uM"
+        assert res.attrs["control"] == "1uM"
+
+    def test_space_in_labels(self, two_group_adata):
+        adata = _relabel_adata(two_group_adata, {"ctrl": "not treated", "trt": "treated"})
+        res = diff_exp_limma(
+            adata,
+            condition_column="condition",
+            comparison=("treated", "not treated"),
+        )
+        assert (res.loc[[f"site_{i:02d}" for i in range(TRUE_HITS)], "fdr"] < 0.05).all()
+        assert res.attrs["control"] == "not treated"
+
+    def test_slash_in_labels(self, two_group_adata):
+        adata = _relabel_adata(two_group_adata, {"ctrl": "WT/WT", "trt": "KO/WT"})
+        res = diff_exp_limma(
+            adata,
+            condition_column="condition",
+            comparison=("KO/WT", "WT/WT"),
+        )
+        assert (res.loc[[f"site_{i:02d}" for i in range(TRUE_HITS)], "fdr"] < 0.05).all()
+
+    def test_collision_disambiguated(self, two_group_adata):
+        """EGF+ and EGF- both sanitize to EGF_ -- collision must not cause a
+        silent design-matrix mixup."""
+        adata = _relabel_adata(two_group_adata, {"ctrl": "EGF-", "trt": "EGF+"})
+        res = diff_exp_limma(
+            adata,
+            condition_column="condition",
+            comparison=("EGF+", "EGF-"),
+        )
+        # log2fc for spiked sites should be positive (mean(EGF+) > mean(EGF-)),
+        # which is only true if the collision was resolved bijectively.
+        assert (res.loc[[f"site_{i:02d}" for i in range(TRUE_HITS)], "log2fc"] > 2.0).all()
+
+    def test_covariate_with_special_chars(self, two_group_adata):
+        """Categorical covariate levels also need sanitising -- they end up
+        in the design matrix column names too."""
+        adata = two_group_adata.copy()
+        # Replace the default batch labels b1/b2 with special-char ones
+        adata.obs["batch"] = adata.obs["batch"].astype(str).map({"b1": "run-1", "b2": "run-2"})
+        # Should not raise on the design build (covariate levels go through
+        # patsy too, and both the "-" and the collision handling need to work)
+        res = diff_exp_limma(
+            adata,
+            condition_column="condition",
+            comparison=("trt", "ctrl"),
+            covariates=["batch"],
+        )
+        assert len(res) == adata.n_vars
+
+    def test_sign_convention_still_holds_with_special_chars(self, two_group_adata):
+        """After sanitisation, log2fc = mean(treatment) - mean(control) --
+        positive for the spiked sites which are up in ``trt`` a.k.a. ``EGF+``."""
+        adata = _relabel_adata(two_group_adata, {"ctrl": "EGF-", "trt": "EGF+"})
+        res = diff_exp_limma(
+            adata,
+            condition_column="condition",
+            comparison=("EGF+", "EGF-"),
+        )
+        assert (res.loc[[f"site_{i:02d}" for i in range(TRUE_HITS)], "log2fc"] > 2.0).all()
+
+
+class TestSanitizeHelpers:
+    """Direct tests of the module-private sanitisation helpers."""
+
+    def test_sanitize_level_replaces_common_operators(self):
+        from alphaphos.stats.diff_exp import _sanitize_level
+
+        assert _sanitize_level("EGF+") == "EGF_"
+        assert _sanitize_level("EGF-") == "EGF_"
+        assert _sanitize_level("KO/WT") == "KO_WT"
+        assert _sanitize_level("not treated") == "not_treated"
+        assert _sanitize_level("a.b") == "a_b"
+
+    def test_sanitize_level_prefixes_digit_start(self):
+        from alphaphos.stats.diff_exp import _sanitize_level
+
+        assert _sanitize_level("1uM") == "_1uM"
+        assert _sanitize_level("10uM") == "_10uM"
+
+    def test_sanitize_level_empty_becomes_underscore(self):
+        from alphaphos.stats.diff_exp import _sanitize_level
+
+        assert _sanitize_level("") == "_"
+
+    def test_sanitize_map_is_bijective_under_collision(self):
+        from alphaphos.stats.diff_exp import _sanitize_and_map_levels
+
+        m = _sanitize_and_map_levels(["EGF+", "EGF-", "EGF*"])
+        assert len(set(m.values())) == 3  # bijective
+        assert m["EGF+"] == "EGF_"
+        assert m["EGF-"] == "EGF__2"
+        assert m["EGF*"] == "EGF__3"
+
+    def test_sanitize_map_preserves_first_seen_order(self):
+        from alphaphos.stats.diff_exp import _sanitize_and_map_levels
+
+        m = _sanitize_and_map_levels(["A-B", "A_B"])
+        assert m["A-B"] == "A_B"
+        assert m["A_B"] == "A_B_2"

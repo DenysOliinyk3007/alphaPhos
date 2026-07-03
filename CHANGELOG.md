@@ -12,6 +12,29 @@ While in `0.x`, breaking API changes may appear in any MINOR bump (`0.1 → 0.2`
 
 _Nothing yet._
 
+## [0.9.2] - 2026-07-03
+
+### Fixed
+
+- **`diff_exp_limma` crashed with `SyntaxError` on condition or covariate
+  level names that aren't valid Python identifiers** (e.g. `EGF+` / `EGF-`,
+  `1uM` / `10uM`, `KO/WT`, names with spaces or dots). `inmoose.limma.makeContrasts`
+  evaluates the contrast string via `eval()`, so `+`, `-`, `.`, `/`, spaces
+  and leading digits blew up parsing.
+
+  The fix sanitises non-identifier characters internally (replace with `_`,
+  prepend `_` for digit-starts, disambiguate collisions like
+  `EGF+`/`EGF-` &rarr; `EGF_` / `EGF__2` by numeric suffix) before values reach
+  patsy + inmoose. Sanitisation is a bijective, collision-safe
+  implementation detail; the user's original labels round-trip through
+  `result.attrs["treatment"]`, `["control"]`, `["contrast_direction"]`,
+  and `["contrast_string"]`.
+
+  12 new tests cover the user's exact `EGF+`/`EGF-` case plus `1uM` (digit
+  start), spaces (`"not treated"`), slashes (`KO/WT`), collision handling,
+  covariate-level sanitisation, sign-convention preservation, and direct
+  tests of the sanitiser helpers.
+
 ## [0.9.1] - 2026-07-03
 
 ### Fixed
