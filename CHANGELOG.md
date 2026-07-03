@@ -12,6 +12,134 @@ While in `0.x`, breaking API changes may appear in any MINOR bump (`0.1 → 0.2`
 
 _Nothing yet._
 
+## [0.8.0] - 2026-07-03
+
+### Added
+
+- **`alphaphos.enrichment.pathway` submodule** -- second inhabitant of
+  the elevated `alphaphos.enrichment` namespace.
+- **`alphaphos.enrichment.pathway_enrichment(diff_exp_result, ...)`** --
+  gene-level pathway ORA on significant phosphosites. Splits up- vs
+  down-regulated hits by default (`direction="split"`), extracts gene
+  symbols from alphaPhos `Protein|Gene|Site|Mult` keys, and runs
+  hypergeometric enrichment against the Enrichr gene-set libraries via
+  `gseapy` (Fang et al. 2023). Returns a tidy DataFrame with columns
+  `direction, library, term, overlap, p_value, fdr, odds_ratio,
+  combined_score, genes, n_foreground, n_background` sorted by FDR
+  within each direction+library slice. Provenance stamped on
+  `.attrs["provenance"]`.
+- **Rigorous background handling** -- the scientifically-critical piece:
+    - `background="phosphoproteome"` (default) uses every parseable
+      gene in `diff_exp_result.index` (all tested sites); this is the
+      right choice when no proteome data is available.
+    - `background=[genes...]` or `background=<DataFrame>` accepts a
+      caller-supplied list, e.g. proteome-identified genes, which is
+      the rigorous choice when it is available.
+    - `background="genome"` is a deliberate opt-in and emits a
+      `UserWarning` -- genome-wide background inflates enrichment for
+      a phospho experiment because the detection universe is much
+      smaller than the genome.
+- **Default library set** for human: GO_Biological_Process_2023,
+  GO_Molecular_Function_2023, GO_Cellular_Component_2023,
+  KEGG_2021_Human, Reactome_2022, MSigDB_Hallmark_2020 (KEGG_2019_Mouse
+  for mouse). Anything Enrichr hosts is fair game via
+  `libraries=[...]`.
+- **New `[enrichment]` optional-extra** bundling `gseapy>=1.1`,
+  `decoupler>=2.0`, `omnipath>=1.0` so the whole enrichment stack
+  installs with `pip install 'alphaphos[enrichment]'`. Import is
+  guarded; missing gseapy raises a clear `ImportError` pointing at
+  the extra.
+
+### Validated on real data
+
+- On the EGF walkthrough result (15,186 sites; 1,255 up + 567 down at
+  FDR 5%; 4,048 phosphoproteome background genes) the up-regulated set
+  cleanly recovers the textbook EGF response:
+    - **KEGG**: ErbB signaling pathway (FDR 6.2e-04), Insulin signaling,
+      VEGF signaling, MAPK signaling pathway (all < 5% FDR).
+    - **Hallmark**: PI3K/AKT/mTOR Signaling (FDR 3.0e-02).
+    - **Reactome**: NTRK signaling, AP-1 transcription-factor activation.
+- Down-regulated set recovers the counter-regulated small-GTPase
+  signaling changes: RAC1/RHO/CDC42 GTPase cycles (Reactome, FDR
+  1e-05 -- 5e-04), Regulation of Small GTPase Mediated Signal
+  Transduction (GO BP, FDR 1e-02), TGF-beta Signaling (Hallmark,
+  FDR 1.7e-02).
+- 27 tests: 25 mocked-gseapy unit tests (schema, direction split/up/
+  down/both, background resolution across all input types, gene
+  extraction edge cases, empty-foreground handling, custom library
+  lists, error paths) plus 2 real-Enrichr-API integration tests.
+
+## [0.7.0] - 2026-07-02
+
+### Added
+
+- **`alphaphos.enrichment` elevated to a top-tier namespace**; the
+  submodule `alphaphos.enrichment.ksea` is the first inhabitant.
+- **`alphaphos.enrichment.kinase_activity(diff_exp_result, ...)`** --
+  decoupler-py ULM (default) / MLM kinase-activity inference in one
+  clean call. Auto-detects and canonicalises alphaphos
+  ``Protein|Gene|Site|Mult`` keys to the OmniPath ``Protein_AApos``
+  format that decoupler expects, dedups multiplicity variants by
+  ``|log2fc|``, and returns a per-kinase DataFrame with
+  ``score, fdr, n_substrates, direction``. Provenance
+  (method, network, seed, decoupler version, n_kinases_tested) is
+  stamped on ``result.attrs["provenance"]``. Wraps
+  ``decoupler-py`` (Badia-i-Mompel et al. 2022 *Bioinformatics
+  Advances* 2:vbac016) -- the modern replacement for the classical
+  Wiredja 2017 KSEA z-score.
+- **Two bundled kinase-substrate networks** + BYO:
+    - ``network="omnipath"`` (default) -- fetches Enzsub via the
+      ``omnipath`` package (~50k edges, community standard). Cached
+      to parquet on first use.
+    - ``network="ptm_db"`` -- built ad-hoc from our curated PTM
+      functional database with per-edge ``curation_confidence``
+      tier filtering.
+    - ``network=<DataFrame>`` -- caller-supplied edge table
+      validated against the decoupler schema
+      (``source``, ``target``, ``weight``).
+- **MLM error message steers users to a fix.** MLM's regression is
+  rank-deficient on the full OmniPath network (many kinases share
+  substrates). When that happens the raw ``numpy.linalg.LinAlgError``
+  is caught and re-raised as a ``RuntimeError`` pointing at ULM or a
+  higher-confidence network subset. MLM works cleanly on the
+  high-confidence PTM-DB slice.
+
+### Removed
+
+- **`alphaphos.ksea` module removed entirely** (hard-cut,
+  pre-alpha). Its functions are superseded by
+  `alphaphos.enrichment.kinase_activity` and the network helpers in
+  `alphaphos.enrichment.ksea.network`. In particular the stale
+  `alphaphos_site_to_omnipath` converter (broken since the 0.1.0
+  site-key format migration) is gone -- key conversion now goes
+  through the current
+  `alphaphos.enrichment.matching.parse_alphaphos_key`.
+- `alphaphos.ksea.kinase_activity_ora` / `kinase_activity_gsea`
+  removed -- redundant with the generic
+  `alphaphos.enrichment.ora` / `.gsea` engines which work against any
+  library including a kinase-substrate network wrapped as
+  `{"kinase_substrate": build_kinase_substrate_library()}`.
+
+### Validated on real data
+
+- End-to-end on the EGF walkthrough result (15,186 sites, 84.2%
+  matching the DB, 255 kinases scored):
+    - Top-15 kinases by ULM score include **EGF, MAPKAPK2, MAP2K3,
+      MAP3K8, BRAF, RAF1, JAK2, LCK, HCK, KSR1** and the
+      DUSP1/4/8/16 phosphatase feedback family -- textbook EGF
+      biology.
+    - **GSK3B** correctly comes back as significantly down (AKT
+      inhibits GSK3B downstream of EGF).
+    - **MLM on the PTM-DB high-confidence subset** (~510 kinases,
+      curation_confidence == "high") ranks **MAPKAPK2, EGFR, MAPK1
+      (ERK2), MAP2K1 (MEK1), BRAF** in the top 10 -- the canonical
+      RAS/RAF/MEK/ERK cascade.
+    - Top-20 overlap between ULM on OmniPath and ULM on PTM-DB is
+      14/20 kinases -- strong network-agnostic biology.
+- 21 unit + integration tests exercise validation, both networks,
+  synthetic recovery of known direction, auto-conversion of
+  alphaphos keys, and every error path.
+
 ## [0.6.3] - 2026-07-02
 
 ### Added

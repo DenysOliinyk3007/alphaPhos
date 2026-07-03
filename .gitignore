@@ -79,6 +79,8 @@ desktop.ini
 **/Phospho (STY)Sites.txt
 **/report.tsv
 *.parquet
+# ...but small test-fixture parquets in tests/data/ ARE committed.
+!tests/data/*.parquet
 
 # Study data — committed by exception only
 studies/*/data/
@@ -99,6 +101,12 @@ resources/spectral_libraries/*.tsv
 # resources/fastas/ and ARE committed -- ~37 MB total, CC-BY 4.0 from
 # UniProt, needed by the FASTA-based kinase-window annotation step and
 # by the walkthrough notebook.
+# PTM functional database parquet (2.8 MB, phospho-only extract of the
+# 122 MB integrated xlsx from test_data/ptmsea_plus_scaffold/).  Built
+# via `python scripts/build_ptm_db.py`.  Not committed until we host the
+# canonical build on Zenodo.  A small test fixture lives at
+# tests/data/ptm_db_mini.parquet.
+resources/ptm_functional_db.parquet
 
 # Design-time / benchmark validation outputs (regeneratable from the scripts
 # in docs/design/ and docs/benchmark/)

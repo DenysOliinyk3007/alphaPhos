@@ -1,0 +1,28 @@
+pair_id,experimental_condition,expected_kinase(s),expected_regulation,source_studies
+1,AKTi (Akt inhibitor VIII); AKTi (MK-2206); PI3Ki (GDC-0941); PI3Ki (PI-103); PIK3CA activation (H1047R) + inhibitor,AKT1,down,Wilkes et al. 2015; Wu et al. 2014
+2,PIK3CA activation (E545K); PIK3CA activation (H1047R); RG7356,AKT1,up,Weigand et al. 2012; Wu et al. 2014
+3,Anti-CD3; anti-CD3 + anti-CD28; Differentiation (PMA),PRKCA,up,Nguyen et al. 2016; Rigbolt et al. 2011; Salek et al. 2013
+4,PKCi (BIM-1); PKCi (Gö-6976),PRKCA,down,Wilkes et al. 2015
+5,ATR inhibitor (VE-821),ATR,down,Šalovská et al. 2014
+6,CAMK2i (KN-62); CAMK2i (KN-93),CAMK2A,down,Wilkes et al. 2015
+7,Crizotinib,ALK,down,Oppermann et al. 2013
+8,Dasatinib (50 nM),MAPK3; ABL; LCK,down,Pan et al. 2009
+9,DNA damage (Etoposide); DNA damage (Ionizing radiation); Early S (Thymidine); G1_S (Thymidine); Late S (Thymidine),ATR; ATM,up,Beli et al. 2012; Dephoure et al. 2008; Olsen et al. 2010
+10,EGF,AKT1; BRAF; EGFR; MAP2K1; MAP2K2; MAPK1; MAPK3; RAF1,up,Engholm-Keller et al. 2011; Mertins et al. 2012; Pan et al. 2009
+11,EGFRi (PD-153035); EGFRi (PD-168393); Erlotinib; Gefitinib,EGFR,down,Weber et al. 2012; Wilkes et al. 2015
+12,EGF + SB202190,MAPK14,down,Pan et al. 2009
+13,EGF + U0126; MEKi (GSK-1120212); MEKi (U0126); Selumetinib (AZD6244),MAP2K1; MAP2K2,down,Pan et al. 2009; Stuart et al. 2015; Wilkes et al. 2015
+14,ERKi (ERK inhibitor); ERKi (ERK inhibitor II); Dasatinib (50 nM),MAPK1,down,Pan et al. 2009; Wilkes et al. 2015
+15,Iloprost (5 nM),PRKACA,up,Beck et al. 2014
+16,Mitosis (AZD1152); Mitosis (MLN8054),AURKA,down,Kettenbach et al. 2011
+17,Mitosis (AZD1152),AURKB,down,Kettenbach et al. 2011
+18,Mitosis (BI2536); Mitosis (short Taxol + BI2536); BI 4834 (Mitosis Nocodazole); PLK1 Inhibitor (G2r - BI2536),PLK1,down,Grosstessner-Hain et al. 2011; Halim et al. 2013; Kettenbach et al. 2011
+19,mTORi (KU-0063794); mTORi (Torin-1); Rapamycin; Starved; Torin1,MTOR,down,Hsu et al. 2011; Wilkes et al. 2015
+20,PIK3CA activation (H1047R); PIK3CA activation (E545K),PIK3CA,up,Wu et al. 2014
+21,P70S6K1i (DG2); P70S6K1i (PF-4708671),RPS6KB1,down,Wilkes et al. 2015
+22,ROCKi (H-1152); ROCKi (Y-27632),ROCK1,down,Wilkes et al. 2015
+23,Sorafinib,PDGFRB; PDGFRA; BRAF; RAF1; FLT1; FLT3; FLT4,down,Zhuang et al. 2013
+24,Quizartinib,PDGFRA; FLT3,down,Schaab et al. 2014
+25,LRRK2-IN-1 (Endogenous LRRK2); LRRK2-IN-1 (LRRK2 overexpression),LRRK2,down,Luerman et al. 2014; Schaab et al. 2014
+26,VEGF,FLT4; FLT1,up,Zhuang et al. 2013
+27,Vemurafenib (PLX4032),BRAF,down,Stuart et al. 2015

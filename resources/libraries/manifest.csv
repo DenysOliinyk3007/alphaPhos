@@ -1,0 +1,10 @@
+library,set_name,n_sites,description
+FUNCTIONAL_EFFECT,activates_activity,3952,Phosphosite whose modification up-regulates the substrate's activity.
+FUNCTIONAL_EFFECT,inhibits_activity,2328,Phosphosite whose modification down-regulates the substrate's activity.
+FUNCTIONAL_EFFECT,induces_ppi,2531,Phosphosite whose modification enhances a protein-protein interaction.
+FUNCTIONAL_EFFECT,disrupts_ppi,750,Phosphosite whose modification disrupts a protein-protein interaction.
+FUNCTIONAL_EFFECT,alters_stability,821,Phosphosite whose modification alters substrate stability.
+DISEASE_VARIANT,clinvar_site,10318,Phosphosite with a ClinVar disease-associated variant at the exact residue.
+DISEASE_VARIANT,cancer_TCGA_site,48975,Phosphosite with a TCGA/MC3 cancer mutation at the exact residue.
+FUNCTIONAL_SCORE_BIN,ochoa_top_quartile,11491,Phosphosite in the top 25% of Ochoa et al. 2020 functional score (most likely functional).
+FUNCTIONAL_SCORE_BIN,ochoa_bottom_quartile,12443,Phosphosite in the bottom 25% of Ochoa et al. 2020 functional score (negative control).

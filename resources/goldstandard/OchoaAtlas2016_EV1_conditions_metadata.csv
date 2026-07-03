@@ -1,0 +1,436 @@
+Condition ID,Description,Control,Time (min),PMID,Organism,Biological Sample,Labelling Type,Labelling Method,Spectrometer,Enrichment,Condition label,Total Sites In Atlas
+12_3,Differentiation (NCM),Undifferentiated (Conditioned medium),1440.0,21406692,9606,hESC (Odense-3 and HUES9),metabolic,SILAC,Orbitrap,TiO2,Differentiation (NCM)_1440.00m,11379
+15_3,Differentiation (PMA),Undifferentiated (Conditioned medium),30.0,21406692,9606,hESC (Odense-3 and HUES9),metabolic,SILAC,Orbitrap,TiO2,Differentiation (PMA)_vs_Undifferentiated (Conditioned medium)_30.00m,10717
+18_3,Differentiation (PMA),Undifferentiated (Conditioned medium),60.0,21406692,9606,hESC (Odense-3 and HUES9),metabolic,SILAC,Orbitrap,TiO2,Differentiation (PMA)_vs_Undifferentiated (Conditioned medium)_60.00m,10697
+21_3,Differentiation (PMA),Undifferentiated (Conditioned medium),360.0,21406692,9606,hESC (Odense-3 and HUES9),metabolic,SILAC,Orbitrap,TiO2,Differentiation (PMA)_vs_Undifferentiated (Conditioned medium)_360.00m,10652
+24_3,Differentiation (PMA),Undifferentiated (Conditioned medium),1440.0,21406692,9606,hESC (Odense-3 and HUES9),metabolic,SILAC,Orbitrap,TiO2,Differentiation (PMA)_vs_Undifferentiated (Conditioned medium)_1440.00m,10638
+3_3,Differentiation (NCM),Undifferentiated (Conditioned medium),30.0,21406692,9606,hESC (Odense-3 and HUES9),metabolic,SILAC,Orbitrap,TiO2,Differentiation (NCM)_30.00m,12797
+6_3,Differentiation (NCM),Undifferentiated (Conditioned medium),60.0,21406692,9606,hESC (Odense-3 and HUES9),metabolic,SILAC,Orbitrap,TiO2,Differentiation (NCM)_60.00m,11440
+9_3,Differentiation (NCM),Undifferentiated (Conditioned medium),360.0,21406692,9606,hESC (Odense-3 and HUES9),metabolic,SILAC,Orbitrap,TiO2,Differentiation (NCM)_360.00m,12734
+96_36,Erlotinib,Untreated,0.0,22115753,9606,AML KG-1,metabolic,SILAC,LTQ Orbitrap,IMAC,Erlotinib,9377
+99_36,Gefitinib,Untreated,0.0,22115753,9606,AML KG-1,metabolic,SILAC,LTQ Orbitrap,IMAC,Gefitinib,9365
+111_45,BI 4834 (on Mitosis Nocodazole),Mitosis (Nocodazole),15.0,21857030,9606,HeLa,chemical,Methyl esterification,LTQ-FT Ultra or LTQ Orbitrap XL,IMAC,BI 4834 (on Mitosis Nocodazole),4989
+114_48,Starved,Insulin,,21659604,9606,HEK-293,chemical,iTRAQ,QSTAR Elite,IMAC,Starved,3881
+117_48,Torin1,Insulin,,21659604,9606,HEK-293,chemical,iTRAQ,QSTAR Elite,IMAC,Torin1,3881
+120_48,Rapamycin,Insulin,,21659604,9606,HEK-293,chemical,iTRAQ,QSTAR Elite,IMAC,Rapamycin,3881
+123_51,TSC2+/+ + Torin1,Vehicle,,21659604,9606,MEF,chemical,iTRAQ,QSTAR Elite,IMAC,TSC2+/+ + Torin1,2025
+126_51,TSC2-/-,Vehicle,,21659604,9606,MEF,chemical,iTRAQ,QSTAR Elite,IMAC,TSC2-/-,2025
+129_51,TSC2-/- + Torin1,Vehicle,,21659604,9606,MEF,chemical,iTRAQ,QSTAR Elite,IMAC,TSC2-/- + Torin1,2025
+186_57,Crizotinib,Untreated,,23898821,9606,NSCLC,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,Crizotinib,16837
+189_57,Untreated,Untreated,,23898821,9606,NSCLC,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,Untreated_vs_Untreated,18189
+192_57,Untreated,Crizotinib,,23898821,9606,NSCLC,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,Untreated_vs_Crizotinib,16885
+186_60,Crizotinib,Untreated,,23898821,9606,NSCLC,chemical,mTRAQ,Orbitrap (Q Exactive),IMAC,Crizotinib,17069
+189_60,Untreated,Untreated,,23898821,9606,NSCLC,chemical,mTRAQ,Orbitrap (Q Exactive),IMAC,Untreated_vs_Untreated,18267
+192_60,Untreated,Crizotinib,,23898821,9606,NSCLC,chemical,mTRAQ,Orbitrap (Q Exactive),IMAC,Untreated_vs_Crizotinib,16975
+240_63,EGF,Untreated,15.0,19651622,9606,HeLa,metabolic,SILAC,LTQ Orbitrap,TiO2,EGF_15.00m,4911
+243_63,EGF + SB202190,Untreated,15.0,19651622,9606,HeLa,metabolic,SILAC,LTQ Orbitrap,TiO2,EGF + SB202190_vs_Untreated,4891
+246_63,EGF + SB202190,EGF,15.0,19651622,9606,HeLa,metabolic,SILAC,LTQ Orbitrap,TiO2,EGF + SB202190_vs_EGF,4908
+240_66,EGF,Untreated,15.0,19651622,9606,HeLa,metabolic,SILAC,LTQ Orbitrap,TiO2,EGF_15.00m,4123
+252_66,EGF + U0126,Untreated,15.0,19651622,9606,HeLa,metabolic,SILAC,LTQ Orbitrap,TiO2,EGF + U0126_vs_Untreated,4108
+255_66,EGF + U0126,EGF,15.0,19651622,9606,HeLa,metabolic,SILAC,LTQ Orbitrap,TiO2,EGF + U0126_vs_EGF,4122
+267_72,Mitosis (Nocodazole),Async cells,,18669648,9606,HeLa,metabolic,SILAC,LTQ Orbitrap,TiO2_IMAC,Mitosis (Nocodazole),7914
+72_72,G1_S (Thymidine),Async cells,0.0,18669648,9606,HeLa,metabolic,SILAC,LTQ Orbitrap,TiO2_IMAC,G1_S (Thymidine),6241
+270_75,Mitosis (Taxol),Untreated,,21712546,9606,HeLa,metabolic,SILAC,LTQ Orbitrap,TiO2,Mitosis (Taxol),15520
+273_75,Mitosis (MLN8054 0_25 microM),Untreated,,21712546,9606,HeLa,metabolic,SILAC,LTQ Orbitrap,TiO2,Mitosis (MLN8054 0_25 microM),17653
+276_75,Mitosis (MLN8054 1 microM),Untreated,,21712546,9606,HeLa,metabolic,SILAC,LTQ Orbitrap,TiO2,Mitosis (MLN8054 1 microM),20867
+279_75,Mitosis (MLN8054 5 microM),Untreated,,21712546,9606,HeLa,metabolic,SILAC,LTQ Orbitrap,TiO2,Mitosis (MLN8054 5 microM),14843
+282_75,Mitosis (AZD1152),Untreated,,21712546,9606,HeLa,metabolic,SILAC,LTQ Orbitrap,TiO2,Mitosis (AZD1152),22826
+285_75,Mitosis (BI2536),Untreated,,21712546,9606,HeLa,metabolic,SILAC,LTQ Orbitrap,TiO2,Mitosis (BI2536),15032
+288_75,Mitosis (short Taxol + BI2536),Untreated,,21712546,9606,HeLa,metabolic,SILAC,LTQ Orbitrap,TiO2,Mitosis (short Taxol + BI2536),14629
+714_78,EGF,Untreated,5.0,21955146,9606,HeLa,metabolic,SILAC,LTQ Orbitrap XL,TiO2_IMAC,EGF_5.00m,5563
+294_81,Shigella infection,Uninfected,15.0,23828894,9606,HeLa,free,,LTQ Orbitrap,TiO2,Shigella infection_15.00m,2958
+297_81,Shigella infection,Uninfected,30.0,23828894,9606,HeLa,free,,LTQ Orbitrap,TiO2,Shigella infection_30.00m,2958
+300_81,Shigella infection,Uninfected,60.0,23828894,9606,HeLa,free,,LTQ Orbitrap,TiO2,Shigella infection_60.00m,2958
+303_81,Shigella infection,Uninfected,120.0,23828894,9606,HeLa,free,,LTQ Orbitrap,TiO2,Shigella infection_120.00m,2958
+318_87,anti-CD3,Time 0_5,0.0,24204825,9606,Jurkat,metabolic,SILAC,LTQ Orbitrap,TiO2,anti-CD3_0.00m,1869
+321_87,anti-CD3,Time 0_5,5.0,24204825,9606,Jurkat,metabolic,SILAC,LTQ Orbitrap,TiO2,anti-CD3_5.00m,1869
+324_87,anti-CD3,Time 0_5,10.0,24204825,9606,Jurkat,metabolic,SILAC,LTQ Orbitrap,TiO2,anti-CD3_10.00m,2018
+327_87,anti-CD3,Time 0_5,20.0,24204825,9606,Jurkat,metabolic,SILAC,LTQ Orbitrap,TiO2,anti-CD3_20.00m,2018
+318_93,anti-CD3,Time 0_5,0.0,24204825,9606,Jurkat,metabolic,SILAC,LTQ Orbitrap,TiO2,anti-CD3_0.00m,3940
+321_93,anti-CD3,Time 0_5,5.0,24204825,9606,Jurkat,metabolic,SILAC,LTQ Orbitrap,TiO2,anti-CD3_5.00m,3940
+324_93,anti-CD3,Time 0_5,10.0,24204825,9606,Jurkat,metabolic,SILAC,LTQ Orbitrap,TiO2,anti-CD3_10.00m,3370
+327_93,anti-CD3,Time 0_5,20.0,24204825,9606,Jurkat,metabolic,SILAC,LTQ Orbitrap,TiO2,anti-CD3_20.00m,3370
+318_96,anti-CD3,Time 0_5,0.0,24204825,9606,JCaM2.5,metabolic,SILAC,LTQ Orbitrap,TiO2,anti-CD3_0.00m,3099
+321_96,anti-CD3,Time 0_5,5.0,24204825,9606,JCaM2.5,metabolic,SILAC,LTQ Orbitrap,TiO2,anti-CD3_5.00m,3099
+324_96,anti-CD3,Time 0_5,10.0,24204825,9606,JCaM2.5,metabolic,SILAC,LTQ Orbitrap,TiO2,anti-CD3_10.00m,3483
+327_96,anti-CD3,Time 0_5,20.0,24204825,9606,JCaM2.5,metabolic,SILAC,LTQ Orbitrap,TiO2,anti-CD3_20.00m,3483
+330_99,Cell death (PKCdelta induced - Cytoplasm),PKCdelta induced (day 0),0.0,23879269,9606,AML U937,metabolic,SILAC,LTQ Orbitrap XL,TiO2,Cell death (PKCdelta induced - Cytoplasm)_0.00m,350
+333_99,Cell death (PKCdelta induced - Cytoplasm),PKCdelta induced (day 0),2880.0,23879269,9606,AML U937,metabolic,SILAC,LTQ Orbitrap XL,TiO2,Cell death (PKCdelta induced - Cytoplasm)_2880.00m,481
+336_99,Cell death (PKCdelta induced - Cytoplasm),PKCdelta induced (day 0),4320.0,23879269,9606,AML U937,metabolic,SILAC,LTQ Orbitrap XL,TiO2,Cell death (PKCdelta induced - Cytoplasm)_4320.00m,245
+339_99,Cell death (PKCdelta induced - Cytoplasm),PKCdelta induced (day 0),5760.0,23879269,9606,AML U937,metabolic,SILAC,LTQ Orbitrap XL,TiO2,Cell death (PKCdelta induced - Cytoplasm)_5760.00m,859
+342_99,Cell death (PKCdelta induced - Cytoplasm),PKCdelta induced (day 0),7200.0,23879269,9606,AML U937,metabolic,SILAC,LTQ Orbitrap XL,TiO2,Cell death (PKCdelta induced - Cytoplasm)_7200.00m,385
+345_99,Cell death (PKCdelta induced - Nucleus),PKCdelta induced (day 0),0.0,23879269,9606,AML U937,metabolic,SILAC,LTQ Orbitrap XL,TiO2,Cell death (PKCdelta induced - Nucleus)_0.00m,197
+348_99,Cell death (PKCdelta induced - Nucleus),PKCdelta induced (day 0),2880.0,23879269,9606,AML U937,metabolic,SILAC,LTQ Orbitrap XL,TiO2,Cell death (PKCdelta induced - Nucleus)_2880.00m,388
+351_99,Cell death (PKCdelta induced - Nucleus),PKCdelta induced (day 0),4320.0,23879269,9606,AML U937,metabolic,SILAC,LTQ Orbitrap XL,TiO2,Cell death (PKCdelta induced - Nucleus)_4320.00m,392
+354_99,Cell death (PKCdelta induced - Nucleus),PKCdelta induced (day 0),5760.0,23879269,9606,AML U937,metabolic,SILAC,LTQ Orbitrap XL,TiO2,Cell death (PKCdelta induced - Nucleus)_5760.00m,517
+357_99,Cell death (PKCdelta induced - Nucleus),PKCdelta induced (day 0),7200.0,23879269,9606,AML U937,metabolic,SILAC,LTQ Orbitrap XL,TiO2,Cell death (PKCdelta induced - Nucleus)_7200.00m,319
+363_105,LRRK2-IN-1 (Endogenous LRRK2),Untreated,,24117733,9606,SH-SY5Y neuroblastoma cells,metabolic,SILAC,LTQ Orbitrap Velos,TiO2,LRRK2-IN-1 (Endogenous LRRK2),2252
+366_108,LRRK2-IN-1 (LRRK2 overexpression),Untreated,,24117733,9606,SH-SY5Y neuroblastoma cells,metabolic,SILAC,LTQ Orbitrap Velos,TiO2,LRRK2-IN-1 (LRRK2 overexpression),1676
+369_111,PLK1 Inhibitor (G2r - BI2536 - 30m),Untreated,,23612710,9606,U2OS osteosarcoma cells,metabolic,SILAC,LTQ Orbitrap,TiO2,PLK1 Inhibitor (G2r - BI2536 - 30m),2093
+372_111,PLK1 Inhibitor (G2r - BI2536 - 120m),Untreated,,23612710,9606,U2OS osteosarcoma cells,metabolic,SILAC,LTQ Orbitrap,TiO2,PLK1 Inhibitor (G2r - BI2536 - 120m),3116
+375_111,PLK1 Inhibitor (G2r - BI2536 - 240m),Untreated,,23612710,9606,U2OS osteosarcoma cells,metabolic,SILAC,LTQ Orbitrap,TiO2,PLK1 Inhibitor (G2r - BI2536 - 240m),2876
+378_111,PLK1 Inhibitor (G2nr - BI2536 - 360m),Untreated,,23612710,9606,U2OS osteosarcoma cells,metabolic,SILAC,LTQ Orbitrap,TiO2,PLK1 Inhibitor (G2nr - BI2536 - 360m),1669
+102_117,RG7356,Vehicle,30.0,22777824,9606,MDA-MB-231 (Breast Cancer Cell Line),metabolic,SILAC,LTQ Orbitrap XL,IMAC,RG7356_30.00m,9317
+105_117,RG7356,Vehicle,90.0,22777824,9606,MDA-MB-231 (Breast Cancer Cell Line),metabolic,SILAC,LTQ Orbitrap XL,IMAC,RG7356_90.00m,9088
+387_117,RG7356,Vehicle,270.0,22777824,9606,MDA-MB-231 (Breast Cancer Cell Line),metabolic,SILAC,LTQ Orbitrap XL,IMAC,RG7356_270.00m,8295
+390_120,DNA damage (Etoposide),Untreated,,22424773,9606,U2OS osteosarcoma cells,metabolic,SILAC,LTQ Orbitrap XL,TiO2,DNA damage (Etoposide),13100
+399_129,DNA damage (Ionizing radiation),Untreated,,22424773,9606,U2OS osteosarcoma cells,metabolic,SILAC,LTQ Orbitrap XL,TiO2,DNA damage (Ionizing radiation),11740
+402_132,Dasatinib (5 nM),Untreated,,19651622,9606,CML K-562,metabolic,SILAC,LTQ Orbitrap,TiO2,Dasatinib (5 nM),4405
+405_132,Dasatinib (50 nM),Untreated,,19651622,9606,CML K-562,metabolic,SILAC,LTQ Orbitrap,TiO2,Dasatinib (50 nM)_vs_Untreated,4396
+408_132,Dasatinib (50 nM),Dasatinib (5 nM),,19651622,9606,CML K-562,metabolic,SILAC,LTQ Orbitrap,TiO2,Dasatinib (50 nM)_vs_Dasatinib (5 nM),4405
+132_135,Salmonella infection (Nucleus),Uninfected,2.0,21934108,9606,HeLa,metabolic,SILAC,LTQ Orbitrap XL,TiO2,Salmonella infection (Nucleus)_2.00m,2962
+135_135,Salmonella infection (Nucleus),Uninfected,5.0,21934108,9606,HeLa,metabolic,SILAC,LTQ Orbitrap XL,TiO2,Salmonella infection (Nucleus)_5.00m,2952
+138_135,Salmonella infection (Nucleus),Uninfected,10.0,21934108,9606,HeLa,metabolic,SILAC,LTQ Orbitrap XL,TiO2,Salmonella infection (Nucleus)_10.00m,2950
+141_135,Salmonella infection (Nucleus),Uninfected,20.0,21934108,9606,HeLa,metabolic,SILAC,LTQ Orbitrap XL,TiO2,Salmonella infection (Nucleus)_20.00m,2955
+144_135,Salmonella infection + dSopB (Nucleus),Uninfected,5.0,21934108,9606,HeLa,metabolic,SILAC,LTQ Orbitrap XL,TiO2,Salmonella infection + dSopB (Nucleus)_5.00m,2570
+147_135,Salmonella infection + dSopB (Nucleus),Uninfected,20.0,21934108,9606,HeLa,metabolic,SILAC,LTQ Orbitrap XL,TiO2,Salmonella infection + dSopB (Nucleus)_20.00m,2568
+150_135,Salmonella infection (Membrane),Uninfected,2.0,21934108,9606,HeLa,metabolic,SILAC,LTQ Orbitrap XL,TiO2,Salmonella infection (Membrane)_2.00m,2110
+153_135,Salmonella infection (Membrane),Uninfected,5.0,21934108,9606,HeLa,metabolic,SILAC,LTQ Orbitrap XL,TiO2,Salmonella infection (Membrane)_5.00m,2124
+156_135,Salmonella infection (Membrane),Uninfected,10.0,21934108,9606,HeLa,metabolic,SILAC,LTQ Orbitrap XL,TiO2,Salmonella infection (Membrane)_10.00m,2118
+159_135,Salmonella infection (Membrane),Uninfected,20.0,21934108,9606,HeLa,metabolic,SILAC,LTQ Orbitrap XL,TiO2,Salmonella infection (Membrane)_20.00m,2095
+162_135,Salmonella infection + dSopB (Membrane),Uninfected,5.0,21934108,9606,HeLa,metabolic,SILAC,LTQ Orbitrap XL,TiO2,Salmonella infection + dSopB (Membrane)_5.00m,1812
+165_135,Salmonella infection + dSopB (Membrane),Uninfected,20.0,21934108,9606,HeLa,metabolic,SILAC,LTQ Orbitrap XL,TiO2,Salmonella infection + dSopB (Membrane)_20.00m,1810
+168_135,Salmonella infection (Cytoplasm),Uninfected,2.0,21934108,9606,HeLa,metabolic,SILAC,LTQ Orbitrap XL,TiO2,Salmonella infection (Cytoplasm)_2.00m,2419
+171_135,Salmonella infection (Cytoplasm),Uninfected,5.0,21934108,9606,HeLa,metabolic,SILAC,LTQ Orbitrap XL,TiO2,Salmonella infection (Cytoplasm)_5.00m,2458
+174_135,Salmonella infection (Cytoplasm),Uninfected,10.0,21934108,9606,HeLa,metabolic,SILAC,LTQ Orbitrap XL,TiO2,Salmonella infection (Cytoplasm)_10.00m,2453
+177_135,Salmonella infection (Cytoplasm),Uninfected,20.0,21934108,9606,HeLa,metabolic,SILAC,LTQ Orbitrap XL,TiO2,Salmonella infection (Cytoplasm)_20.00m,2415
+180_135,Salmonella infection + dSopB (Cytoplasm),Uninfected,5.0,21934108,9606,HeLa,metabolic,SILAC,LTQ Orbitrap XL,TiO2,Salmonella infection + dSopB (Cytoplasm)_5.00m,1771
+183_135,Salmonella infection + dSopB (Cytoplasm),Uninfected,20.0,21934108,9606,HeLa,metabolic,SILAC,LTQ Orbitrap XL,TiO2,Salmonella infection + dSopB (Cytoplasm)_20.00m,1771
+66_138,Mitosis (Nocodazole),Async cells,30.0,20068231,9606,HeLa S3,metabolic,SILAC,LTQ Orbitrap,TiO2,Mitosis (Nocodazole),12458
+69_138,G1 (Nocodazole),Async cells,180.0,20068231,9606,HeLa S3,metabolic,SILAC,LTQ Orbitrap,TiO2,G1 (Nocodazole),10061
+72_138,G1_S (Thymidine),Async cells,0.0,20068231,9606,HeLa S3,metabolic,SILAC,LTQ Orbitrap,TiO2,G1_S (Thymidine),7524
+75_138,G1_S (Aphidicolin),Async cells,0.0,20068231,9606,HeLa S3,metabolic,SILAC,LTQ Orbitrap,TiO2,G1_S (Aphidicolin)_vs_Async cells,8437
+78_138,G1_S (Aphidicolin),G1_S (Thymidine),0.0,20068231,9606,HeLa S3,metabolic,SILAC,LTQ Orbitrap,TiO2,G1_S (Aphidicolin)_vs_G1_S (Thymidine),8423
+81_138,Early S (Thymidine),Async cells,150.0,20068231,9606,HeLa S3,metabolic,SILAC,LTQ Orbitrap,TiO2,Early S (Thymidine),11614
+84_138,Late S (Thymidine),Async cells,330.0,20068231,9606,HeLa S3,metabolic,SILAC,LTQ Orbitrap,TiO2,Late S (Thymidine),9823
+87_138,S_G2 (Thymidine),Async cells,450.0,20068231,9606,HeLa S3,metabolic,SILAC,LTQ Orbitrap,TiO2,S_G2 (Thymidine),7401
+411_141,VEGF,Untreated,10.0,23592840,9606,HUVEC,chemical,TMT,LTQ Orbitrap Velos,TiO2,VEGF_10.00m,2761
+414_141,VEGF,Untreated,20.0,23592840,9606,HUVEC,chemical,TMT,LTQ Orbitrap Velos,TiO2,VEGF_20.00m,2774
+417_141,VEGF,Untreated,30.0,23592840,9606,HUVEC,chemical,TMT,LTQ Orbitrap Velos,TiO2,VEGF_30.00m,2775
+420_141,VEGF,Untreated,60.0,23592840,9606,HUVEC,chemical,TMT,LTQ Orbitrap Velos,TiO2,VEGF_60.00m,2775
+423_141,Sorafinib,Untreated,,23592840,9606,HUVEC,chemical,TMT,LTQ Orbitrap Velos,TiO2,Sorafinib,2765
+426_144,EGF,Untreated,10.0,22210691,9606,HeLa,chemical,mTRAQ,LTQ Orbitrap Velos,IMAC,EGF_10.00m,13001
+429_144,EGF,Untreated,1440.0,22210691,9606,HeLa,chemical,mTRAQ,LTQ Orbitrap Velos,IMAC,EGF_1440.00m,13117
+426_153,EGF,Untreated,10.0,22210691,9606,HeLa,chemical,iTRAQ,LTQ Orbitrap Velos,IMAC,EGF_10.00m,17903
+429_153,EGF,Untreated,1440.0,22210691,9606,HeLa,chemical,iTRAQ,LTQ Orbitrap Velos,IMAC,EGF_1440.00m,17795
+432_156,Bortezomib,Untreated,,23749302,9606,Jurkat,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,Bortezomib,27010
+432_159,Bortezomib,Untreated,,23749302,9606,Jurkat,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,Bortezomib,14842
+432_162,Bortezomib,Untreated,,23749302,9606,Jurkat,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,Bortezomib,5416
+447_168,nonTargeted_siRNA,PINK1_siRNA,,24626860,9606,HEK-293,metabolic,SILAC,LTQ Orbitrap,IMAC,nonTargeted_siRNA,2187
+453_168,PINK1_siRNA,nonTargeted_siRNA,,24626860,9606,HEK-293,metabolic,SILAC,LTQ Orbitrap,IMAC,PINK1_siRNA,1700
+465_174,Iloprost (2 nM),Vehicle,0.16,24324209,9606,Platelet-rich plasma,chemical,iTRAQ,LTQ Orbitrap Velos,TiO2,Iloprost (2 nM)_0.16m,2434
+468_174,Iloprost (2 nM),Vehicle,0.5,24324209,9606,Platelet-rich plasma,chemical,iTRAQ,LTQ Orbitrap Velos,TiO2,Iloprost (2 nM)_0.50m,2434
+471_174,Iloprost (2 nM),Vehicle,1.0,24324209,9606,Platelet-rich plasma,chemical,iTRAQ,LTQ Orbitrap Velos,TiO2,Iloprost (2 nM)_1.00m,2434
+474_177,Iloprost (5 nM),Vehicle,0.16,24324209,9606,Platelet-rich plasma,chemical,iTRAQ,LTQ Orbitrap Velos,TiO2,Iloprost (5 nM)_0.16m,2498
+477_177,Iloprost (5 nM),Vehicle,0.5,24324209,9606,Platelet-rich plasma,chemical,iTRAQ,LTQ Orbitrap Velos,TiO2,Iloprost (5 nM)_0.50m,2498
+480_177,Iloprost (5 nM),Vehicle,1.0,24324209,9606,Platelet-rich plasma,chemical,iTRAQ,LTQ Orbitrap Velos,TiO2,Iloprost (5 nM)_1.00m,2498
+483_180,Quizartinib,AML cell lines,,24247654,9606,AML Bone Marrow aspirate,metabolic,Super-SILAC,LTQ Orbitrap Velos,IMAC,Quizartinib,8705
+483_183,Quizartinib,AML cell lines,,24247654,9606,AML Bone Marrow aspirate,metabolic,Super-SILAC,LTQ Orbitrap Velos,IMAC,Quizartinib,10880
+549_186,Differentiation (Serum free medium),Control,1440.0,24706070,9606,Dental Follicle Cells,chemical,iTRAQ,Orbitrap,TiO2,Differentiation (Serum free medium)_1440.00m,1726
+552_186,Differentiation (Serum free medium),Control,2880.0,24706070,9606,Dental Follicle Cells,chemical,iTRAQ,Orbitrap,TiO2,Differentiation (Serum free medium)_2880.00m,1726
+573_192,Ischemia,Control,5.0,24719451,9606,Ovarian Carcinoma,chemical,iTRAQ,LTQ Orbitrap Velos,IMAC,Ischemia_5.00m,20497
+576_192,Ischemia,Control,30.0,24719451,9606,Ovarian Carcinoma,chemical,iTRAQ,LTQ Orbitrap Velos,IMAC,Ischemia_30.00m,20442
+579_192,Ischemia,Control,60.0,24719451,9606,Ovarian Carcinoma,chemical,iTRAQ,LTQ Orbitrap Velos,IMAC,Ischemia_60.00m,20476
+573_195,Ischemia,Control,5.0,24719451,9606,Basal Breast Cancer Tumor (WHIM6),chemical,iTRAQ,Orbitrap (Q Exactive),IMAC,Ischemia_5.00m,25017
+576_195,Ischemia,Control,30.0,24719451,9606,Basal Breast Cancer Tumor (WHIM6),chemical,iTRAQ,Orbitrap (Q Exactive),IMAC,Ischemia_30.00m,25015
+579_195,Ischemia,Control,60.0,24719451,9606,Basal Breast Cancer Tumor (WHIM6),chemical,iTRAQ,Orbitrap (Q Exactive),IMAC,Ischemia_60.00m,25017
+573_198,Ischemia,Control,5.0,24719451,9606,Luminal Breast Cancer Tumor (WHIM20),chemical,iTRAQ,Orbitrap (Q Exactive),IMAC,Ischemia_5.00m,23639
+576_198,Ischemia,Control,30.0,24719451,9606,Luminal Breast Cancer Tumor (WHIM20),chemical,iTRAQ,Orbitrap (Q Exactive),IMAC,Ischemia_30.00m,23638
+579_198,Ischemia,Control,60.0,24719451,9606,Luminal Breast Cancer Tumor (WHIM20),chemical,iTRAQ,Orbitrap (Q Exactive),IMAC,Ischemia_60.00m,23643
+582_201,PGE2,Control,0.0,24850871,9606,Jurkat,free,,LTQ Orbitrap,TiO2,PGE2_0.00m,11614
+585_201,PGE2,Control,10.0,24850871,9606,Jurkat,free,,LTQ Orbitrap,TiO2,PGE2_10.00m,11743
+588_201,PGE2,Control,20.0,24850871,9606,Jurkat,free,,LTQ Orbitrap,TiO2,PGE2_20.00m,10954
+591_201,PGE2,Control,30.0,24850871,9606,Jurkat,free,,LTQ Orbitrap,TiO2,PGE2_30.00m,10552
+594_201,PGE2,Control,5.0,24850871,9606,Jurkat,free,,LTQ Orbitrap,TiO2,PGE2_5.00m,11258
+597_201,PGE2,Control,60.0,24850871,9606,Jurkat,free,,LTQ Orbitrap,TiO2,PGE2_60.00m,10662
+582_204,PGE2,Control,0.0,24850871,9606,Jurkat,free,,LTQ Orbitrap,TiO2,PGE2_0.00m,9543
+585_204,PGE2,Control,10.0,24850871,9606,Jurkat,free,,LTQ Orbitrap,TiO2,PGE2_10.00m,9511
+588_204,PGE2,Control,20.0,24850871,9606,Jurkat,free,,LTQ Orbitrap,TiO2,PGE2_20.00m,8655
+591_204,PGE2,Control,30.0,24850871,9606,Jurkat,free,,LTQ Orbitrap,TiO2,PGE2_30.00m,9482
+594_204,PGE2,Control,5.0,24850871,9606,Jurkat,free,,LTQ Orbitrap,TiO2,PGE2_5.00m,9744
+597_204,PGE2,Control,60.0,24850871,9606,Jurkat,free,,LTQ Orbitrap,TiO2,PGE2_60.00m,8246
+648_216,preOIS,preOIS (sh-C/EBPbeta),,24961811,9606,Fibroblast (Tig3),chemical,Multiplex peptide stable isotope dimethyl labeling,LTQ Orbitrap Velos,IMAC,preOIS_vs_preOIS (sh-C/EBPbeta),5458
+651_216,preOIS,preOIS (sh-C/EBPbeta),,24961811,9606,Fibroblast (Tig3),chemical,Multiplex peptide stable isotope dimethyl labeling,LTQ Orbitrap Velos,IMAC,preOIS_vs_preOIS (sh-C/EBPbeta),5478
+654_216,preOIS (sh-C/EBPbeta),cycling,,24961811,9606,Fibroblast (Tig3),chemical,Multiplex peptide stable isotope dimethyl labeling,LTQ Orbitrap Velos,IMAC,preOIS (sh-C/EBPbeta),5439
+657_216,preOIS (sh-C/EBPbeta),cycling,,24961811,9606,Fibroblast (Tig3),chemical,Multiplex peptide stable isotope dimethyl labeling,LTQ Orbitrap Velos,IMAC,preOIS (sh-C/EBPbeta),5488
+660_216,preOIS,cycling,,24961811,9606,Fibroblast (Tig3),chemical,Multiplex peptide stable isotope dimethyl labeling,LTQ Orbitrap Velos,IMAC,preOIS_vs_cycling,5389
+663_216,preOIS,cycling,,24961811,9606,Fibroblast (Tig3),chemical,Multiplex peptide stable isotope dimethyl labeling,LTQ Orbitrap Velos,IMAC,preOIS_vs_cycling,5376
+666_216,OIS,OIS (sh-C/EBPbeta),,24961811,9606,Fibroblast (Tig3),chemical,Multiplex peptide stable isotope dimethyl labeling,LTQ Orbitrap Velos,IMAC,OIS_vs_OIS (sh-C/EBPbeta),5570
+669_216,OIS,OIS (sh-C/EBPbeta),,24961811,9606,Fibroblast (Tig3),chemical,Multiplex peptide stable isotope dimethyl labeling,LTQ Orbitrap Velos,IMAC,OIS_vs_OIS (sh-C/EBPbeta),5845
+672_216,OIS (sh-C/EBPbeta),cycling,,24961811,9606,Fibroblast (Tig3),chemical,Multiplex peptide stable isotope dimethyl labeling,LTQ Orbitrap Velos,IMAC,OIS (sh-C/EBPbeta),5918
+675_216,OIS (sh-C/EBPbeta),cycling,,24961811,9606,Fibroblast (Tig3),chemical,Multiplex peptide stable isotope dimethyl labeling,LTQ Orbitrap Velos,IMAC,OIS (sh-C/EBPbeta),5881
+678_216,OIS,cycling,,24961811,9606,Fibroblast (Tig3),chemical,Multiplex peptide stable isotope dimethyl labeling,LTQ Orbitrap Velos,IMAC,OIS_vs_cycling,5730
+681_216,OIS,cycling,,24961811,9606,Fibroblast (Tig3),chemical,Multiplex peptide stable isotope dimethyl labeling,LTQ Orbitrap Velos,IMAC,OIS_vs_cycling,5760
+684_219,TGF-beta,Control,5.0,25056879,9606,Keratinocytes (HaCaT),metabolic,SILAC,Orbitrap (Q Exactive),TiO2,TGF-beta_5.00m,7166
+687_219,TGF-beta,Control,10.0,25056879,9606,Keratinocytes (HaCaT),metabolic,SILAC,Orbitrap (Q Exactive),TiO2,TGF-beta_10.00m,7166
+690_219,TGF-beta,Control,15.0,25056879,9606,Keratinocytes (HaCaT),metabolic,SILAC,Orbitrap (Q Exactive),TiO2,TGF-beta_15.00m,7166
+693_219,TGF-beta,Control,20.0,25056879,9606,Keratinocytes (HaCaT),metabolic,SILAC,Orbitrap (Q Exactive),TiO2,TGF-beta_20.00m,7166
+696_222,ATR inhibitor (VE-821),Control,,25003641,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),TiO2,ATR inhibitor (VE-821),6914
+699_225,PIK3CA activation (H1047R),Control,,25247763,9606,MCF10A (Breast epithelia),metabolic,SILAC,LTQ Orbitrap Velos,TiO2,PIK3CA activation (H1047R),3451
+702_225,PIK3CA activation (H1047R) + inhibitor,Control,,25247763,9606,MCF10A (Breast epithelia),metabolic,SILAC,LTQ Orbitrap Velos,TiO2,PIK3CA activation (H1047R) + inhibitor,3436
+705_225,PIK3CA activation (E545K),Control,,25247763,9606,MCF10A (Breast epithelia),metabolic,SILAC,LTQ Orbitrap Velos,TiO2,PIK3CA activation (E545K),5092
+711_228,Quinalizarin,Control,,25278378,9606,HEK-293,metabolic,SILAC,LTQ Orbitrap XL,TiO2,Quinalizarin,994
+1203_245,KRAS (G12D),Wild type,,25599653,9606,SW48,metabolic,SILAC,LTQ Orbitrap XL,TiO2,KRAS (G12D)_vs_Wild type,2055
+1204_245,KRAS (G13D),Wild type,,25599653,9606,SW48,metabolic,SILAC,LTQ Orbitrap XL,TiO2,KRAS (G13D)_vs_Wild type,2041
+1205_245,KRAS (G13D),KRAS (G12D),,25599653,9606,SW48,metabolic,SILAC,LTQ Orbitrap XL,TiO2,KRAS (G13D)_vs_KRAS (G12D),2041
+1206_245,KRAS (G12V),Wild type,,25599653,9606,SW48,metabolic,SILAC,LTQ Orbitrap XL,TiO2,KRAS (G12V),1761
+1207_245,KRAS (G12D),Wild type,,25599653,9606,SW48,metabolic,SILAC,LTQ Orbitrap XL,TiO2,KRAS (G12D)_vs_Wild type,1758
+1208_245,KRAS (G12D),KRAS (G12V),,25599653,9606,SW48,metabolic,SILAC,LTQ Orbitrap XL,TiO2,KRAS (G12D)_vs_KRAS (G12V),1759
+1209_245,KRAS (G12V),Wild type,,25599653,9606,SW48,metabolic,SILAC,LTQ Orbitrap XL,TiO2,KRAS (G12V),1442
+1210_245,KRAS (G13D),Wild type,,25599653,9606,SW48,metabolic,SILAC,LTQ Orbitrap XL,TiO2,KRAS (G13D)_vs_Wild type,1442
+1211_245,KRAS (G13D),KRAS (G12V),,25599653,9606,SW48,metabolic,SILAC,LTQ Orbitrap XL,TiO2,KRAS (G13D)_vs_KRAS (G12V),1442
+1278_271,Citreoviridin,Control,0.16,26503892,9606,CL1â€“ 0 (Lung adenocarcinoma),chemical,Methyl esterification,LTQ Orbitrap XL,,Citreoviridin_0.16m,1200
+1279_271,Citreoviridin,Control,1.0,26503892,9606,CL1â€“ 0 (Lung adenocarcinoma),chemical,Methyl esterification,LTQ Orbitrap XL,,Citreoviridin_1.00m,981
+1280_271,Citreoviridin,Control,5.0,26503892,9606,CL1â€“ 0 (Lung adenocarcinoma),chemical,Methyl esterification,LTQ Orbitrap XL,,Citreoviridin_5.00m,1082
+1281_271,Citreoviridin,Control,10.0,26503892,9606,CL1â€“ 0 (Lung adenocarcinoma),chemical,Methyl esterification,LTQ Orbitrap XL,,Citreoviridin_10.00m,1055
+1282_271,Citreoviridin,Control,60.0,26503892,9606,CL1â€“ 0 (Lung adenocarcinoma),chemical,Methyl esterification,LTQ Orbitrap XL,,Citreoviridin_60.00m,1036
+1283_271,Citreoviridin,Control,120.0,26503892,9606,CL1â€“ 0 (Lung adenocarcinoma),chemical,Methyl esterification,LTQ Orbitrap XL,,Citreoviridin_120.00m,935
+1284_271,Citreoviridin,Control,720.0,26503892,9606,CL1â€“ 0 (Lung adenocarcinoma),chemical,Methyl esterification,LTQ Orbitrap XL,,Citreoviridin_720.00m,824
+1285_271,Citreoviridin,Control,1440.0,26503892,9606,CL1â€“ 0 (Lung adenocarcinoma),chemical,Methyl esterification,LTQ Orbitrap XL,,Citreoviridin_1440.00m,1530
+1286_271,Citreoviridin,Control,2160.0,26503892,9606,CL1â€“ 0 (Lung adenocarcinoma),chemical,Methyl esterification,LTQ Orbitrap XL,,Citreoviridin_2160.00m,1383
+1287_271,Citreoviridin,Control,2880.0,26503892,9606,CL1â€“ 0 (Lung adenocarcinoma),chemical,Methyl esterification,LTQ Orbitrap XL,,Citreoviridin_2880.00m,1590
+1288_272,AKTi (Akt inhibitor VIII),Control,,26060313,9606,MCF7,free,,LTQ Orbitrap,TiO2,AKTi (Akt inhibitor VIII),7722
+1289_272,AKTi (MK-2206),Control,,26060313,9606,MCF7,free,,LTQ Orbitrap,TiO2,AKTi (MK-2206),7722
+1290_272,CAMK2i (KN-93),Control,,26060313,9606,MCF7,free,,LTQ Orbitrap,TiO2,CAMK2i (KN-93),7722
+1291_272,CAMK2i (KN-62) ,Control,,26060313,9606,MCF7,free,,LTQ Orbitrap,TiO2,CAMK2i (KN-62) ,7722
+1292_272,EGFRi (PD-168393),Control,,26060313,9606,MCF7,free,,LTQ Orbitrap,TiO2,EGFRi (PD-168393),7722
+1293_272,EGFRi (PD-153035),Control,,26060313,9606,MCF7,free,,LTQ Orbitrap,TiO2,EGFRi (PD-153035),7722
+1294_272,ERKi (ERK inhibitor),Control,,26060313,9606,MCF7,free,,LTQ Orbitrap,TiO2,ERKi (ERK inhibitor),7722
+1295_272,ERKi (ERK inhibitor II),Control,,26060313,9606,MCF7,free,,LTQ Orbitrap,TiO2,ERKi (ERK inhibitor II),7722
+1296_272,MEKi (GSK-1120212) ,Control,,26060313,9606,MCF7,free,,LTQ Orbitrap,TiO2,MEKi (GSK-1120212) ,7722
+1297_272,MEKi (U0126) ,Control,,26060313,9606,MCF7,free,,LTQ Orbitrap,TiO2,MEKi (U0126) ,7722
+1298_272,mTORi (KU-0063794) ,Control,,26060313,9606,MCF7,free,,LTQ Orbitrap,TiO2,mTORi (KU-0063794) ,7722
+1299_272,mTORi (Torin-1),Control,,26060313,9606,MCF7,free,,LTQ Orbitrap,TiO2,mTORi (Torin-1),7722
+1300_272,P70S6K1i (PF-4708671),Control,,26060313,9606,MCF7,free,,LTQ Orbitrap,TiO2,P70S6K1i (PF-4708671),7722
+1301_272,P70S6K1i (DG2),Control,,26060313,9606,MCF7,free,,LTQ Orbitrap,TiO2,P70S6K1i (DG2),7722
+1302_272,PI3Ki (GDC-0941),Control,,26060313,9606,MCF7,free,,LTQ Orbitrap,TiO2,PI3Ki (GDC-0941),7722
+1303_272,PI3Ki (PI-103),Control,,26060313,9606,MCF7,free,,LTQ Orbitrap,TiO2,PI3Ki (PI-103),7722
+1304_272,PKCi (GÃ¶-6976),Control,,26060313,9606,MCF7,free,,LTQ Orbitrap,TiO2,PKCi (GÃ¶-6976),7722
+1305_272,PKCi (BIM-1),Control,,26060313,9606,MCF7,free,,LTQ Orbitrap,TiO2,PKCi (BIM-1),7722
+1306_272,PP2Ai (Okadaic acid),Control,,26060313,9606,MCF7,free,,LTQ Orbitrap,TiO2,PP2Ai (Okadaic acid),7722
+1307_272,PP2Ai (Cantharidic acid),Control,,26060313,9606,MCF7,free,,LTQ Orbitrap,TiO2,PP2Ai (Cantharidic acid),7722
+1308_272,ROCKi (H-1152),Control,,26060313,9606,MCF7,free,,LTQ Orbitrap,TiO2,ROCKi (H-1152),7722
+1309_272,ROCKi (Y-27632),Control,,26060313,9606,MCF7,free,,LTQ Orbitrap,TiO2,ROCKi (Y-27632),7722
+1310_273,Differentiation (PMA),Control,5.0,26307563,9606,THP-1,metabolic,SILAC,LTQ Orbitrap,TiO2,Differentiation (PMA)_vs_Control_5.00m,792
+1311_273,Differentiation (PMA),Control,15.0,26307563,9606,THP-1,metabolic,SILAC,LTQ Orbitrap,TiO2,Differentiation (PMA)_vs_Control_15.00m,792
+1312_273,Differentiation (PMA),Control,30.0,26307563,9606,THP-1,metabolic,SILAC,LTQ Orbitrap,TiO2,Differentiation (PMA)_vs_Control_30.00m,281
+1313_273,Differentiation (PMA),Control,60.0,26307563,9606,THP-1,metabolic,SILAC,LTQ Orbitrap,TiO2,Differentiation (PMA)_vs_Control_60.00m,281
+1314_274,shPP6c (Taxol),Control,,26462736,9606,HeLa,chemical,Methyl esterification,Fusion Orbitrap Tribrid,TiO2,shPP6c (Taxol),16551
+1315_275,NGF (TrkA overexpression),Control,10.0,25921289,9606,SH-SY5Y neuroblastoma cells,metabolic,SILAC,Orbitrap (Q Exactive),TiO2,NGF (TrkA overexpression)_10.00m,7659
+1316_275,NGF (TrkA overexpression),Control,45.0,25921289,9606,SH-SY5Y neuroblastoma cells,metabolic,SILAC,Orbitrap (Q Exactive),TiO2,NGF (TrkA overexpression)_45.00m,7651
+1317_275,NGF (TrkA overexpression),Control,120.0,25921289,9606,SH-SY5Y neuroblastoma cells,metabolic,SILAC,Orbitrap (Q Exactive),TiO2,NGF (TrkA overexpression)_120.00m,8226
+1320_277,Selumetinib (AZD6244),Control,,25850435,9606,WM239A,metabolic,SILAC,LTQ Orbitrap Velos,TiO2,Selumetinib (AZD6244),10090
+1321_277,Selumetinib (AZD6244),Control,,25850435,9606,WM239A,metabolic,SILAC,LTQ Orbitrap Velos,TiO2,Selumetinib (AZD6244),11108
+1322_277,Selumetinib (AZD6244),Control,,25850435,9606,WM239A,metabolic,SILAC,LTQ Orbitrap Velos,TiO2,Selumetinib (AZD6244),10778
+1323_277,Vemurafenib (PLX4032),Control,,25850435,9606,WM239A,metabolic,SILAC,LTQ Orbitrap Velos,TiO2,Vemurafenib (PLX4032)_vs_Control,10093
+1324_277,Vemurafenib (PLX4032),Control,,25850435,9606,WM239A,metabolic,SILAC,LTQ Orbitrap Velos,TiO2,Vemurafenib (PLX4032)_vs_Control,11109
+1325_277,Vemurafenib (PLX4032),Control,,25850435,9606,WM239A,metabolic,SILAC,LTQ Orbitrap Velos,TiO2,Vemurafenib (PLX4032)_vs_Control,10778
+1326_277,Vemurafenib (PLX4032),Selumetinib (AZD6244),,25850435,9606,WM239A,metabolic,SILAC,LTQ Orbitrap Velos,TiO2,Vemurafenib (PLX4032)_vs_Selumetinib (AZD6244),10083
+1327_277,Vemurafenib (PLX4032),Selumetinib (AZD6244),,25850435,9606,WM239A,metabolic,SILAC,LTQ Orbitrap Velos,TiO2,Vemurafenib (PLX4032)_vs_Selumetinib (AZD6244),11103
+1328_277,Vemurafenib (PLX4032),Selumetinib (AZD6244),,25850435,9606,WM239A,metabolic,SILAC,LTQ Orbitrap Velos,TiO2,Vemurafenib (PLX4032)_vs_Selumetinib (AZD6244),10771
+1329_278,anti-CD3 + anti-CD28,Control,15.0,26546556,9606,JE6.1,chemical,TMT,LTQ Orbitrap XL,TiO2_IMAC,anti-CD3 + anti-CD28_15.00m,2323
+1330_278,anti-CD3 + anti-CD28,Control,30.0,26546556,9606,JE6.1,chemical,TMT,LTQ Orbitrap XL,TiO2_IMAC,anti-CD3 + anti-CD28_30.00m,2323
+1331_278,anti-CD3 + anti-CD28,Control,60.0,26546556,9606,JE6.1,chemical,TMT,LTQ Orbitrap XL,TiO2_IMAC,anti-CD3 + anti-CD28_60.00m,2323
+1332_278,anti-CD3 + anti-CD28,Control,120.0,26546556,9606,JE6.1,chemical,TMT,LTQ Orbitrap XL,TiO2_IMAC,anti-CD3 + anti-CD28_120.00m,2323
+1329_279,anti-CD3 + anti-CD28,Control,15.0,26546556,9606,Jgamma1,chemical,TMT,LTQ Orbitrap XL,TiO2_IMAC,anti-CD3 + anti-CD28_15.00m,2134
+1330_279,anti-CD3 + anti-CD28,Control,30.0,26546556,9606,Jgamma1,chemical,TMT,LTQ Orbitrap XL,TiO2_IMAC,anti-CD3 + anti-CD28_30.00m,2134
+1331_279,anti-CD3 + anti-CD28,Control,60.0,26546556,9606,Jgamma1,chemical,TMT,LTQ Orbitrap XL,TiO2_IMAC,anti-CD3 + anti-CD28_60.00m,2134
+1332_279,anti-CD3 + anti-CD28,Control,120.0,26546556,9606,Jgamma1,chemical,TMT,LTQ Orbitrap XL,TiO2_IMAC,anti-CD3 + anti-CD28_120.00m,2134
+1369_286,fulvestrant,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,fulvestrant_vs_DMSO,2297
+1370_286,fulvestrant,captopril,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,fulvestrant_vs_captopril,2296
+1371_286,captopril,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,captopril,2296
+1372_286,clindamycin,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,clindamycin_vs_DMSO,2288
+1373_286,clindamycin,ambroxol,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,clindamycin_vs_ambroxol,2287
+1374_286,ambroxol,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,ambroxol,2292
+1375_286,chlortetracycline,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,chlortetracycline_vs_DMSO,2471
+1376_286,chlortetracycline,paclitaxel,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,chlortetracycline_vs_paclitaxel,2471
+1377_286,paclitaxel,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,paclitaxel,2477
+1378_286,chlorzoxazone,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,chlorzoxazone_vs_DMSO,2308
+1379_286,chlorzoxazone,carmustine,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,chlorzoxazone_vs_carmustine,2308
+1380_286,carmustine,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,carmustine,2304
+1383_286,doxorubicin,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,doxorubicin,2498
+1384_286,staurosporine,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,staurosporine_vs_DMSO,2743
+1385_286,staurosporine,daunorubicin,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,staurosporine_vs_daunorubicin,2743
+1386_286,daunorubicin,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,daunorubicin,2751
+1387_286,irinotecan,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,irinotecan_vs_DMSO,2589
+1388_286,irinotecan,dexverapamil,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,irinotecan_vs_dexverapamil,2590
+1389_286,dexverapamil,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,dexverapamil,2604
+1390_286,scriptaid,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,scriptaid_vs_DMSO,2493
+1391_286,scriptaid,mesalazine,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,scriptaid_vs_mesalazine,2493
+1392_286,mesalazine,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,mesalazine,2493
+1393_286,trichostatin A,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,trichostatin A_vs_DMSO,2198
+1394_286,trichostatin A,anisomycin,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,trichostatin A_vs_anisomycin,2198
+1395_286,anisomycin,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,anisomycin,2201
+1398_286,digitoxigenin,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,digitoxigenin,2577
+1399_286,valproic acid,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,valproic acid_vs_DMSO,2167
+1400_286,valproic acid,digoxigenin,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,valproic acid_vs_digoxigenin,2167
+1401_286,digoxigenin,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,digoxigenin,2166
+1404_286,digoxin,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,digoxin,2511
+1405_286,geldanamycin,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,geldanamycin_vs_DMSO,2567
+1406_286,geldanamycin,Lanatoside C,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,geldanamycin_vs_Lanatoside C,2567
+1407_286,Lanatoside C,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,Lanatoside C,2570
+1408_286,fulvestrant,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,fulvestrant_vs_DMSO,2442
+1409_286,fulvestrant,captopril,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,fulvestrant_vs_captopril,2443
+1410_286,captopril,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,captopril,2443
+1411_286,clindamycin,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,clindamycin_vs_DMSO,2452
+1412_286,clindamycin,ambroxol,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,clindamycin_vs_ambroxol,2456
+1413_286,ambroxol,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,ambroxol,2449
+1414_286,chlortetracycline,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,chlortetracycline_vs_DMSO,2266
+1415_286,chlortetracycline,paclitaxel,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,chlortetracycline_vs_paclitaxel,2266
+1416_286,paclitaxel,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,paclitaxel,2269
+1417_286,chlorzoxazone,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,chlorzoxazone_vs_DMSO,2461
+1418_286,chlorzoxazone,carmustine,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,chlorzoxazone_vs_carmustine,2459
+1419_286,carmustine,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,carmustine,2465
+1422_286,doxorubicin,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,doxorubicin,2514
+1423_286,staurosporine,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,staurosporine_vs_DMSO,2393
+1424_286,staurosporine,daunorubicin,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,staurosporine_vs_daunorubicin,2395
+1425_286,daunorubicin,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,daunorubicin,2402
+1426_286,irinotecan,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,irinotecan_vs_DMSO,2395
+1427_286,irinotecan,dexverapamil,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,irinotecan_vs_dexverapamil,2394
+1428_286,dexverapamil,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,dexverapamil,2408
+1429_286,scriptaid,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,scriptaid_vs_DMSO,2457
+1430_286,scriptaid,mesalazine,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,scriptaid_vs_mesalazine,2458
+1431_286,mesalazine,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,mesalazine,2460
+1432_286,trichostatin A,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,trichostatin A_vs_DMSO,2168
+1433_286,trichostatin A,anisomycin,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,trichostatin A_vs_anisomycin,2166
+1434_286,anisomycin,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,anisomycin,2169
+1437_286,digitoxigenin,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,digitoxigenin,2519
+1438_286,valproic acid,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,valproic acid_vs_DMSO,2150
+1439_286,valproic acid,digoxigenin,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,valproic acid_vs_digoxigenin,2150
+1440_286,digoxigenin,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,digoxigenin,2152
+1443_286,digoxin,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,digoxin,2349
+1444_286,geldanamycin,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,geldanamycin_vs_DMSO,2317
+1445_286,geldanamycin,Lanatoside C,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,geldanamycin_vs_Lanatoside C,2318
+1446_286,Lanatoside C,DMSO,,26912667,9606,AML HL-60,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,Lanatoside C,2315
+1447_287,fulvestrant,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,fulvestrant_vs_DMSO,1828
+1448_287,fulvestrant,captopril,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,fulvestrant_vs_captopril,1829
+1449_287,captopril,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,captopril,1829
+1450_287,clindamycin,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,clindamycin_vs_DMSO,1834
+1451_287,clindamycin,ambroxol,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,clindamycin_vs_ambroxol,1834
+1452_287,ambroxol,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,ambroxol,1834
+1453_287,chlortetracycline,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,chlortetracycline_vs_DMSO,1727
+1454_287,chlortetracycline,paclitaxel,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,chlortetracycline_vs_paclitaxel,1727
+1455_287,paclitaxel,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,paclitaxel,1723
+1456_287,chlorzoxazone,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,chlorzoxazone_vs_DMSO,1896
+1457_287,chlorzoxazone,carmustine,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,chlorzoxazone_vs_carmustine,1896
+1458_287,carmustine,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,carmustine,1897
+1461_287,doxorubicin,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,doxorubicin,1879
+1462_287,staurosporine,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,staurosporine_vs_DMSO,1992
+1463_287,staurosporine,daunorubicin,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,staurosporine_vs_daunorubicin,1992
+1464_287,daunorubicin,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,daunorubicin,1994
+1465_287,irinotecan,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,irinotecan_vs_DMSO,1537
+1466_287,irinotecan,dexverapamil,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,irinotecan_vs_dexverapamil,1537
+1467_287,dexverapamil,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,dexverapamil,1537
+1468_287,scriptaid,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,scriptaid_vs_DMSO,1760
+1469_287,scriptaid,mesalazine,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,scriptaid_vs_mesalazine,1760
+1470_287,mesalazine,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,mesalazine,1760
+1471_287,trichostatin A,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,trichostatin A_vs_DMSO,1709
+1472_287,trichostatin A,anisomycin,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,trichostatin A_vs_anisomycin,1708
+1473_287,anisomycin,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,anisomycin,1709
+1476_287,digitoxigenin,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,digitoxigenin,1661
+1477_287,valproic acid,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,valproic acid_vs_DMSO,1679
+1478_287,valproic acid,digoxigenin,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,valproic acid_vs_digoxigenin,1679
+1479_287,digoxigenin,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,digoxigenin,1676
+1482_287,digoxin,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,digoxin,1607
+1483_287,geldanamycin,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,geldanamycin_vs_DMSO,1791
+1484_287,geldanamycin,Lanatoside C,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,geldanamycin_vs_Lanatoside C,1791
+1485_287,Lanatoside C,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,Lanatoside C,1792
+1486_287,fulvestrant,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,fulvestrant_vs_DMSO,1800
+1487_287,fulvestrant,captopril,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,fulvestrant_vs_captopril,1799
+1488_287,captopril,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,captopril,1799
+1489_287,clindamycin,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,clindamycin_vs_DMSO,1859
+1490_287,clindamycin,ambroxol,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,clindamycin_vs_ambroxol,1860
+1491_287,ambroxol,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,ambroxol,1860
+1492_287,chlortetracycline,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,chlortetracycline_vs_DMSO,1859
+1493_287,chlortetracycline,paclitaxel,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,chlortetracycline_vs_paclitaxel,1860
+1494_287,paclitaxel,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,paclitaxel,1859
+1495_287,chlorzoxazone,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,chlorzoxazone_vs_DMSO,1838
+1496_287,chlorzoxazone,carmustine,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,chlorzoxazone_vs_carmustine,1837
+1497_287,carmustine,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,carmustine,1837
+1500_287,doxorubicin,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,doxorubicin,1547
+1501_287,staurosporine,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,staurosporine_vs_DMSO,2380
+1502_287,staurosporine,daunorubicin,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,staurosporine_vs_daunorubicin,2380
+1503_287,daunorubicin,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,daunorubicin,2378
+1504_287,irinotecan,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,irinotecan_vs_DMSO,1819
+1505_287,irinotecan,dexverapamil,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,irinotecan_vs_dexverapamil,1819
+1506_287,dexverapamil,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,dexverapamil,1828
+1507_287,scriptaid,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,scriptaid_vs_DMSO,1573
+1508_287,scriptaid,mesalazine,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,scriptaid_vs_mesalazine,1573
+1509_287,mesalazine,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,mesalazine,1573
+1510_287,trichostatin A,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,trichostatin A_vs_DMSO,1663
+1511_287,trichostatin A,anisomycin,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,trichostatin A_vs_anisomycin,1663
+1512_287,anisomycin,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,anisomycin,1663
+1515_287,digitoxigenin,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,digitoxigenin,1664
+1516_287,valproic acid,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,valproic acid_vs_DMSO,1608
+1517_287,valproic acid,digoxigenin,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,valproic acid_vs_digoxigenin,1608
+1518_287,digoxigenin,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,digoxigenin,1610
+1521_287,digoxin,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,digoxin,2301
+1522_287,geldanamycin,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,geldanamycin_vs_DMSO,1575
+1523_287,geldanamycin,Lanatoside C,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,geldanamycin_vs_Lanatoside C,1574
+1524_287,Lanatoside C,DMSO,,26912667,9606,MCF7,metabolic,SILAC,Orbitrap (Q Exactive),IMAC,Lanatoside C,1577
+1525_288,fulvestrant,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,fulvestrant_vs_DMSO,2093
+1526_288,fulvestrant,captopril,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,fulvestrant_vs_captopril,2094
+1527_288,captopril,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,captopril,2171
+1528_288,clindamycin,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,clindamycin_vs_DMSO,2109
+1529_288,clindamycin,ambroxol,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,clindamycin_vs_ambroxol,2110
+1530_288,ambroxol,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,ambroxol,2108
+1531_288,chlortetracycline,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,chlortetracycline_vs_DMSO,2285
+1532_288,chlortetracycline,paclitaxel,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,chlortetracycline_vs_paclitaxel,2285
+1533_288,paclitaxel,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,paclitaxel,2284
+1534_288,chlorzoxazone,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,chlorzoxazone_vs_DMSO,2113
+1535_288,chlorzoxazone,carmustine,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,chlorzoxazone_vs_carmustine,2112
+1536_288,carmustine,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,carmustine,2112
+1539_288,doxorubicin,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,doxorubicin,2199
+1540_288,staurosporine,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,staurosporine_vs_DMSO,2434
+1541_288,staurosporine,daunorubicin,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,staurosporine_vs_daunorubicin,2433
+1542_288,daunorubicin,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,daunorubicin,2436
+1543_288,irinotecan,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,irinotecan_vs_DMSO,2156
+1544_288,irinotecan,dexverapamil,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,irinotecan_vs_dexverapamil,2155
+1545_288,dexverapamil,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,dexverapamil,2157
+1546_288,scriptaid,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,scriptaid_vs_DMSO,2275
+1547_288,scriptaid,mesalazine,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,scriptaid_vs_mesalazine,2275
+1548_288,mesalazine,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,mesalazine,2276
+1549_288,trichostatin A,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,trichostatin A_vs_DMSO,2090
+1550_288,trichostatin A,anisomycin,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,trichostatin A_vs_anisomycin,2091
+1551_288,anisomycin,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,anisomycin,2091
+1554_288,digitoxigenin,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,digitoxigenin,2270
+1555_288,valproic acid,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,valproic acid_vs_DMSO,2253
+1556_288,valproic acid,digoxigenin,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,valproic acid_vs_digoxigenin,2253
+1557_288,digoxigenin,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,digoxigenin,2254
+1560_288,digoxin,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,digoxin,2229
+1561_288,geldanamycin,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,geldanamycin_vs_DMSO,1771
+1562_288,geldanamycin,Lanatoside C,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,geldanamycin_vs_Lanatoside C,1771
+1563_288,Lanatoside C,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,Lanatoside C,1773
+1564_288,fulvestrant,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,fulvestrant_vs_DMSO,2239
+1565_288,fulvestrant,captopril,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,fulvestrant_vs_captopril,2241
+1566_288,captopril,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,captopril,2240
+1567_288,clindamycin,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,clindamycin_vs_DMSO,2204
+1568_288,clindamycin,ambroxol,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,clindamycin_vs_ambroxol,2204
+1569_288,ambroxol,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,ambroxol,2200
+1570_288,chlortetracycline,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,chlortetracycline_vs_DMSO,2392
+1571_288,chlortetracycline,paclitaxel,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,chlortetracycline_vs_paclitaxel,2392
+1572_288,paclitaxel,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,paclitaxel,2392
+1573_288,chlorzoxazone,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,chlorzoxazone_vs_DMSO,2338
+1574_288,chlorzoxazone,carmustine,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,chlorzoxazone_vs_carmustine,2339
+1575_288,carmustine,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,carmustine,2339
+1578_288,doxorubicin,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,doxorubicin,2129
+1579_288,staurosporine,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,staurosporine_vs_DMSO,1729
+1580_288,staurosporine,daunorubicin,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,staurosporine_vs_daunorubicin,1730
+1581_288,daunorubicin,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,daunorubicin,1731
+1582_288,irinotecan,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,irinotecan_vs_DMSO,2383
+1583_288,irinotecan,dexverapamil,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,irinotecan_vs_dexverapamil,2384
+1584_288,dexverapamil,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,dexverapamil,2383
+1585_288,scriptaid,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,scriptaid_vs_DMSO,2276
+1586_288,scriptaid,mesalazine,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,scriptaid_vs_mesalazine,2276
+1587_288,mesalazine,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,mesalazine,2275
+1588_288,trichostatin A,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,trichostatin A_vs_DMSO,2476
+1589_288,trichostatin A,anisomycin,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,trichostatin A_vs_anisomycin,2476
+1590_288,anisomycin,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,anisomycin,2479
+1593_288,digitoxigenin,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,digitoxigenin,2306
+1594_288,valproic acid,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,valproic acid_vs_DMSO,2171
+1595_288,valproic acid,digoxigenin,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,valproic acid_vs_digoxigenin,2171
+1596_288,digoxigenin,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,digoxigenin,2171
+1599_288,digoxin,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,digoxin,1479
+1600_288,geldanamycin,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,geldanamycin_vs_DMSO,2305
+1601_288,geldanamycin,Lanatoside C,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,geldanamycin_vs_Lanatoside C,2305
+1602_288,Lanatoside C,DMSO,,26912667,9606,PC-3 (Prostate Cancer),metabolic,SILAC,Orbitrap (Q Exactive),IMAC,Lanatoside C,2305
