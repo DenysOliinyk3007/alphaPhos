@@ -12,6 +12,60 @@ While in `0.x`, breaking API changes may appear in any MINOR bump (`0.1 → 0.2`
 
 _Nothing yet._
 
+## [0.9.0] - 2026-07-03
+
+### Added
+
+- **`alphaphos.enrichment.pathway_gsea` submodule** -- third
+  inhabitant of the elevated `alphaphos.enrichment` namespace.
+  Sibling to `pathway` (ORA); same Enrichr libraries, rank-based
+  statistics instead of threshold-based.
+- **`alphaphos.enrichment.pathway_gsea(diff_exp_result, ...)`** --
+  classical Subramanian 2005 preranked GSEA on the same limma output
+  KSEA and pathway_enrichment consume. Wraps `gseapy.prerank`
+  (permutation-based FDR). Returns a tidy DataFrame with columns
+  `library, term, es, nes, p_value, fdr, size, leading_edge, direction`
+  sorted by FDR within each library, with leading-edge genes exposed
+  as a semicolon-joined string. Provenance stamped on
+  `.attrs["provenance"]` (method, stat_col, site_to_gene_agg,
+  n_permutations, seed, gseapy version, collapse-stats).
+- **Configurable site-to-gene collapse** -- the phospho-specific piece:
+    - `site_to_gene_agg="max_abs"` (default) keeps the site with the
+      largest `|log2fc|` per gene and retains its signed value.
+      Captures peak regulation without averaging away opposing sites.
+    - `site_to_gene_agg="top_significant"` keeps the site with the
+      lowest per-site FDR per gene. Prioritises statistical evidence
+      over effect magnitude.
+- **No background parameter** -- unlike ORA, GSEA's null is built by
+  permuting set membership; the ranked list itself is the universe.
+  Simpler API by design.
+- **Per-library isolation** -- each Enrichr library is called
+  independently, so a single flaky/missing library (network hiccup,
+  404) doesn't kill the whole run. Failures are logged as warnings.
+
+### Validated on real data
+
+- On the EGF walkthrough result (15,185 sites collapsed to 4,048
+  ranked genes via `max_abs`), pathway_gsea recovers the
+  coherent-motion signature of EGF stimulation with 1000 permutations:
+    - **KEGG** at FDR < 5e-03: **GnRH signaling** (NES +2.00),
+      **Relaxin signaling** (NES +2.00), **TNF signaling** (NES +1.98),
+      **Prolactin signaling** (NES +2.01) -- all RTK/MAPK-convergent
+      pathways.
+    - **Reactome** top hits: **Signaling By ERBB4** (NES +1.82),
+      **PI5P/PP2A/IER3 Regulate PI3K/AKT Signaling** (NES +1.76),
+      **Constitutive Signaling By Aberrant PI3K In Cancer**,
+      **Signaling By Insulin Receptor** -- textbook EGF/RTK biology.
+- Complements the ORA path: pathway_enrichment surfaces
+  ErbB/MAPK/Insulin as top-ORA hits (threshold-based), while
+  pathway_gsea additionally surfaces coherent-motion pathways
+  (GnRH/Relaxin/TNF signaling) that don't cross the ORA hit
+  threshold but move as a set.
+- 24 tests: 22 mocked-gseapy unit tests (schema, per-library
+  isolation, both collapse strategies with known ground truth,
+  NaN handling, error paths, provenance) plus 2 real-Enrichr-API
+  integration tests.
+
 ## [0.8.0] - 2026-07-03
 
 ### Added

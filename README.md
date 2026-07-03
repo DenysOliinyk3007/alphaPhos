@@ -2,7 +2,7 @@
 
 Phosphoproteomics analysis toolkit.
 
-**Status:** pre-alpha (v0.8.0). Standard 2-condition workflows (Spectronaut / DIA-NN / FragPipe → sites → filter → impute → optional ComBat → limma → enrichment) are covered end-to-end and validated on real data. Multi-contrast ANOVA and PCA/UMAP are not yet implemented.
+**Status:** pre-alpha (v0.9.0). Standard 2-condition workflows (Spectronaut / DIA-NN / FragPipe → sites → filter → impute → optional ComBat → limma → enrichment) are covered end-to-end and validated on real data. Multi-contrast ANOVA and PCA/UMAP are not yet implemented.
 
 ## Install
 
@@ -55,7 +55,7 @@ result = ap.diff_exp_limma(
 #   log2fc, se, t_stat, p_value, fdr, B, ave_expr
 ```
 
-## What ships in v0.8.0
+## What ships in v0.9.0
 
 | Module | Function | Notes |
 | --- | --- | --- |
@@ -72,6 +72,7 @@ result = ap.diff_exp_limma(
 | `alphaphos.kinase.enrichment` | Kinase library enrichment | Same optional dep. |
 | `alphaphos.enrichment.ksea` | `kinase_activity` | Kinase-activity inference via decoupler ULM (default) / MLM against OmniPath (default), curated PTM DB, or a user-supplied network. |
 | `alphaphos.enrichment.pathway` | `pathway_enrichment` | Gene-level pathway ORA via gseapy Enrichr (GO BP/MF/CC + KEGG + Reactome + Hallmark by default). Phosphoproteome background by default; proteome background preferred if available. |
+| `alphaphos.enrichment.pathway_gsea` | `pathway_gsea` | Gene-level preranked GSEA (Subramanian 2005 via gseapy prerank) on the same Enrichr libraries. Complements ORA for coherent-motion pathways. Site→gene collapse via max-\|log2fc\| default or lowest-per-site-FDR. |
 | `alphaphos.dose_response` | `fit_dose_response` | CurveCurator wrapper (optional `curve_curator`). |
 | `alphaphos.qc` | `generate_dashboard` | Bokeh QC HTML report (optional `bokeh`). |
 

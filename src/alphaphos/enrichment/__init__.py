@@ -18,10 +18,12 @@ Kinase-substrate inference lives in
 :func:`alphaphos.enrichment.kinase_activity` (decoupler ULM on the
 OmniPath or PTM-DB network); gene-level pathway ORA lives in
 :func:`alphaphos.enrichment.pathway_enrichment` (gseapy Enrichr against
-GO / KEGG / Reactome / Hallmark libraries); sequence-based per-site
-kinase prediction lives in :mod:`alphaphos.kinase.library` (Yaffe PWM).
-The four cover different scientific questions and are intentionally
-kept separate.
+GO / KEGG / Reactome / Hallmark libraries); gene-level preranked GSEA
+lives in :func:`alphaphos.enrichment.pathway_gsea` (rank-based
+counterpart of ``pathway_enrichment``); sequence-based per-site kinase
+prediction lives in :mod:`alphaphos.kinase.library` (Yaffe PWM). The
+five cover different scientific questions and are intentionally kept
+separate.
 
 Public API (v1, Phase 1):
 
@@ -57,6 +59,7 @@ from alphaphos.enrichment.pathway import (
     DEFAULT_LIBRARIES_MOUSE,
     pathway_enrichment,
 )
+from alphaphos.enrichment.pathway_gsea import pathway_gsea
 from alphaphos.enrichment.validation import (
     build_kinase_substrate_library,
     ev3_expectations_for_condition,
@@ -81,6 +84,7 @@ __all__ = [
     "fetch_omnipath_ks_network",
     "load_ptm_ks_network",
     "pathway_enrichment",
+    "pathway_gsea",
     "DEFAULT_LIBRARIES_HUMAN",
     "DEFAULT_LIBRARIES_MOUSE",
     "build_kinase_substrate_library",
