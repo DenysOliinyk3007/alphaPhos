@@ -23,6 +23,7 @@ the sign convention.
 from __future__ import annotations
 
 import logging
+import re
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -174,16 +175,21 @@ def diff_exp_limma(
         covariates=covariates,
     )
 
-    contrast_string = f"{level_names['treatment']}-{level_names['control']}"
+    # Internal contrast string uses the sanitized levels (they must be valid
+    # Python identifiers because inmoose.makeContrasts evals the string).
+    contrast_string_internal = f"{level_names['treatment']}-{level_names['control']}"
+    # User-facing contrast string preserves the original labels for display /
+    # provenance in result.attrs.
+    contrast_string_display = f"{condition_column}[{treatment}]-{condition_column}[{control}]"
     logger.info(
         "diff_exp_limma: contrast=%s | n_sites=%d | design=%s",
-        contrast_string,
+        contrast_string_display,
         sub.n_vars,
         design.shape,
     )
 
     fit = lmFit(X.T, design)
-    contrast_mat = makeContrasts([contrast_string], levels=list(fit.coefficients.columns))
+    contrast_mat = makeContrasts([contrast_string_internal], levels=list(fit.coefficients.columns))
     fit2 = contrasts_fit(fit, contrast_mat)
     fit2 = _safe_ebayes(fit2, settings)
 
@@ -195,7 +201,7 @@ def diff_exp_limma(
         tt,
         treatment=treatment,
         control=control,
-        contrast_string=contrast_string,
+        contrast_string=contrast_string_display,
     )
 
 
@@ -346,6 +352,47 @@ def _warn_on_small_groups(
         )
 
 
+_UNSAFE_LEVEL_CHAR_RE = re.compile(r"[^A-Za-z0-9_]")
+
+
+def _sanitize_level(label: str) -> str:
+    """Map a categorical level to a Python-identifier-safe token.
+
+    Levels flow through patsy dummy column names (``condition[<level>]``)
+    and then through ``inmoose.limma.makeContrasts``, which evaluates the
+    contrast string via ``eval()``.  Any non-identifier character
+    (``+``, ``-``, ``.``, ``/``, space, leading digit, ...) is a
+    ``SyntaxError`` waiting to happen.  Replaces unsafe characters with
+    ``_``, prefixes an ``_`` when the result starts with a digit, and
+    falls back to ``_`` for an empty string.
+    """
+    safe = _UNSAFE_LEVEL_CHAR_RE.sub("_", str(label))
+    if safe and safe[0].isdigit():
+        safe = "_" + safe
+    return safe or "_"
+
+
+def _sanitize_and_map_levels(labels: list[str]) -> dict[str, str]:
+    """Build a bijective ``original -> safe`` mapping over the given labels.
+
+    Collisions (``EGF+`` and ``EGF-`` both sanitize to ``EGF_``) are broken
+    by suffixing ``_2``, ``_3``, ... in first-seen order.  The mapping is
+    an implementation detail; the sanitized names never leak to the user.
+    """
+    mapping: dict[str, str] = {}
+    used: set[str] = set()
+    for orig in labels:
+        base = _sanitize_level(orig)
+        safe = base
+        i = 2
+        while safe in used:
+            safe = f"{base}_{i}"
+            i += 1
+        mapping[str(orig)] = safe
+        used.add(safe)
+    return mapping
+
+
 def _build_design(
     adata: ad.AnnData,
     *,
@@ -355,15 +402,36 @@ def _build_design(
     covariates: list[str] | None,
 ):
     obs_df = adata.obs.copy()
-    obs_df[condition_column] = obs_df[condition_column].astype(str)
+
+    # Sanitize the condition column BEFORE it hits patsy, so patsy's dummy
+    # column names (which later flow through inmoose.makeContrasts eval())
+    # are guaranteed to be valid Python identifiers.  Handles level names
+    # like "EGF+", "EGF-", "1uM", "KO/WT", "not treated" -- see
+    # _sanitize_level for the rules.
+    cond_str = obs_df[condition_column].astype(str)
+    cond_map = _sanitize_and_map_levels(cond_str.unique().tolist())
+    obs_df[condition_column] = cond_str.map(cond_map)
+    safe_treatment = cond_map[str(treatment)]
+    safe_control = cond_map[str(control)]
+
+    # Same for any categorical covariate columns.  Continuous (numeric)
+    # covariates flow through patsy as plain names and are unaffected.
+    if covariates:
+        for cov in covariates:
+            col = obs_df[cov]
+            if col.dtype == object or isinstance(col.dtype, pd.CategoricalDtype):
+                col_str = col.astype(str)
+                cov_map = _sanitize_and_map_levels(col_str.unique().tolist())
+                obs_df[cov] = col_str.map(cov_map)
+
     formula_parts = [f"0 + {condition_column}"]
     if covariates:
         formula_parts.extend(covariates)
     formula = "~ " + " + ".join(formula_parts)
     design = patsy.dmatrix(formula, data=obs_df)
     # Patsy names columns as ``condition[<level>]`` for the no-intercept case.
-    level_treat = f"{condition_column}[{treatment}]"
-    level_ctrl = f"{condition_column}[{control}]"
+    level_treat = f"{condition_column}[{safe_treatment}]"
+    level_ctrl = f"{condition_column}[{safe_control}]"
     cols = list(design.design_info.column_names)
     if level_treat not in cols or level_ctrl not in cols:
         raise ValueError(

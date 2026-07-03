@@ -151,6 +151,13 @@ the full explanation.
 - **`comparison` sign convention** is `(treatment, control)`. Reviewers often ask which
   direction is up -- `result.attrs["contrast_direction"]` documents it. Report it in
   Methods.
+- **Level names with special characters are OK.** `EGF+` / `EGF-` / `1uM` / `KO/WT` /
+  names with spaces or dots all work: condition and categorical-covariate level names are
+  sanitised internally before they hit patsy + inmoose (`inmoose.makeContrasts` uses
+  `eval()` and would `SyntaxError` on unsanitised `+`, `-`, `.`, ` `, ...). The
+  sanitisation is a bijective, collision-safe implementation detail; your original
+  labels round-trip through `result.attrs["treatment"]`, `["control"]`,
+  `["contrast_direction"]`, and `["contrast_string"]`.
 
 ## References
 
