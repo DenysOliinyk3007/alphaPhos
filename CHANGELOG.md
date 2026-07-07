@@ -12,6 +12,132 @@ While in `0.x`, breaking API changes may appear in any MINOR bump (`0.1 → 0.2`
 
 _Nothing yet._
 
+## [0.10.3] - 2026-07-07
+
+### Documentation
+
+- **`collapse_precursors.md` gains a "Reporting best practices" section.**
+  Motivated by a redundancy audit on the EGF walkthrough: of the raw
+  5,524 significant precursors reported by the precursor path, only
+  4,199 collapse to unique alphaPhos sites (25% inflation from charge /
+  multiplicity / missed-cleavage variants).  The section spells out
+  the recommended reporting pattern (aggregate to unique sites before
+  quoting counts, use ``aggregate_to_site_level``), gives the exact
+  code snippet + Methods-section language, and explains why raw
+  precursor counts overstate independence under BH-FDR.
+- The "Validated on real EGF data" section is expanded with the
+  redundancy audit table + a counter-intuitive negative finding: on the
+  EGF dataset, relaxed site-level (``global_max`` + ``cutoff=0.5``)
+  recovers only 41 additional hits over strict site-level.  Per-run
+  masking is NOT the main driver of the site-vs-precursor gap here --
+  it's site-level's ``Protein|Gene|Site|Mult`` key baking multiplicity
+  into the feature identity.
+- The "Downstream compatibility" section cross-links to the new
+  best-practices section so users see the reporting guidance before
+  running anything.
+
+## [0.10.2] - 2026-07-07
+
+### Added
+
+- **`alphaphos.aggregate_to_site_level(precursor_result, site_view, ...)`**
+  -- new helper that collapses a precursor-indexed diff-exp DataFrame to
+  a site-indexed one, so the KSEA hand-off from a precursor-level
+  pipeline is one call.  Aggregates via ``max_abs`` (default),
+  ``mean``, or ``first`` for the effect stat; ``min`` or ``mean`` for
+  the FDR.  Adds an ``n_precursors`` column noting how many precursors
+  were collapsed at each site.  Raises when nothing survives the
+  bridge (bug-shaped-empty guard).
+
+### Fixed
+
+- **`pathway_enrichment` and `pathway_gsea` now accept BOTH alphaPhos
+  key formats.**  The previous implementation ran the strict site-key
+  regex ``Protein|Gene|<AA><pos>|M<mult>`` in ``_keys_to_genes``, so
+  precursor keys ``Protein|Gene|Peptide|Charge|Mods`` would fail with
+  "No parseable alphaPhos keys".  Replaced with a permissive
+  pipe-split -- gene is field 1 in both formats -- so precursor-level
+  ``diff_exp_limma`` output flows straight into either pathway module
+  with zero user-side conversion.  Zero-break for existing site-level
+  callers.
+
+### Validated on real EGF data (0.10.2 EGF benchmark, 6 samples, 619k PSMs)
+
+The precursor path is now drop-in compatible with the full downstream
+stack.  On the same input:
+
+| stage | site-level | precursor-level (default) |
+| --- | --- | --- |
+| initial features | 34,227 | 39,323 (2,321 dropped by classI 0.75) |
+| after completeness filter (2/3 each) | 15,186 | **38,170** |
+| significant at FDR<0.05 | 2,057 | **5,524** (3,932 up / 1,592 down) |
+| top KEGG (ORA, up) | ErbB signaling FDR 6.2e-04 | **ErbB signaling FDR 2.0e-06** |
+| KSEA top-5 up (via bridge + aggregate) | -- | **EGF, MAPKAPK2, LCK, BRAF, KSR1** |
+
+Site-level's completeness filter drops 55% of features; precursor-level
+drops 3%.  Confirms the "abundance-biased culling" pattern the
+rationale doc predicted.
+
+### Documentation
+
+- ``docs/modules/preprocess/collapse_precursors.md`` gains a
+  "Downstream compatibility" table, an ``aggregate_to_site_level``
+  section, and a real-EGF validation table.
+- Full end-to-end example now shows both the pathway path (works on
+  precursor keys directly) and the KSEA path (bridge + aggregate +
+  kinase_activity).
+
+### Tests
+
+- 16 new tests: 13 covering ``aggregate_to_site_level`` (all three
+  ``stat_agg`` values, both ``fdr_agg`` values, ``fdr_col=None`` skip,
+  ``n_precursors`` column, unique index, drop-no-site, four error
+  paths) and 3 covering the permissive gene-extraction in the two
+  pathway modules.
+
+## [0.10.1] - 2026-07-03
+
+### Fixed / added
+
+- **`collapse_precursors` now applies a Class I gate by default**
+  (`classI_cutoff=0.75`). Precursors whose PEAK localization probability
+  across all PSM rows never reached the cutoff are dropped. This is the
+  natural analog of the site-level ``localization_strategy="global_max"``
+  rule at precursor granularity: a phospho precursor confidently
+  localized in ANY run passes; one that was never confident anywhere is
+  dropped. Prevents the "keep all phosphoprecursors including
+  unlocalized garbage" trap of the initial v0.10.0 release.
+
+  - **Non-phospho precursors bypass the gate** (when
+    ``phospho_only=False``) since localization confidence is not a
+    meaningful concept for them.
+  - **NaN best-loc** (no parseable loc string anywhere) counts as "below
+    the cutoff" and is dropped.
+  - Comparison is ``>=`` so a precursor exactly at the cutoff is kept.
+  - Pass ``classI_cutoff=None`` to disable the gate entirely -- the
+    rationale-doc fallback for datasets where the localization metric is
+    known unreliable.
+  - Validation: ``classI_cutoff`` requires ``annotate_localization=True``
+    (no loc info to gate on otherwise). Out-of-range or non-numeric
+    values raise ``ValueError``.
+  - Provenance: ``adata.uns["alphaphos"]["stats"]`` gains
+    ``n_dropped_classI`` and ``classI_cutoff`` for reproducibility.
+  - If EVERY precursor gets gated out, ``collapse_precursors`` raises
+    with a helpful message pointing at lowering or disabling the gate.
+
+- 9 new tests locking the gate behaviour: default cutoff drops low-loc
+  precursors, ``None`` disables, lower cutoffs keep more, boundary is
+  inclusive, non-phospho precursors bypass, the raise-on-empty behaviour,
+  and the three validation paths (out-of-range, bool coerced-in, missing
+  annotate_localization).
+
+### Documentation
+
+- `docs/modules/preprocess/collapse_precursors.md` parameter table now
+  documents ``classI_cutoff``; the "design goals" section replaces the
+  "no classI_cutoff" line with a precise statement of how the gate
+  differs from site-level per-cell masking.
+
 ## [0.10.0] - 2026-07-03
 
 ### Added

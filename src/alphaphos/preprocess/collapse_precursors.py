@@ -24,6 +24,11 @@ Public API
                                            key so KSEA / pathway analyses can
                                            still be run downstream on the
                                            site-level parallel object.
+:func:`aggregate_to_site_level`         -- collapse a precursor-level
+                                           diff-exp DataFrame to a
+                                           site-indexed one, dedupelicating
+                                           the many-precursors-per-site
+                                           join.  Feeds :func:`kinase_activity`.
 :data:`DEFAULT_PRECURSOR_COLLAPSE_SETTINGS` -- the settings dict.
 :func:`resolve_precursor_settings`      -- exposed for testing / advanced use.
 """
@@ -33,7 +38,7 @@ from __future__ import annotations
 import logging
 import re
 import warnings
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
@@ -75,6 +80,14 @@ DEFAULT_PRECURSOR_COLLAPSE_SETTINGS: dict[str, Any] = {
     "drop_all_nan": True,
     "phospho_only": True,
     "annotate_localization": True,
+    # Class I gate on the PEAK localization probability across all PSM rows
+    # of a precursor. Default 0.75 matches Spectronaut's Class I convention.
+    # This is the natural analog of site-level ``localization_strategy="global_max"``
+    # at precursor granularity: keep the precursor if it was confidently
+    # localized in ANY run, drop if it was never confident anywhere.
+    # Pass ``None`` to disable (rationale-doc fallback for datasets where the
+    # loc metric is known unreliable).
+    "classI_cutoff": 0.75,
 }
 
 _ALLOWED_ENGINES = ("SN",)
@@ -125,6 +138,17 @@ def resolve_precursor_settings(advanced: dict[str, Any] | None) -> dict[str, Any
     for bool_key in ("noise_floor_filter", "drop_all_nan", "phospho_only", "annotate_localization"):
         if not isinstance(out[bool_key], bool):
             raise ValueError(f"{bool_key} must be a bool; got {type(out[bool_key]).__name__}")
+    cutoff = out["classI_cutoff"]
+    if cutoff is not None:
+        if not isinstance(cutoff, (int, float)) or isinstance(cutoff, bool):
+            raise ValueError(f"classI_cutoff must be a float in [0, 1] or None; got {cutoff!r}")
+        if not (0.0 <= float(cutoff) <= 1.0):
+            raise ValueError(f"classI_cutoff must be in [0, 1]; got {cutoff!r}")
+        if not out["annotate_localization"]:
+            raise ValueError(
+                "classI_cutoff requires annotate_localization=True (no loc info "
+                "to gate on otherwise). Set classI_cutoff=None to disable the gate."
+            )
     return out
 
 
@@ -299,6 +323,47 @@ def collapse_precursors(
         annotate_localization=settings["annotate_localization"],
     )
 
+    # ---- Class I gate: drop precursors whose PEAK localization probability
+    # across all PSM rows never met the cutoff.  Natural analog of the
+    # site-level "global_max" strategy at precursor granularity: a
+    # phospho precursor that was NEVER confidently localized in any run
+    # is dropped; a precursor that was confident in ANY run is kept.
+    # NaN best_localization_prob (no parseable loc string anywhere)
+    # counts as "below the cutoff" and is dropped.
+    #
+    # Non-phospho precursors (n_phospho==0, only present when
+    # ``phospho_only=False``) bypass the gate -- localization confidence
+    # is not a meaningful concept for them.
+    #
+    # Pass ``classI_cutoff=None`` to disable the gate entirely.
+    n_dropped_classI = 0
+    if settings["classI_cutoff"] is not None:
+        cutoff = float(settings["classI_cutoff"])
+        is_phospho = var_meta["n_phospho"].fillna(0).astype(int) > 0
+        loc_ok = var_meta["best_localization_prob"] >= cutoff
+        # NaN comparisons yield False -> those precursors get dropped.
+        # Non-phospho precursors are always kept (loc not applicable).
+        keep = (~is_phospho) | loc_ok
+        n_dropped_classI = int((~keep).sum())
+        if n_dropped_classI:
+            logger.info(
+                "collapse_precursors: dropped %d/%d precursors with "
+                "best_localization_prob < %s (classI_cutoff)",
+                n_dropped_classI,
+                len(var_meta),
+                cutoff,
+            )
+        var_meta = var_meta.loc[keep]
+        quant_log2 = quant_log2.loc[keep]
+        loc_per_run = loc_per_run.loc[keep]
+
+    if var_meta.empty:
+        raise ValueError(
+            "No precursors survived the classI_cutoff gate. Either lower the "
+            "cutoff, disable it (classI_cutoff=None), or verify that "
+            "EG.PTMLocalizationProbabilities is present in the input."
+        )
+
     # ---- Package + adapt AnnData ----------------------------------------
     n_input_rows = len(data)
     n_precursors = int(quant_log2.shape[0])
@@ -309,6 +374,8 @@ def collapse_precursors(
         "n_samples": n_samples,
         "quantification_column_used": chosen_col,
         "quantification_level_used": level_used,
+        "n_dropped_classI": n_dropped_classI,
+        "classI_cutoff": settings["classI_cutoff"],
     }
 
     # assemble_anndata requires a matching loc matrix (no None path);
@@ -451,6 +518,112 @@ def precursor_to_site_view(
             }
         )
     out = pd.DataFrame(rows).set_index("precursor_key")
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Aggregation: precursor-level diff-exp result -> site-level diff-exp result
+# ---------------------------------------------------------------------------
+
+
+def aggregate_to_site_level(
+    precursor_result: pd.DataFrame,
+    site_view: pd.DataFrame,
+    *,
+    stat_col: str = "log2fc",
+    stat_agg: Literal["max_abs", "mean", "first"] = "max_abs",
+    fdr_col: str | None = "fdr",
+    fdr_agg: Literal["min", "mean"] = "min",
+) -> pd.DataFrame:
+    """Collapse a precursor-indexed diff-exp DataFrame to a site-indexed one.
+
+    Uses the mapping produced by :func:`precursor_to_site_view` to route each
+    precursor to a phosphosite.  Multiple precursors covering the same site
+    (different peptides, charges, or multiplicities) are aggregated per
+    ``stat_agg``.  Precursors with no site assignment (``site_key`` is NaN
+    -- e.g. below the localization gate, or a non-STY peak position) are
+    dropped.
+
+    Enables the KSEA / kinase-activity hand-off from a precursor-level
+    ``diff_exp_limma`` result::
+
+        adata = ap.collapse_precursors(psm, ...)
+        result = ap.diff_exp_limma(adata, ...)
+        site_view = ap.precursor_to_site_view(adata, require_localization=0.75)
+        site_result = ap.aggregate_to_site_level(result, site_view)
+        ksea = ap.enrichment.kinase_activity(
+            site_result, stat_col="log2fc", network="omnipath",
+        )
+
+    Parameters
+    ----------
+    precursor_result
+        DataFrame indexed by precursor_key (matching ``site_view.index``).
+        Usually the output of :func:`diff_exp_limma` run on a precursor-level
+        AnnData.
+    site_view
+        Output of :func:`precursor_to_site_view`.  Must carry a ``site_key``
+        column.
+    stat_col
+        Column in ``precursor_result`` carrying the signed effect statistic.
+    stat_agg
+        How to combine precursors that map to the same site:
+
+        - ``"max_abs"`` (default) -- keep the precursor with the largest
+          ``|stat|``, retain its signed value.  Preserves peak regulation.
+        - ``"mean"`` -- arithmetic mean of the stat across precursors.
+        - ``"first"`` -- first-seen precursor's value.
+    fdr_col
+        FDR column to also aggregate (if present).  Pass ``None`` to skip.
+    fdr_agg
+        ``"min"`` (default) -- take the smallest FDR across precursors at
+        the same site.  ``"mean"`` -- arithmetic mean.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Indexed by ``site_key``.  Columns: the aggregated ``stat_col`` and
+        (if not ``None``) the aggregated ``fdr_col``, plus ``n_precursors``
+        (how many precursors were aggregated at each site).
+    """
+    if stat_agg not in ("max_abs", "mean", "first"):
+        raise ValueError(f"stat_agg must be one of 'max_abs'/'mean'/'first'; got {stat_agg!r}")
+    if fdr_agg not in ("min", "mean"):
+        raise ValueError(f"fdr_agg must be 'min' or 'mean'; got {fdr_agg!r}")
+    if "site_key" not in site_view.columns:
+        raise ValueError("site_view must have a 'site_key' column (see precursor_to_site_view).")
+    if stat_col not in precursor_result.columns:
+        raise KeyError(f"stat_col {stat_col!r} not in precursor_result columns.")
+
+    joined = precursor_result.join(site_view[["site_key"]], how="left").dropna(subset=["site_key"])
+    if joined.empty:
+        raise ValueError(
+            "No precursors have a resolvable site_key in site_view.  "
+            "Lower require_localization or verify the bridge is aligned."
+        )
+
+    grouped = joined.groupby("site_key", sort=False)
+
+    def _agg_stat(sub: pd.Series) -> float:
+        if stat_agg == "max_abs":
+            i = sub.abs().idxmax()
+            return float(sub.loc[i])
+        if stat_agg == "mean":
+            return float(sub.mean())
+        return float(sub.iloc[0])  # "first"
+
+    out = pd.DataFrame(
+        {
+            stat_col: grouped[stat_col].apply(_agg_stat),
+            "n_precursors": grouped.size().astype(int),
+        }
+    )
+    if fdr_col is not None and fdr_col in precursor_result.columns:
+        if fdr_agg == "min":
+            out[fdr_col] = grouped[fdr_col].min()
+        else:
+            out[fdr_col] = grouped[fdr_col].mean()
+    out.index.name = "site_key"
     return out
 
 
