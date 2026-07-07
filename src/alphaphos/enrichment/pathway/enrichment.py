@@ -22,8 +22,6 @@ from typing import Literal
 
 import pandas as pd
 
-from alphaphos.enrichment.matching import parse_alphaphos_key
-
 logger = logging.getLogger(__name__)
 
 
@@ -264,13 +262,19 @@ def _extract_keys(
 
 
 def _keys_to_genes(keys: list[str]) -> dict[str, str]:
-    """Parse alphaphos keys once; keep only those with a non-empty gene."""
+    """Extract the gene symbol from an alphaPhos site or precursor key.
+
+    Both key formats share the same ``Protein|Gene|...`` prefix -- site keys
+    are ``Protein|Gene|Site|Mult`` (4 fields), precursor keys are
+    ``Protein|Gene|Peptide|Charge|Mods`` (5 fields).  The gene is always
+    the second pipe-delimited field, so a permissive split works for both.
+    """
     out: dict[str, str] = {}
     for k in keys:
-        parsed = parse_alphaphos_key(str(k))
-        if parsed is None:
+        parts = str(k).split("|")
+        if len(parts) < 2:
             continue
-        gene = parsed.gene.strip()
+        gene = parts[1].strip()
         if gene and gene.lower() != "nan":
             out[str(k)] = gene
     return out

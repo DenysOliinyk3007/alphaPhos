@@ -18,6 +18,7 @@ from alphaphos.preprocess.collapse import (
 )
 from alphaphos.preprocess.collapse_precursors import (
     DEFAULT_PRECURSOR_COLLAPSE_SETTINGS,
+    aggregate_to_site_level,
     collapse_precursors,
     precursor_to_site_view,
     resolve_precursor_settings,
@@ -55,6 +56,7 @@ __all__ = [
     "DEFAULT_PRECURSOR_COLLAPSE_SETTINGS",
     "resolve_precursor_settings",
     "precursor_to_site_view",
+    "aggregate_to_site_level",
     # Condition-aware Class I masking (legacy shape; used internally by collapse
     # for now, exposed as a public helper for callers with externally-collapsed data).
     "apply_condition_aware_classI_mask",

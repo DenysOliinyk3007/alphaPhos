@@ -22,6 +22,7 @@ import alphaphos as ap
 from alphaphos.preprocess.collapse_precursors import (
     _build_keys,
     _parse_precursors,
+    aggregate_to_site_level,
     resolve_precursor_settings,
 )
 
@@ -107,6 +108,126 @@ def _make_conditions() -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 # Settings
 # ---------------------------------------------------------------------------
+
+
+class TestClassIGate:
+    """Class I gate: drop precursors whose PEAK localization probability
+    across all PSM rows was below ``classI_cutoff``."""
+
+    def _make_psm_with_variable_loc(self) -> pd.DataFrame:
+        """Two phospho precursors: one with high loc (99%), one with low (40%)."""
+        rows = []
+        for sample in ("s1", "s2", "s3", "s4"):
+            # HIGH: 99% loc every run
+            rows.append(
+                {
+                    "R.FileName": sample,
+                    "EG.PrecursorId": "_S[Phospho (STY)]TDNAFENPFFK_.2",
+                    "EG.TotalQuantity (Settings)": 1000.0,
+                    "PEP.PeptidePosition": "100",
+                    "EG.PTMLocalizationProbabilities": ("_S[Phospho (STY): 99.0%]TDNAFENPFFK_"),
+                    "PG.Genes": "HIGH_GENE",
+                    "PG.ProteinGroups": "P_HIGH",
+                }
+            )
+            # LOW: 40% loc every run -- would drop at default cutoff 0.75
+            rows.append(
+                {
+                    "R.FileName": sample,
+                    "EG.PrecursorId": "_LMNVT[Phospho (STY)]PVLK_.2",
+                    "EG.TotalQuantity (Settings)": 2000.0,
+                    "PEP.PeptidePosition": "50",
+                    "EG.PTMLocalizationProbabilities": ("_LMNVT[Phospho (STY): 40.0%]PVLK_"),
+                    "PG.Genes": "LOW_GENE",
+                    "PG.ProteinGroups": "P_LOW",
+                }
+            )
+        return pd.DataFrame(rows)
+
+    def test_default_cutoff_drops_low_loc_precursor(self):
+        psm = self._make_psm_with_variable_loc()
+        adata = ap.collapse_precursors(psm)
+        # Default cutoff 0.75: LOW (40%) dropped, HIGH (99%) kept
+        genes = adata.var["gene"].tolist()
+        assert "HIGH_GENE" in genes
+        assert "LOW_GENE" not in genes
+        assert adata.uns["alphaphos"]["stats"]["n_dropped_classI"] == 1
+
+    def test_none_disables_gate(self):
+        psm = self._make_psm_with_variable_loc()
+        adata = ap.collapse_precursors(psm, advanced={"classI_cutoff": None})
+        genes = adata.var["gene"].tolist()
+        assert "HIGH_GENE" in genes
+        assert "LOW_GENE" in genes
+        assert adata.uns["alphaphos"]["stats"]["n_dropped_classI"] == 0
+
+    def test_lower_cutoff_keeps_more(self):
+        psm = self._make_psm_with_variable_loc()
+        adata = ap.collapse_precursors(psm, advanced={"classI_cutoff": 0.3})
+        genes = adata.var["gene"].tolist()
+        assert "HIGH_GENE" in genes
+        assert "LOW_GENE" in genes
+
+    def test_cutoff_boundary_inclusive(self):
+        """A precursor at exactly the cutoff must be kept (>= comparison)."""
+        psm = self._make_psm_with_variable_loc()
+        # LOW is at 40%; cutoff of exactly 0.40 must keep it
+        adata = ap.collapse_precursors(psm, advanced={"classI_cutoff": 0.40})
+        assert "LOW_GENE" in adata.var["gene"].tolist()
+
+    def test_non_phospho_bypasses_gate(self):
+        """Non-phospho precursors have no meaningful localization -- they
+        must pass through the gate untouched when ``phospho_only=False``."""
+        psm = self._make_psm_with_variable_loc()
+        # Append a non-phospho precursor row per sample
+        for sample in ("s1", "s2", "s3", "s4"):
+            psm = pd.concat(
+                [
+                    psm,
+                    pd.DataFrame(
+                        [
+                            {
+                                "R.FileName": sample,
+                                "EG.PrecursorId": "_LMNVTPVLK_.2",
+                                "EG.TotalQuantity (Settings)": 500.0,
+                                "PEP.PeptidePosition": "42",
+                                "EG.PTMLocalizationProbabilities": "",
+                                "PG.Genes": "NONPHOS_GENE",
+                                "PG.ProteinGroups": "P_NONPHOS",
+                            }
+                        ]
+                    ),
+                ],
+                ignore_index=True,
+            )
+        adata = ap.collapse_precursors(psm, advanced={"phospho_only": False, "classI_cutoff": 0.75})
+        # Non-phospho precursor kept (loc gate doesn't apply);
+        # low-loc phospho precursor dropped by the gate.
+        genes = adata.var["gene"].tolist()
+        assert "NONPHOS_GENE" in genes
+        assert "HIGH_GENE" in genes
+        assert "LOW_GENE" not in genes
+
+    def test_all_dropped_raises(self):
+        """If EVERY precursor gets gated out, we raise rather than return
+        an empty AnnData -- that's almost always a config problem."""
+        psm = self._make_psm_with_variable_loc()
+        with pytest.raises(ValueError, match="No precursors survived"):
+            ap.collapse_precursors(psm, advanced={"classI_cutoff": 0.9999})
+
+    def test_cutoff_out_of_range_raises(self):
+        with pytest.raises(ValueError, match=r"in \[0, 1\]"):
+            resolve_precursor_settings({"classI_cutoff": 1.5})
+
+    def test_cutoff_bool_type_raises(self):
+        # `True` is technically a valid float in [0, 1] but almost certainly a
+        # user error (they meant to enable/disable the gate).
+        with pytest.raises(ValueError, match="classI_cutoff must be a float"):
+            resolve_precursor_settings({"classI_cutoff": True})
+
+    def test_cutoff_without_annotate_localization_raises(self):
+        with pytest.raises(ValueError, match="requires annotate_localization"):
+            resolve_precursor_settings({"classI_cutoff": 0.75, "annotate_localization": False})
 
 
 class TestResolveSettings:
@@ -301,8 +422,12 @@ class TestCollapsePrecursorsEndToEnd:
 
     def test_annotate_localization_false_skips(self):
         psm = _make_synthetic_psm()
-        adata = ap.collapse_precursors(psm, advanced={"annotate_localization": False})
-        # Loc columns still exist (present for schema consistency) but are NaN
+        # annotate_localization=False also disables the classI gate (no loc
+        # info to gate on -- the resolver enforces this pairing).
+        adata = ap.collapse_precursors(
+            psm,
+            advanced={"annotate_localization": False, "classI_cutoff": None},
+        )
         akt_row = adata.var[adata.var["gene"] == "AKT1"].iloc[0]
         assert pd.isna(akt_row["best_localization_prob"])
 
@@ -368,7 +493,10 @@ class TestPrecursorToSiteView:
 
     def test_raises_when_var_missing_annotation_columns(self):
         psm = _make_synthetic_psm()
-        adata = ap.collapse_precursors(psm, advanced={"annotate_localization": False})
+        adata = ap.collapse_precursors(
+            psm,
+            advanced={"annotate_localization": False, "classI_cutoff": None},
+        )
         adata.var.drop(columns=["best_localization_pos_peptide"], inplace=True)
         with pytest.raises(ValueError, match="best_localization_pos_peptide"):
             ap.precursor_to_site_view(adata)
@@ -424,3 +552,164 @@ class TestTRKAStyleRescue:
         assert row["site_residue"] == "S"
         assert row["site_position_protein"] == 681
         assert row["site_key"] == "P04629|NTRK1|S681|M1"
+
+
+# ---------------------------------------------------------------------------
+# aggregate_to_site_level: precursor-indexed diff-exp -> site-indexed
+# ---------------------------------------------------------------------------
+
+
+class TestAggregateToSiteLevel:
+    """Multiple precursors covering the same site must aggregate cleanly so
+    downstream KSEA / kinase_activity sees a duplicate-free site index."""
+
+    def _make_precursor_result_and_view(self) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """Three precursors on two sites (two share a site) + one no-site."""
+        precursor_result = pd.DataFrame(
+            {
+                "log2fc": [3.0, 1.0, -2.0, 5.0],
+                "fdr": [0.001, 0.05, 0.002, 0.20],
+            },
+            index=[
+                "P1|GA|PEPA|2|Phospho (STY)",  # site A
+                "P1|GA|PEPB|2|Phospho (STY)",  # site A (same site, different peptide)
+                "P2|GB|PEPC|2|Phospho (STY)",  # site B
+                "P3|GC|PEPD|2|Phospho (STY)",  # no site (below loc threshold)
+            ],
+        )
+        site_view = pd.DataFrame(
+            {
+                "site_key": ["P1|GA|S10|M1", "P1|GA|S10|M1", "P2|GB|S20|M1", None],
+                "passes_localization": [True, True, True, False],
+            },
+            index=[
+                "P1|GA|PEPA|2|Phospho (STY)",
+                "P1|GA|PEPB|2|Phospho (STY)",
+                "P2|GB|PEPC|2|Phospho (STY)",
+                "P3|GC|PEPD|2|Phospho (STY)",
+            ],
+        )
+        return precursor_result, site_view
+
+    def test_max_abs_keeps_strongest(self):
+        result, view = self._make_precursor_result_and_view()
+        out = aggregate_to_site_level(result, view, stat_col="log2fc", stat_agg="max_abs")
+        # Two unique sites, third dropped (no site_key)
+        assert len(out) == 2
+        # Site A had two precursors: 3.0 and 1.0 -> max_abs keeps 3.0
+        assert out.loc["P1|GA|S10|M1", "log2fc"] == pytest.approx(3.0)
+        # Site B single precursor
+        assert out.loc["P2|GB|S20|M1", "log2fc"] == pytest.approx(-2.0)
+
+    def test_mean_averages_across_precursors(self):
+        result, view = self._make_precursor_result_and_view()
+        out = aggregate_to_site_level(result, view, stat_col="log2fc", stat_agg="mean")
+        # Site A: mean(3.0, 1.0) = 2.0
+        assert out.loc["P1|GA|S10|M1", "log2fc"] == pytest.approx(2.0)
+
+    def test_first_agg(self):
+        result, view = self._make_precursor_result_and_view()
+        out = aggregate_to_site_level(result, view, stat_col="log2fc", stat_agg="first")
+        assert out.loc["P1|GA|S10|M1", "log2fc"] == pytest.approx(3.0)
+
+    def test_fdr_min_aggregation(self):
+        result, view = self._make_precursor_result_and_view()
+        out = aggregate_to_site_level(result, view, stat_col="log2fc", fdr_agg="min")
+        # Site A had FDRs 0.001 and 0.05 -> min = 0.001
+        assert out.loc["P1|GA|S10|M1", "fdr"] == pytest.approx(0.001)
+
+    def test_fdr_mean_aggregation(self):
+        result, view = self._make_precursor_result_and_view()
+        out = aggregate_to_site_level(result, view, stat_col="log2fc", fdr_agg="mean")
+        assert out.loc["P1|GA|S10|M1", "fdr"] == pytest.approx(0.0255)
+
+    def test_fdr_col_none_skips_fdr(self):
+        result, view = self._make_precursor_result_and_view()
+        out = aggregate_to_site_level(result, view, stat_col="log2fc", fdr_col=None)
+        assert "fdr" not in out.columns
+
+    def test_n_precursors_column(self):
+        result, view = self._make_precursor_result_and_view()
+        out = aggregate_to_site_level(result, view, stat_col="log2fc")
+        assert out.loc["P1|GA|S10|M1", "n_precursors"] == 2
+        assert out.loc["P2|GB|S20|M1", "n_precursors"] == 1
+
+    def test_site_key_index_is_unique(self):
+        """The whole point of the helper: no duplicate site keys in the output."""
+        result, view = self._make_precursor_result_and_view()
+        out = aggregate_to_site_level(result, view, stat_col="log2fc")
+        assert out.index.is_unique
+
+    def test_precursors_without_site_key_dropped(self):
+        result, view = self._make_precursor_result_and_view()
+        out = aggregate_to_site_level(result, view, stat_col="log2fc")
+        # "P3|GC|PEPD|..." had no site_key -> dropped
+        assert not (out.index == "P3|GC").any()
+
+    def test_bad_stat_agg_raises(self):
+        result, view = self._make_precursor_result_and_view()
+        with pytest.raises(ValueError, match="stat_agg must be"):
+            aggregate_to_site_level(result, view, stat_agg="median")
+
+    def test_bad_fdr_agg_raises(self):
+        result, view = self._make_precursor_result_and_view()
+        with pytest.raises(ValueError, match="fdr_agg must be"):
+            aggregate_to_site_level(result, view, fdr_agg="max")
+
+    def test_missing_site_key_column_raises(self):
+        result, view = self._make_precursor_result_and_view()
+        with pytest.raises(ValueError, match="site_view must have a 'site_key' column"):
+            aggregate_to_site_level(result, view.drop(columns=["site_key"]))
+
+    def test_missing_stat_col_raises(self):
+        result, view = self._make_precursor_result_and_view()
+        with pytest.raises(KeyError, match="stat_col"):
+            aggregate_to_site_level(result, view, stat_col="does_not_exist")
+
+    def test_all_dropped_raises(self):
+        result, view = self._make_precursor_result_and_view()
+        view["site_key"] = None
+        with pytest.raises(ValueError, match="No precursors have a resolvable site_key"):
+            aggregate_to_site_level(result, view)
+
+
+# ---------------------------------------------------------------------------
+# Gene extraction from precursor keys (in pathway modules)
+# ---------------------------------------------------------------------------
+
+
+class TestPathwayGeneExtractionAcceptsBothKeyFormats:
+    """After the fix, ``pathway_enrichment`` and ``pathway_gsea`` extract
+    genes from BOTH site keys (``Protein|Gene|Site|Mult``) AND precursor
+    keys (``Protein|Gene|Peptide|Charge|Mods``)."""
+
+    def test_pathway_enrichment_gene_extraction_works_on_precursor_keys(self):
+        from alphaphos.enrichment.pathway.enrichment import _keys_to_genes
+
+        keys = [
+            "P00533|EGFR|SPMK|2|Phospho (STY)",  # precursor key
+            "P00533|EGFR|S1046|M1",  # site key
+            "not_a_key",  # gibberish -- dropped
+            "P|G",  # too short but has gene
+        ]
+        out = _keys_to_genes(keys)
+        # Both key formats resolved to EGFR
+        assert out["P00533|EGFR|SPMK|2|Phospho (STY)"] == "EGFR"
+        assert out["P00533|EGFR|S1046|M1"] == "EGFR"
+        # Gibberish (no pipe) dropped
+        assert "not_a_key" not in out
+        # Two-field key with gene still works
+        assert out["P|G"] == "G"
+
+    def test_pathway_gsea_gene_extraction_works_on_precursor_keys(self):
+        from alphaphos.enrichment.pathway_gsea.gsea import _keys_to_genes
+
+        keys = [
+            "P00533|EGFR|SPMK|2|Phospho (STY)",
+            "P00533|EGFR|S1046|M1",
+            "not_a_key",
+        ]
+        out = _keys_to_genes(keys)
+        assert out["P00533|EGFR|SPMK|2|Phospho (STY)"] == "EGFR"
+        assert out["P00533|EGFR|S1046|M1"] == "EGFR"
+        assert "not_a_key" not in out

@@ -92,7 +92,8 @@ ap.collapse_precursors(
 | `noise_floor_filter` | `True` | Drop log2 values in `{0, 1}` (Spectronaut noise-floor convention: linear intensity 1 or 2 = "signal detected but at the very bottom of the dynamic range"). | `False` to keep them. |
 | `drop_all_nan` | `True` | Drop precursors with no observed values in any sample after log2 / noise-floor. | `False` to keep NaN rows. |
 | `phospho_only` | `True` | Drop precursors with no `[Phospho (STY)]` marker. | `False` to keep unphosphorylated precursors (rare; use only when explicitly analysing the non-phospho background). |
-| `annotate_localization` | `True` | Parse `EG.PTMLocalizationProbabilities` and store best-position + best-probability in `.var`. Never used for filtering. | `False` to skip parsing (loc columns present but NaN). |
+| `annotate_localization` | `True` | Parse `EG.PTMLocalizationProbabilities` and store best-position + best-probability in `.var`. Required when `classI_cutoff` is set. | `False` to skip parsing (loc columns present but NaN). |
+| `classI_cutoff` | `0.75` | Drop phospho precursors whose PEAK localization probability across all runs is below this threshold. Natural analog of site-level `localization_strategy="global_max"` -- a precursor confidently localized in ANY run passes; one that was never confident anywhere is dropped. Non-phospho precursors (when `phospho_only=False`) bypass the gate. | Any float in [0, 1]; `None` disables the gate entirely (rationale-doc fallback for datasets where the loc metric is known unreliable). |
 
 Use `ap.resolve_precursor_settings(advanced)` to preview the fully-resolved
 settings dict.
@@ -131,6 +132,29 @@ An `anndata.AnnData` with shape `(n_samples, n_precursors)`:
   `quantification_level_used`).
 - `.uns["source_attrs"]` = `data.attrs` (PSM lineage from the reader).
 
+## Downstream compatibility
+
+The precursor-level `AnnData` is drop-in for everything after collapse:
+
+| Downstream step | Works out-of-the-box? |
+| --- | --- |
+| `filter_by_completeness` | ✓ |
+| `impute_hybrid` / `impute_knn_site_based` | ✓ |
+| `batch_correct_combat` | ✓ |
+| `diff_exp_limma` | ✓ (indexed by precursor_key) |
+| `pathway_enrichment` (ORA) | ✓ (gene extracted from key field 1) |
+| `pathway_gsea` | ✓ (gene extracted from key field 1) |
+| `kinase_activity` (KSEA) | ✓ **via `precursor_to_site_view` + `aggregate_to_site_level`** |
+
+For the pathway modules, gene extraction is permissive — the second
+pipe-delimited field of the key is used regardless of whether the tail is
+`Site|Mult` (site key) or `Peptide|Charge|Mods` (precursor key).
+
+> **Before quoting counts in a manuscript**: read
+> [Reporting best practices](#reporting-best-practices).  Raw precursor
+> counts overstate independence and should be aggregated to unique sites
+> via `aggregate_to_site_level` before publication.
+
 ## Bridging back to site-level analyses
 
 `ap.precursor_to_site_view(adata, *, require_localization=0.75)` returns a
@@ -142,6 +166,12 @@ pathway analyses that need residue attribution can consume it.
   the precursor-level AnnData; only the site annotation is withheld).
 - Non-STY residue at the peak-localization position: `site_key` is `NaN`.
 - Pass `require_localization=None` to skip the confidence gate.
+
+**Note**: multiple precursors typically map to the same phosphosite (different
+peptides / charges / multiplicities covering the same residue), so the
+site view alone gives you a **many-to-one** mapping.  For KSEA and other
+site-level analyses that need a duplicate-free site index, follow up with
+[`aggregate_to_site_level`](#aggregate_to_site_level-precursor-level-diff-exp-site-level).
 
 ### Signature
 
@@ -165,6 +195,39 @@ ap.precursor_to_site_view(
 | `best_localization_prob` | float | Verbatim from `.var`. |
 | `passes_localization` | bool | Did this precursor clear the gate? |
 
+### `aggregate_to_site_level(precursor_result, site_view, ...)`
+
+Collapses a precursor-indexed diff-exp DataFrame to a **site-indexed** one
+by joining on the bridge and aggregating precursors that map to the same
+site.  Enables the clean KSEA hand-off from a precursor-level pipeline.
+
+```python
+ap.aggregate_to_site_level(
+    precursor_result: pd.DataFrame,
+    site_view: pd.DataFrame,
+    *,
+    stat_col: str = "log2fc",
+    stat_agg: Literal["max_abs", "mean", "first"] = "max_abs",
+    fdr_col: str | None = "fdr",
+    fdr_agg: Literal["min", "mean"] = "min",
+) -> pd.DataFrame
+```
+
+| Column in output | Meaning |
+| --- | --- |
+| *index* | `site_key` (unique). |
+| `stat_col` | Aggregated per `stat_agg`. |
+| `n_precursors` | How many precursors were collapsed into this site. |
+| `fdr_col` | Aggregated per `fdr_agg` (if `fdr_col` is not `None`). |
+
+`stat_agg` choices:
+
+- **`"max_abs"`** (default) -- keep the precursor with the largest `|stat|`,
+  retain signed value.  Preserves peak regulation.
+- **`"mean"`** -- arithmetic mean of the stat across precursors covering
+  the site.
+- **`"first"`** -- first-seen precursor's value.
+
 ## Example
 
 ```python
@@ -187,14 +250,107 @@ result = ap.diff_exp_limma(
     adata, condition_column="condition", comparison=("trt", "ctrl"),
 )
 
-# --- Bridge for KSEA (still on the precursor-level result) ---
-bridge = ap.precursor_to_site_view(adata, require_localization=0.75)
-result_with_sites = result.join(bridge[["site_key"]])
-ksea = ap.enrichment.kinase_activity(
-    result_with_sites.dropna(subset=["site_key"]).set_index("site_key"),
-    stat_col="log2fc",
-)
+# --- Pathway enrichment: works directly on precursor-keyed result ---
+enr = ap.enrichment.pathway_enrichment(result)   # ORA
+gsea = ap.enrichment.pathway_gsea(result)        # GSEA
+
+# --- KSEA: bridge, aggregate, run ---
+site_view = ap.precursor_to_site_view(adata, require_localization=0.75)
+site_result = ap.aggregate_to_site_level(result, site_view, stat_col="log2fc")
+ksea = ap.enrichment.kinase_activity(site_result, stat_col="log2fc")
 ```
+
+### Validated on real EGF data (2026-07)
+
+On the walkthrough dataset (619,576 PSMs, 6 samples, EGF vs ctrl):
+
+| stage | site-level | precursor-level (default) |
+| --- | --- | --- |
+| initial features | 34,227 | 39,323 (2,321 dropped by classI 0.75) |
+| after completeness filter | 15,186 | **38,170** |
+| significant at FDR < 0.05 | 2,057 | **5,524** (3,932 up / 1,592 down) |
+| top KEGG pathway (ORA, up) | ErbB signaling FDR 6.2e-04 | **ErbB signaling FDR 2.0e-06** |
+| KSEA (via bridge, top 5 up) | -- | **EGF, MAPKAPK2, LCK, BRAF, KSR1** |
+
+The site-level completeness filter drops 55% of features on this dataset;
+the precursor-level filter drops 3%.
+
+**Where the 2.7&times; comes from -- redundancy audit on the same data**:
+
+| stage | count |
+| --- | --- |
+| raw significant precursors | **5,524** |
+| after collapsing same-peptide charge variants | 4,696 |
+| after collapsing to unique alphaPhos sites (via bridge) | **4,199** |
+| for comparison: strict site-level | 2,057 |
+| for comparison: relaxed site-level (`global_max`, cutoff 0.5) | 2,098 |
+
+So ~25% of the raw precursor advantage is charge / multiplicity /
+missed-cleavage **redundancy**; the remaining ~2&times; over strict
+site-level is real biology (2,665 sites significant in the precursor
+path but missed by site-level, 523 sites the reverse).
+
+Note the counter-intuitive negative finding: the "relaxed" site-level
+(`global_max` + `cutoff=0.5`) recovers only 41 additional hits over the
+strict default.  On this dataset, per-run localization masking is NOT
+the main driver of the site-vs-precursor gap -- the driver is
+site-level's `Protein|Gene|Site|Mult` key baking multiplicity into the
+feature identity, so a site observed as both M1 and M2 gets split into
+two features that each face the completeness filter separately.
+Precursor-level's coarser aggregation avoids that split.
+
+## Reporting best practices
+
+**Raw significant-precursor counts overstate the biology and should not
+be reported as-is.**  Charge variants and multiplicity/missed-cleavage
+variants of the same peptide are near-perfectly correlated observations
+that inflate the feature count without adding independent evidence.
+On the EGF dataset above, ~25% of raw precursor hits collapse to the
+same underlying alphaPhos site.
+
+**Recommended reporting pattern**:
+
+```python
+# --- detection / differential: precursor level ---
+adata = ap.collapse_precursors(psm, condition_df=conditions)
+adata = ap.filter_by_completeness(adata, min_valid_frac=2/3,
+                                  group_column="condition", keep_strategy="each")
+adata = ap.impute_hybrid(adata)
+result = ap.diff_exp_limma(adata, condition_column="condition",
+                           comparison=("trt", "ctrl"))
+
+# --- REPORTING: always aggregate to unique sites before quoting counts ---
+site_view = ap.precursor_to_site_view(adata, require_localization=0.75)
+site_result = ap.aggregate_to_site_level(result, site_view,
+                                         stat_col="log2fc", fdr_agg="min")
+
+# Quote the site count in Methods / Results, not the precursor count:
+n_sig_sites = (site_result["fdr"] < 0.05).sum()
+```
+
+**In Methods, quote both:**
+
+> "We identified N unique phosphosites significant at 5% FDR
+> (aggregated from M precursors via ``aggregate_to_site_level`` with
+> ``stat_agg="max_abs"``, ``fdr_agg="min"``)."
+
+**Why this matters**:
+
+1. **BH-FDR assumes near-independent hypotheses.**  Charge variants of
+   the same peptide are perfectly correlated; under strong correlation,
+   BH is anti-conservative and inflates the number of "significant"
+   hits above the truly-independent count.
+2. **Reviewers ask "how many sites?", not "how many precursors?".**
+   Mixing units in a manuscript is where reporting mistakes happen.
+3. **Downstream tools (KSEA, pathway, motif) are site-first** anyway,
+   so you'll aggregate before running them.  Do it once, use the same
+   aggregated result for reporting.
+
+**When it's OK to quote raw precursor numbers**:
+
+- As an internal diagnostic ("N precursors survived filter") -- fine.
+- As a QC / spectral-library size metric -- fine.
+- As a biology headline number in a manuscript -- **not fine**.
 
 ## Design goals
 
@@ -202,12 +358,19 @@ ksea = ap.enrichment.kinase_activity(
   same AnnData shape / layers / `.obs` schema, so `filter_by_completeness`,
   `impute_hybrid`, `batch_correct_combat`, `diff_exp_limma` all work
   unchanged.
-- **Localization is annotation, never masking.** `EG.PTMLocalizationProbabilities`
-  is parsed and stored on `.var` for provenance / downstream bridging, but
-  it never removes rows or NaN's cells.
+- **Localization drives one coarse gate, never per-cell masking.** The
+  `classI_cutoff` (default 0.75) drops precursors whose PEAK localization
+  probability across all runs failed the threshold -- i.e. the phospho
+  identification was never confident anywhere. Per-cell / per-run
+  localization is stored on `.var` and `.layers["localization"]` for
+  annotation, but it never NaN's cells or hides quantitative
+  information. This is intentionally coarser than site-level masking:
+  the whole point of dropping to precursor is to stop discarding cells
+  because a single run's loc happened to be borderline.
 - **Minimum-viable settings surface.** No `localization_strategy`, no
-  `classI_cutoff`, no `top_n_attribution` — these are the site-level knobs
-  that don't apply here.
+  per-run masking, no condition-aware Class I logic, no
+  `top_n_attribution` -- these are the site-level knobs that don't apply
+  at precursor granularity.
 
 ## Known caveats
 
