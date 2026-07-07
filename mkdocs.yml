@@ -72,6 +72,8 @@ nav:
       - alphaphos.enrichment.ksea: modules/enrichment/ksea.md
       - alphaphos.enrichment.pathway: modules/enrichment/pathway.md
       - alphaphos.enrichment.pathway_gsea: modules/enrichment/pathway_gsea.md
+    - Orthology:
+      - alphaphos.orthology: modules/orthology.md
   - Design:
     - PhosphoExperiment schema: design/phosphoexperiment.md
   - API:
