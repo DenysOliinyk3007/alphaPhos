@@ -282,6 +282,38 @@ class TestMapToHumanSynthetic:
         assert "global_fdr_estimate" in stats
         assert "target_index_size" in stats
 
+    def test_alphaphos_ornamented_window_format_maps(self):
+        # Regression: alphaphos.add_kinase_windows emits kinase_sequence in the
+        # `_LEFT*S*RIGHT_` format (underscores at protein boundaries + stars
+        # flanking the phospho residue).  map_to_human's lookup index stores
+        # raw AA windows, so the module must strip these ornaments before
+        # lookup or every hit-from-add-kinase-windows silently misses.
+        human_fasta = self._minimal_human_fasta()
+        # Same window as test_maps_exact_window_hit, but wrapped in the
+        # alphaphos ornament format.  Should still map to P00001_Y14.
+        adata = _make_adata_from_windows({"src|X|Y14|M1": "KST*Y*PQR"})
+        with tempfile.TemporaryDirectory() as tmp:
+            result = ap.orthology.map_to_human(
+                adata,
+                human_fasta=human_fasta,
+                cache_dir=tmp,
+                advanced={"window_size": 3},
+            )
+        row = result.var.iloc[0]
+        assert row["human_site_key"] == "P00001_Y14"
+        assert row["mapping_source"] == "exact_match"
+
+        # And with the outer underscore padding (edge-of-protein sites).
+        adata2 = _make_adata_from_windows({"src|X|Y14|M1": "_KST*Y*PQR_"})
+        with tempfile.TemporaryDirectory() as tmp:
+            result2 = ap.orthology.map_to_human(
+                adata2,
+                human_fasta=human_fasta,
+                cache_dir=tmp,
+                advanced={"window_size": 3},
+            )
+        assert result2.var.iloc[0]["human_site_key"] == "P00001_Y14"
+
 
 # ---------------------------------------------------------------------------
 # Paralog / ambiguity handling

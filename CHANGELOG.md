@@ -12,6 +12,157 @@ While in `0.x`, breaking API changes may appear in any MINOR bump (`0.1 → 0.2`
 
 _Nothing yet._
 
+## [0.15.0] - 2026-07-07
+
+### Added -- `alphaphos.dimred` module (top-level)
+
+New dimensionality-reduction module that answers three exploratory
+questions on a phospho ``AnnData``:
+
+1. **Sample-space clustering** -- do replicates group by condition
+   (biology) or by batch (artifact)?
+2. **Effective dimensionality** -- how many PCs carry real variance?
+3. **Imputation impact** -- does the imputation step distort the
+   sample-space structure vs a missing-value-aware PCA on the raw
+   matrix?
+
+**Three PCA backends** exposed via a single :func:`pca` entrypoint
+(`handle_missing="error"|"nipals"|"ppca"`):
+
+- ``"error"`` -- standard SVD via sklearn; requires a complete matrix.
+- ``"nipals"`` -- Wold 1966 iterative PCA; skips NaN natively (the
+  chemometrics / metabolomics standard, used by MetaboAnalyst and
+  mixOmics).
+- ``"ppca"`` -- Tipping & Bishop 1999 probabilistic PCA with EM;
+  principled MV handling but slower.
+
+Results attach to ``adata.obsm["X_pca"]``, ``.varm["PCs"]``, and
+``.uns["pca"]`` (scanpy convention).  ``.uns["pca"]["method"]`` records
+the algorithm that actually ran (``"standard"`` / ``"nipals"`` /
+``"ppca"``).
+
+**Downstream accessors and diagnostics:**
+
+- :func:`compare_imputation_impact` -- run NIPALS on the raw
+  (with-NaN) matrix and standard PCA on the imputed copy, sign-flip
+  align each PC, return per-PC correlation + per-sample displacement
+  + a plain-language verdict (``OK`` / ``BORDERLINE`` / ``DISTORTED``).
+- :func:`get_pca_dataframe` -- plot-ready sample-level DataFrame with
+  ``PC1..PCK`` + all ``.obs`` columns joined in.  Ready to hand to
+  matplotlib / seaborn / plotly.
+- :func:`get_pca_loadings` -- feature-level loadings DataFrame,
+  optionally restricted to top-N per PC.
+- :func:`loadings_for_enrichment` -- **canonicalized loadings ready
+  for the enrichment submodules with no wrappers**.  Returns a
+  DataFrame indexed by ``Protein_AApos`` site IDs with PC columns.
+  Drops straight into :func:`alphaphos.enrichment.gsea`,
+  :func:`alphaphos.enrichment.kinase_activity`, and
+  :func:`alphaphos.enrichment.ora`.  Handles multiplicity collisions
+  by ``abs_max`` sum-of-squares (or ``dedup="error"``).
+- :func:`feature_variance_contribution` -- per-feature share of the
+  top-K PC variance (loading² weighted by variance_ratio).
+- :func:`sample_distance` -- pairwise NaN-safe sample distance
+  (euclidean / correlation / cosine).
+- :func:`hierarchical_cluster` -- scipy linkage + leaf-order.
+
+**Validated on the real EGF walkthrough (6 samples × 15,186 sites,
+4.4% missing)**: PC1 (35.8% var) cleanly separates EGF vs ctrl.
+Imputation-impact verdict: **OK** (min per-PC |r| = 0.972 across the
+top-5 PCs) -- imputation preserved the biology.  Standard PCA and
+NIPALS on raw produce PC1 correlation of exactly 1.000.
+
+**32 unit tests** (settings, standard/NIPALS/PPCA numerics, NaN
+handling, loadings collision dedup across object / pd.StringDtype /
+pyarrow backends, imputation-impact heuristic, accessor attrs
+survival through ``pd.concat``).
+
+### Fixed -- `alphaphos.enrichment.matching` NaN handling (CI failure)
+
+CI runs on the ``pca`` / ``main`` branches failed 8 tests in
+``test_enrichment_matching.py`` with
+``AttributeError: 'float' object has no attribute 'split'``.  Root
+cause: :func:`_build_lookup_indices` called ``.astype(str)`` on the
+``substrate_uniprot`` column of the PTM DB fixture, which has 249
+NaN rows.  On pandas 2.2 with object-dtype backing this coerces NaN
+to the string ``"nan"`` (handled at the empty-check).  On the pandas /
+pyarrow backends CI runs, NaN can leak through as a float or
+``pd.NA``, breaking the downstream ``.split(";")``.
+
+**Fix**: ``fillna("").astype(str)`` before iterating, and skip rows
+with an empty uniprot field.  Deterministic across all pandas
+backends.
+
+**Regression test**: parametric across ``object``, ``string``, and
+``string[pyarrow]`` dtypes.
+
+### Fixed -- `alphaphos.orthology.map_to_human` window-format mismatch
+
+:func:`alphaphos.add_kinase_windows` writes windows in
+``_LEFT*S*RIGHT_`` format (underscores at protein boundaries + stars
+flanking the phospho residue).  :func:`map_to_human` looked up the
+raw string against the human window index without stripping these
+ornaments, so **every site produced by add_kinase_windows silently
+missed** (0/N mapping rate on the primary integration path).
+
+**Fix**: strip ``_`` and ``*`` from the source windows before lookup.
+Confirmed on real EGF data: 0/200 → 196/200 mapped after fix
+(pipeline_walkthrough) and 195/200 (egf_walkthrough).  The
+mouse-SwissProt validation numbers from v0.14.0 remain valid (that
+run used a differently-formatted input; the bug affected only the
+add_kinase_windows → map_to_human integration path).
+
+**Regression test**: ``test_alphaphos_ornamented_window_format_maps``
+covers both ``KST*Y*PQR`` and ``_KST*Y*PQR_`` forms.
+
+### Added -- walkthrough notebooks demonstrate the new modules
+
+- **`docs/benchmark/pipeline_walkthrough.ipynb`** (the canonical
+  pipeline) gains four new sections:
+    - §7b -- `alphaphos.dimred` (advanced PCA + loadings + imputation-
+      impact QC).  Old `apt.tl.pca` kept at §7 for continuity.
+    - §12b -- PTM-DB site-set enrichment (`emit_libraries` +
+      `load_libraries` + `ora` + `gsea`; also GSEA on PC1 loadings
+      via `loadings_for_enrichment`).
+    - §12c -- gene-level pathway enrichment (Enrichr /
+      gseapy-based `pathway_enrichment` + `pathway_gsea`).
+    - §14b -- cross-species orthology (`map_to_human`).
+- **`examples/egf_walkthrough.ipynb`** mirrors the same four sections.
+- **`README.md`** module table refreshed to include `dimred`.
+
+Both notebooks run end-to-end on the bundled EGF benchmark
+(egf_walkthrough: 18/18 cells in ~100s; pipeline_walkthrough: 21/21
+cells in ~103s).  Top-loader biology recovered: EGFR Y1172, SHC1
+Y427, STAT5A Y694 all in PC1 top loaders on the imputed data.
+
+### Fixed -- pre-existing pipeline_walkthrough API drift
+
+While running the canonical notebook end-to-end, several stale API
+calls surfaced.  Fixed alongside the new sections:
+
+- Cell 1: `Path(__file__)` NameError in a Jupyter kernel (egf notebook
+  only; pipeline_walkthrough uses a hardcoded ROOT).  egf now falls
+  back to `Path.cwd()` with a repo-root sanity check.
+- `read_spectronaut(quant_level=..., drop_decoys=..., ...)` -- the
+  signature is now `(path, *, advanced=None)`.  Simplified to defaults.
+- `collapse_sites(..., return_decision_table=True)` -- collapse now
+  returns an AnnData directly; the 3-tuple return and separate
+  `to_anndata` step are gone.  Cells 7 + 9 collapsed into one.
+- `_, audit = impute_hybrid(...)` -- was discarding the imputed
+  AnnData; changed to `adata, audit = ...` and added an explicit
+  `adata.X = adata.layers["intensity_log2"].copy()` so downstream
+  tools reading `.X` see imputed values.
+- Cell 26 `kinase_mea` -- added the same `if kinase_sequence` guard
+  that cell 25 (`kinase_enrichment_from_diffexp`) already had.
+- Network KSEA cell -- imports moved from `alphaphos.ksea`
+  (deleted namespace) to `alphaphos.enrichment` (top-level
+  re-exports of `fetch_omnipath_ks_network` + `kinase_activity`).
+
+### Tests
+
+**716 tests pass** (up from 680 in 0.14.0): +32 dimred, +3 matching
+NaN parametric (object / string / pyarrow), +1 orthology ornamented-
+window regression.  Ruff check + format both clean.
+
 ## [0.14.0] - 2026-07-07
 
 ### Added -- orthology Phase 3: broader-window verification

@@ -2,7 +2,7 @@
 
 Phosphoproteomics analysis toolkit.
 
-**Status:** pre-alpha (v0.14.0). Standard 2-condition workflows (Spectronaut / DIA-NN / FragPipe → sites → filter → impute → optional ComBat → limma → enrichment) are covered end-to-end and validated on real data. Multi-contrast ANOVA and PCA/UMAP are not yet implemented.
+**Status:** pre-alpha (v0.15.0). Standard 2-condition workflows (Spectronaut / DIA-NN / FragPipe → sites → filter → impute → optional ComBat → limma → PCA / KSEA / enrichment) are covered end-to-end and validated on real data. Cross-species orthology (mouse ↔ human) is validated on full SwissProt. Multi-contrast ANOVA and UMAP / t-SNE are not yet implemented.
 
 ## Install
 
@@ -56,7 +56,7 @@ result = ap.diff_exp_limma(
 #   log2fc, se, t_stat, p_value, fdr, B, ave_expr
 ```
 
-## What ships in v0.14.0
+## What ships in v0.15.0
 
 | Module | Function | Notes |
 | --- | --- | --- |
@@ -69,12 +69,15 @@ result = ap.diff_exp_limma(
 | `alphaphos.preprocess.impute` | `impute_hybrid`, `impute_knn_site_based` | Per-cell MAR-KNN + MNAR-Gaussian hybrid, or legacy-parity KNN. |
 | `alphaphos.preprocess.batch_correct` | `batch_correct_combat` | inmoose pycombat wrapper with double-correct guard. |
 | `alphaphos.stats.diff_exp` | `diff_exp_limma` | Two-group moderated t-test. Batch/covariate adjustment supported. |
+| `alphaphos.dimred` | `pca`, `compare_imputation_impact`, `loadings_for_enrichment`, `feature_variance_contribution`, `sample_distance`, `hierarchical_cluster` | Standard / NIPALS / PPCA backends behind one entrypoint. NaN-aware. `compare_imputation_impact` flags whether imputation distorts sample-space structure. `loadings_for_enrichment` bridges PC loadings straight into `alphaphos.enrichment.gsea` / `.ora` / `.kinase_activity` with no wrappers. |
 | `alphaphos.kinase.annotation` | `add_kinase_windows`, `load_fasta` | ±7-residue windows around each site from a proteome FASTA. |
 | `alphaphos.kinase.library` | Yaffe PWM scoring | Requires the optional `kinase_library` package. |
 | `alphaphos.kinase.enrichment` | Kinase library enrichment | Same optional dep. |
 | `alphaphos.enrichment.ksea` | `kinase_activity` | Kinase-activity inference via decoupler ULM (default) / MLM against OmniPath (default), curated PTM DB, or a user-supplied network. |
+| `alphaphos.enrichment` (site-set) | `emit_libraries`, `load_libraries`, `ora`, `gsea` | PTM functional DB (8 curated sources, ~504k relations) → GMT libraries → Fisher ORA + Subramanian preranked GSEA. Site-level counterpart to `pathway_enrichment` (which is gene-level). |
 | `alphaphos.enrichment.pathway` | `pathway_enrichment` | Gene-level pathway ORA via gseapy Enrichr (GO BP/MF/CC + KEGG + Reactome + Hallmark by default). Phosphoproteome background by default; proteome background preferred if available. |
 | `alphaphos.enrichment.pathway_gsea` | `pathway_gsea` | Gene-level preranked GSEA (Subramanian 2005 via gseapy prerank) on the same Enrichr libraries. Complements ORA for coherent-motion pathways. Site→gene collapse via max-\|log2fc\| default or lowest-per-site-FDR. |
+| `alphaphos.orthology` | `map_to_human` | Cross-species phospho-site translation via ±7 flanking-window matching against the target proteome, with target-decoy FDR (Elias-Gygi 2007), optional ±30 broader-window verification, and paralog disambiguation. Validated on full mouse SwissProt (60.2% mapping rate; species-entrapment FDR ≤ 5×10⁻⁴). |
 | `alphaphos.dose_response` | `fit_dose_response` | CurveCurator wrapper (optional `curve_curator`). |
 | `alphaphos.qc` | `generate_dashboard` | Bokeh QC HTML report (optional `bokeh`). |
 
