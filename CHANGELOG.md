@@ -12,6 +12,367 @@ While in `0.x`, breaking API changes may appear in any MINOR bump (`0.1 → 0.2`
 
 _Nothing yet._
 
+## [0.14.0] - 2026-07-07
+
+### Added -- orthology Phase 3: broader-window verification
+
+- **New setting `verify_window_size`** (default `None`) in
+  ``DEFAULT_ORTHOLOGY_SETTINGS``.  When set (typically 15-30) *and* a
+  ``source_fasta`` path is passed to :func:`map_to_human`, the module
+  runs a second pass over the primary mappings:
+    1. For each mapped site, extract the ``±verify_window_size`` window
+       from both the source protein and the matched human paralog;
+       compute the Hamming distance.
+    2. Emit ``.var["verification_mismatches"]`` and
+       ``.var["verification_identity"]`` (fraction in [0, 1]) as quality
+       signals.  Users can filter on identity post-hoc.
+    3. When a site is paralog-ambiguous, re-score *all* paralogs at
+       ``±verify_window_size`` and prefer the paralog with the fewest
+       verification mismatches as the primary pick, overriding the
+       gene-name-consistent tiebreak when a different paralog aligns
+       better across the broader flank.
+
+- **New parameter `source_fasta`** on :func:`map_to_human` -- path to
+  the source-species FASTA.  Required when ``verify_window_size`` is
+  set; silently ignored otherwise.
+
+- **New ``.var`` columns**: ``verification_mismatches`` (int, -1 when
+  not verified) and ``verification_identity`` (float in [0, 1] or NaN).
+
+- **New provenance stats**: ``verify_window_size``, ``n_verified``,
+  ``n_verify_edge_dropped``, ``n_verify_reassigned``.
+
+### Validated on full mouse SwissProt (946,010 sites mapped at default)
+
+Measured with ``verify_window_size=30`` on 44,690 verifiable
+ambiguous-paralog sites:
+
+| verdict | count | share |
+| --- | ---:| ---:|
+| Primary pick sole best at ±30 | 32,769 | **73.3%** |
+| Primary tied with alternatives | 8,759 | 19.6% |
+| Alternative would win at ±30 (reassigned) | **3,162** | **7.1%** |
+
+**Interpretation**: gene-name tiebreak agrees with the independent ±30
+evidence in 93% of ambiguous cases -- validating the current default.
+The 7.1% reassignment rate is the improvement Phase-3 verification
+delivers on top: ~3,000 mouse sites (0.33% of all mapped) get their
+primary pick corrected.
+
+**±30 identity distribution across mapped sites** (mouse -> human):
+- 100% identity: 19.6% of sites
+- ≥97% identity: 44.6%
+- ≥87% identity: 80.8%
+- ≥75% identity: 93.5%
+
+Users can filter on ``verification_identity`` as a quality signal
+(higher = stronger orthology evidence).
+
+### Backwards compatibility
+
+Zero-break: ``verify_window_size`` defaults to ``None`` (feature off).
+Existing callers get identical behaviour to 0.13.1.  The new
+``verification_*`` columns are always emitted (with sentinel values
+-1/NaN when the feature is disabled).
+
+### Tests
+
+7 new tests in ``TestVerifyWindowSize`` cover: column emission,
+paralog reassignment to a broader-window-better paralog, disabled
+default, sentinel values when source_fasta missing, settings
+validation (must be positive int and > window_size), stats population.
+
+**680 tests pass** (up from 673).  Ruff clean.
+
+## [0.13.1] - 2026-07-07
+
+### Validation -- strict species-entrapment FDR
+
+Ran the module against **complete bacterial and archaeal proteomes** as
+strict entrapment sources (bundled at `resources/fastas/`).  Any hit is
+unambiguously a false positive by construction.  This is a stronger
+audit than the shuffle-preserve-STY internal decoy (which uses
+shuffled *human* sequence -- same AA composition).
+
+**Results at default `max_mismatches=2`**:
+
+| Entrapment source | n_sites | Mapping rate | Empirical FDR |
+| --- | ---:| ---:| ---:|
+| *M. jannaschii* (archaeon) | 62,932 | 0.151% | 1.2&times;10⁻⁴ |
+| *S. solfataricus* (archaeon) | 22,184 | 0.334% | 9.5&times;10⁻⁵ |
+| *H. salinarum* (archaeon) | 20,682 | 0.353% | 9.4&times;10⁻⁵ |
+| *E. coli* K-12 | 181,350 | 0.283% | 6.6&times;10⁻⁴ |
+| *B. subtilis* | 178,754 | 0.223% | 5.1&times;10⁻⁴ |
+| *M. tuberculosis* | 104,924 | 0.294% | 4.0&times;10⁻⁴ |
+| *S. aureus* | 42,970 | 0.358% | 2.0&times;10⁻⁴ |
+| **hamster (positive control)** | **1,401,396** | **55.5%** | (denominator) |
+| Internal target-decoy (hamster) | — | — | 4.9&times;10⁻⁵ |
+
+**Key findings**:
+
+- **Signal-to-noise: ~150-370&times;** real biology vs random cross-species
+  collisions.
+- **Archaea &lt; bacteria** for entrapment rate -- consistent with bacterial
+  proteomes sharing more ancient housekeeping with eukaryotes.
+- **Internal target-decoy FDR is anti-conservative** by ~2-13&times; vs
+  empirical species-entrapment.  Both remain orders of magnitude below
+  conventional 1% thresholds; documented honestly in the docs.
+
+### Documentation
+
+- `docs/modules/orthology.md` gains two new subsections:
+    - "Strict species-entrapment FDR" -- the full validation table
+      above.
+    - "FDR calibration caveat" -- honestly explains why the internal
+      decoy underestimates the empirical FDR (composition drift
+      between bacterial source and shuffled-human decoy).
+- Recommends manuscript-methods practice: cite the internal T-D FDR
+  as the per-run number, run species-entrapment as a validation
+  check (small archaeal proteomes complete in &lt; 1 minute).
+
+### Bundled reference proteomes
+
+Added 7 new FASTAs to `resources/fastas/`: `ecoli.fasta`,
+`bacillus_subtilis.fasta`, `mycobacterium_tuberculosis.fasta`,
+`staphylococcus_aureus.fasta`, `methanocaldococcus_jannaschii.fasta`,
+`sulfolobus_solfataricus.fasta`, `halobacterium_salinarum.fasta`.
+Each is UniProt SwissProt reviewed only.
+
+## [0.13.0] - 2026-07-07
+
+### Added -- orthology audit hardening
+
+- **Gene-name-consistent tiebreak** in the primary ortholog pick.  When
+  multiple human paralogs match a source window, the paralog whose gene
+  symbol matches the source (case-insensitive) is preferred.  Fixes the
+  hamster ``Actb`` &rarr; ``ACTA1`` (alphabetically-first) bug -- now
+  correctly returns ``ACTB``.  Fall-back is SwissProt-first alphabetical.
+- **Residue-class enforcement** on fuzzy matches (`require_center_sty=True`,
+  default).  S/T are treated as one residue class (hydroxyl); Y is a
+  separate class (aromatic).  A fuzzy hit swapping across classes is
+  rejected.  Matches PhosphoSitePlus site-group conventions.  Disable via
+  ``require_center_sty=False``.
+- **Motif-promiscuity flag** on ``.var``: ``n_paralogs_distinct_genes``
+  counts distinct human genes among the matches; ``motif_promiscuous=True``
+  when > 3 distinct genes share the source window.  Warns users that the
+  window is a shared motif (kinase substrate consensus, SH3-binding,
+  common regulatory motif) rather than a specific ortholog.
+
+### Validation -- comprehensive stress-test suite
+
+Reproducible via ``scripts/orthology_audit.py``.  Results demonstrate
+methodological soundness:
+
+- **Self-mapping sanity**: 12,937 human sites &rarr; 100% exact-match, 0
+  decoy wins.  Fundamental correctness confirmed.
+- **Random-null**: 1,000 random ±7 windows &rarr; 0 matches at any
+  ``max_mismatches`` from 0-3.  No background collisions on genuinely
+  random data.
+- **Hamster sensitivity curve** (500 proteins &rarr; 54,293 sites):
+    - H=0 &rarr; 40.8% mapped, 0 decoys, FDR=0
+    - H=1 &rarr; 59.6% mapped, 0 decoys, FDR=0
+    - **H=2 (default) &rarr; 70.7% mapped, 0 decoys, FDR=0**
+    - H=3 &rarr; 77.0% mapped, 2 decoys, FDR=5&times;10⁻⁵
+    - H=4 &rarr; 81.2% mapped, 19 decoys, FDR=4&times;10⁻⁴
+  The response curve proves target-decoy is discriminating: as
+  ``max_mismatches`` grows, both target and decoy hits grow, but target
+  grows much faster.  Default H=2 is at the FDR=0 boundary.
+- **Cross-species graceful degradation** (H=2, 500 proteins each):
+    - human self: 100.0%
+    - hamster (~90 Mya): 70.7%
+    - zebrafish (~450 Mya): 24.5%
+    - yeast (~1 Bya negative control): 3.9%
+  Mapping rate degrades gracefully with evolutionary distance -- a
+  divergent species doesn't force-map, it correctly reports "mostly
+  unmapped".
+
+### Documentation
+
+- New `docs/modules/orthology.md` documenting the algorithm, community
+  precedent (PhosphoSitePlus site groups, iPTMnet, Ochoa 2020,
+  Beltrao 2012), when the method is defensible vs weak, the five
+  reviewer-defensibility design choices (window-is-identity,
+  target-decoy, gene-name tiebreak, residue-class enforcement,
+  motif-promiscuity flag), and the full validation table.
+- Six methodological caveats (skipped protein-orthology verification,
+  motif promiscuity handling, divergent-species behaviour, decoy
+  strategy, paralog-as-biology, mapped-vs-unmapped reporting).
+- Wired into `mkdocs.yml` nav under a new "Orthology" section.
+
+### Tests
+
+13 new unit tests covering the A1-A3 code fixes:
+- `TestPickCanonical`: source-gene-consistent tiebreak (case-insensitive,
+  prefers reviewed within gene hits, falls through to alphabetical when
+  no gene match).
+- `TestResidueClass`: S/T-vs-Y swap rejected by default, S/T swap
+  allowed (both in {ST} class), class check disabled when
+  ``require_center_sty=False``.
+- `TestMotifPromiscuity`: flagged when > 3 distinct genes share the
+  window, not flagged when paralogs are all the same gene (isoforms).
+
+**672 tests pass** (up from 664).  ruff clean.
+
+## [0.12.0] - 2026-07-07
+
+### Added -- orthology Phase 2
+
+- **Fuzzy fallback (Hamming &le; `max_mismatches`)** for `map_to_human`, via
+  a pigeonhole segment index.  A window of length ``W = 2*window_size+1`` is
+  partitioned into ``max_mismatches + 1`` (nearly) equal segments; any window
+  differing by &le; ``max_mismatches`` residues must share at least one
+  segment exactly.  Look up candidates via segment hits, Hamming-check each.
+  Default ``allow_fuzzy=True``, ``max_mismatches=2``.
+
+  On real CHO data (1,000 hamster proteins &rarr; 105,484 sites):
+  - Exact-only: 42,303 mapped (40.1%)
+  - Fuzzy H&le;2: **73,044 mapped (69.2%)** -- +30,741 sites recovered
+  - Overhead: ~5 s vs exact-only, all-inclusive
+
+- **Per-site q-values** (`.var["mapping_qvalue"]`) via proteomics-style
+  target-decoy ranking: for each site, determine the "winner" (target hit vs
+  best decoy hit); rank all wins by score (fewer mismatches = better);
+  q at rank `i` = cumulative decoy wins / cumulative target wins, with
+  monotone-non-decreasing envelope walking down the ranks (Storey-Tibshirani
+  q-value convention).  Sites with no target and no decoy hit get NaN.
+
+- **`fdr_threshold` filter** (default 0.01).  Sites whose q-value exceeds
+  the threshold are demoted to ``mapping_source="below_fdr"`` -- the human
+  annotation columns are cleared, but the raw ``kinase_sequence`` and
+  ``mapping_qvalue`` are retained for inspection.  Pass ``None`` to disable
+  filtering.
+
+- **Decoy-won demotion**.  Sites where the best decoy hit has fewer
+  mismatches than the best target hit are demoted to
+  ``mapping_source="decoy_won"``.  These are spurious ortholog assignments
+  by definition -- the shuffled human proteome literally fits the source
+  window better than the real one -- and would inflate false positives if
+  reported.
+
+- **New `.var` columns**: ``mismatches`` (0 for exact match, 1-2 for
+  fuzzy, -1 for unmapped/decoy-won/below-fdr) and ``mapping_qvalue``.
+  New ``mapping_source`` values: ``"approximate"``, ``"below_fdr"``,
+  ``"decoy_won"``.
+
+- **Provenance stats** now include ``n_exact_hits``, ``n_fuzzy_hits``,
+  ``n_below_fdr``, ``n_mapped_after_fdr``, ``max_mismatches``,
+  ``fdr_threshold``.  Old ``n_target_hits`` / ``n_decoy_hits`` renamed to
+  ``n_target_wins`` / ``n_decoy_wins`` (target-decoy semantics rather than
+  raw hit counts).
+
+- **Gold-standard iron-law site set** at
+  ``test_data/orthology/gold_standard_sites.tsv``.  32 canonical
+  mammalian phospho sites (kinase activation loops, receptor
+  autophosphorylation, cell-cycle regulatory, translation-control)
+  derived from bundled mouse/rat FASTAs against bundled human.
+  Covers 26 exact-match cases, 4 1-mismatch cases, 2 3-mismatch cases.
+
+- **Gold-standard regression tests** (4 new tests in
+  `TestGoldStandardSites`) that require:
+    - All 0-mismatch sites map to the expected human ortholog (either as
+      primary mapping or as a paralog side-table entry for ambiguous cases
+      like Mapk1/Mapk3 sharing an activation-loop window).
+    - Fuzzy-tier (1-2 mismatch) sites are mapped when fuzzy is on.
+    - 3+ mismatch sites are correctly held below the default
+      ``max_mismatches=2`` cap.
+    - Overall recall on mappable (mm &le; 2) sites &ge; 85%.
+
+### Changed
+
+- `resolve_orthology_settings` now validates `allow_fuzzy`,
+  `max_mismatches`, and `fdr_threshold`; unknown / out-of-range values
+  raise ``ValueError``.
+- Log line on completion reports exact + fuzzy counts + demoted counts +
+  global FDR estimate.
+
+## [0.11.0] - 2026-07-07
+
+### Added
+
+- **New top-level subpackage `alphaphos.orthology`** for cross-species
+  phosphosite ortholog mapping to human.  Motivated by CHO / mouse / rat
+  phosphoproteomics: KSEA, OmniPath, PhosphoSitePlus, and Reactome are all
+  human-centric, so non-human data cannot run downstream without site-level
+  ortholog assignment.
+- **`ap.orthology.map_to_human(adata, source_fasta=None, human_fasta=None, ...)`**
+  -- window-based site ortholog mapping using the `±window_size` sequence
+  context around each phospho site as the identity check.  Same principle
+  PhosphoSitePlus uses for its cross-species site groups
+  (Hornbeck et al. 2012 *Nucleic Acids Res* 40:D261) and iPTMnet (Huang et
+  al. 2018), applied here as a FOSS-reproducible pipeline with the human
+  proteome as the target index.
+
+  On CHO source data, this simultaneously answers "which human gene does
+  this phospho site correspond to?" and "what's its human position?"
+  without requiring a separate protein-level ortholog resolution step --
+  the window IS the identity.
+
+- **Target-decoy FDR estimation** built in.  A shuffle-preserving-STY decoy
+  index is built alongside the target index (same length, same phospho-
+  acceptor density, but scrambled AA composition per protein).  Adapted
+  from Elias & Gygi 2007 to sequence-window matching.  Global FDR estimate
+  = `n_decoy_hits / n_target_hits`.  On real CHO data (1,000 hamster
+  proteins &rarr; 105k sites), global FDR = 7&times;10⁻⁵ (3 decoy hits vs
+  42,303 target hits).
+
+- **Paralog handling.**  When a source window matches multiple human
+  proteins (e.g. actin family sites &rarr; ACTA1/2/B/G1/G2/..., ~12
+  paralogs), all matches are recorded in a side table at
+  `adata.uns["orthology"]["paralogs"]`, the primary `.var["human_uniprot"]`
+  is set to the SwissProt-preferred canonical match, and
+  `.var["ortholog_ambiguous"]` = `True`.
+
+- **Provenance columns on `.var`**: `human_gene`, `human_uniprot`,
+  `human_site` (e.g. "S862"), `human_site_key` ("P31749_S862" --
+  OmniPath-consumable), `site_conserved` (bool), `ortholog_ambiguous`
+  (bool), `mapping_source` (`"exact_match"` / `"unmapped"`), `n_paralogs`.
+
+- **Parquet-backed cache** for the human window index at
+  `~/.alphaphos/orthology/`, keyed on `sha256(human_fasta)[:12]` + window
+  size + decoy seed.  First run builds the index (~10s for full human
+  SwissProt); subsequent runs load in <1s.
+
+- **Bundled reference proteomes** in `resources/fastas/`: human, mouse,
+  rat, chinese_hamster, yeast, zebrafish -- covers well-conserved
+  mammalian (mouse/rat), the CHO use case (hamster), and divergent
+  controls (yeast for negative case, zebrafish for edge-of-conservation
+  testing).
+
+### Validated on real data
+
+- **1,000 hamster proteins &rarr; 105,484 ±7 STY windows tested against the
+  bundled human proteome (20,597 entries, 1.8M target windows):**
+  - Exact-match mapping rate: **40%** (42,303 sites mapped)
+  - Ambiguous (paralogs): 2.6% (2,784 sites, 6,929 paralog rows in side
+    table)
+  - Decoy hits: **3** (global FDR 7&times;10⁻⁵)
+  - Biology cross-checks: FICD sites map to human FICD with consistent
+    N-term offset; β-actin (Actb) sites correctly ambiguous across the
+    actin family; RhoA to small-GTPase family; GATA3 sites primary +
+    GATA1/2/4/5/6 paralogs.
+- The 60% unmapped is expected on exact matching only -- fuzzy fallback
+  (Hamming &le; 2) lands in Phase 2 alongside per-site q-values (currently
+  only a global FDR is emitted).
+
+### Scope for v1
+
+Phase 1 (this release) is exact-match only with global FDR.  Phase 2
+brings:
+1. Fuzzy fallback for the ~60% unmapped tail (Hamming &le; 2 across
+   the flanking window).
+2. Per-site q-values (requires graded scores, i.e. fuzzy).
+3. Ships gold-standard test set of well-known conserved phosphosites
+   for regression testing.
+
+### Tests
+
+25 unit tests covering FASTA parsing (both `sp|` and `tr|` prefixes,
+multiline sequences, missing GN fallback), S/T/Y window extraction with
+edge-truncation, decoy shuffle correctness (preserves STY positions +
+AA composition), settings validation, end-to-end mapping on synthetic
+FASTAs, paralog ambiguity + SwissProt preference, cache round-trip, and
+FDR sanity on random source windows.
+
 ## [0.10.3] - 2026-07-07
 
 ### Documentation

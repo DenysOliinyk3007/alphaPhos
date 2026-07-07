@@ -2,7 +2,7 @@
 
 Phosphoproteomics analysis toolkit.
 
-**Status:** pre-alpha (v0.10.3). Standard 2-condition workflows (Spectronaut / DIA-NN / FragPipe → sites → filter → impute → optional ComBat → limma → enrichment) are covered end-to-end and validated on real data. Multi-contrast ANOVA and PCA/UMAP are not yet implemented.
+**Status:** pre-alpha (v0.14.0). Standard 2-condition workflows (Spectronaut / DIA-NN / FragPipe → sites → filter → impute → optional ComBat → limma → enrichment) are covered end-to-end and validated on real data. Multi-contrast ANOVA and PCA/UMAP are not yet implemented.
 
 ## Install
 
@@ -56,7 +56,7 @@ result = ap.diff_exp_limma(
 #   log2fc, se, t_stat, p_value, fdr, B, ave_expr
 ```
 
-## What ships in v0.10.3
+## What ships in v0.14.0
 
 | Module | Function | Notes |
 | --- | --- | --- |
