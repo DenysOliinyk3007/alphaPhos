@@ -12,6 +12,78 @@ While in `0.x`, breaking API changes may appear in any MINOR bump (`0.1 → 0.2`
 
 _Nothing yet._
 
+## [0.10.0] - 2026-07-03
+
+### Added
+
+- **`alphaphos.preprocess.collapse_precursors`** -- new precursor-level
+  collapse, sibling of `collapse_sites`. Quantifies each identified
+  precursor (peptide sequence + charge + modifications) as one feature
+  per sample, without residue attribution and without
+  localization-probability masking. Trades site-level resolution for a
+  more complete, less-punctured quantification matrix -- the right
+  choice when the primary question is detection / differential and
+  localization is unreliable on low-abundance features (e.g. RTK
+  activation loops).
+
+  Motivating case (documented in
+  `D:/Projects/miniBinders/CHO_TAB2_H2F/docs/peptide_level_collapse_rationale.md`):
+  the TRKA activation-loop precursor `DIYSTDYYR` (pY680), detected in
+  56/60 runs at 99.9% localization on Y680, was still culled by
+  site-level masking because per-run localization was inconsistent.
+  Precursor-level collapse keeps this feature.
+
+  Public API:
+    - `ap.collapse_precursors(psm_df, condition_df=..., advanced=...)`
+      returns an `AnnData` shape `(n_samples, n_precursors)` matching
+      the standard alphaPhos contract (`.layers["intensity_log2"]`,
+      `.obs.condition`, `.uns["alphaphos"]`) so `filter_by_completeness`
+      / `impute_hybrid` / `batch_correct_combat` / `diff_exp_limma` all
+      work unchanged.
+    - `.var.index` = alphaPhos precursor key
+      ``Protein|Gene|Peptide|Charge|Mods``.
+    - `.var` columns include `peptide_sequence`, `charge`, `mods`,
+      `n_phospho`, `peptide_start`, `best_localization_prob`,
+      `best_localization_pos_peptide`,
+      `best_localization_pos_protein` -- localization is annotation
+      only, **never** used for filtering.
+    - `DEFAULT_PRECURSOR_COLLAPSE_SETTINGS` +
+      `resolve_precursor_settings` mirror the settings-validation
+      pattern from `collapse_sites`.  Simpler surface -- no
+      `localization_strategy`, `classI_cutoff`, or `top_n_attribution`
+      knobs.  Adds `phospho_only` (drop non-phospho precursors,
+      default `True`) and `annotate_localization` (extract loc info
+      for `.var`, default `True`).
+
+- **`alphaphos.precursor_to_site_view`** -- bridge that maps each
+  precursor to its best-guess alphaPhos site key
+  ``Protein|Gene|<AA><absolute_pos>|M<n_phospho>`` for hand-off to
+  KSEA / pathway analyses that need residue attribution. Not a
+  re-collapse -- annotation only.  Configurable
+  `require_localization` threshold (default 0.75); precursors below
+  the threshold get `site_key = NaN` and stay in the AnnData.
+  Handles the peptide-local &rarr; protein-absolute position
+  arithmetic (``peptide_start + peptide_pos - 1``).
+
+### Documentation
+
+- New `docs/modules/preprocess/collapse_precursors.md` with the full
+  parameter table, output schema, worked example, and "when to use
+  precursor-level over site-level" guidance.
+- `docs/modules/preprocess/index.md` and README module table updated to
+  list both collapse variants side-by-side.
+- `mkdocs.yml` nav updated.
+
+### Scope
+
+- Spectronaut only for v1.  DIA-NN and FragPipe precursor collapse
+  will land in a follow-up.
+- 31 new tests covering settings validation, PSM parsing, key
+  construction, end-to-end AnnData contract, aggregation modes,
+  localization annotation, noise-floor filter, the phospho-only
+  filter, and the bridge (including a TRKA-style rescue scenario
+  that reproduces the motivating rationale).
+
 ## [0.9.2] - 2026-07-03
 
 ### Fixed

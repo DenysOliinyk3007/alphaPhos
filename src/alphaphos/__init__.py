@@ -28,7 +28,7 @@ See :func:`collapse_sites` for the settings dict; see
 for domain-specific tooling.
 """
 
-__version__ = "0.9.2"
+__version__ = "0.10.0"
 
 # Public entry points, re-exported for convenience.
 # Expose the top-tier enrichment namespace so callers can write
@@ -65,6 +65,11 @@ from alphaphos.preprocess.collapse import (
     collapse_sites,
     resolve_settings,
 )
+from alphaphos.preprocess.collapse_precursors import (
+    DEFAULT_PRECURSOR_COLLAPSE_SETTINGS,
+    collapse_precursors,
+    precursor_to_site_view,
+)
 from alphaphos.preprocess.filter import filter_by_completeness
 from alphaphos.preprocess.impute import impute_hybrid, impute_knn_site_based
 from alphaphos.stats.diff_exp import DEFAULT_STATS_SETTINGS, diff_exp_limma
@@ -92,6 +97,9 @@ __all__ = [
     "collapse_sites",
     "DEFAULT_COLLAPSE_SETTINGS",
     "resolve_settings",
+    "collapse_precursors",
+    "DEFAULT_PRECURSOR_COLLAPSE_SETTINGS",
+    "precursor_to_site_view",
     "filter_by_completeness",
     "impute_hybrid",
     "impute_knn_site_based",

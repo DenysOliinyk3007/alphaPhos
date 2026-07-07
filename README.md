@@ -2,7 +2,7 @@
 
 Phosphoproteomics analysis toolkit.
 
-**Status:** pre-alpha (v0.9.2). Standard 2-condition workflows (Spectronaut / DIA-NN / FragPipe → sites → filter → impute → optional ComBat → limma → enrichment) are covered end-to-end and validated on real data. Multi-contrast ANOVA and PCA/UMAP are not yet implemented.
+**Status:** pre-alpha (v0.10.0). Standard 2-condition workflows (Spectronaut / DIA-NN / FragPipe → sites → filter → impute → optional ComBat → limma → enrichment) are covered end-to-end and validated on real data. Multi-contrast ANOVA and PCA/UMAP are not yet implemented.
 
 ## Install
 
@@ -56,7 +56,7 @@ result = ap.diff_exp_limma(
 #   log2fc, se, t_stat, p_value, fdr, B, ave_expr
 ```
 
-## What ships in v0.9.2
+## What ships in v0.10.0
 
 | Module | Function | Notes |
 | --- | --- | --- |
@@ -64,6 +64,7 @@ result = ap.diff_exp_limma(
 | `alphaphos.io.diann` | `read_diann` | Manuscript-validated on nanoPhos. Requires DIA-NN ≥1.9. |
 | `alphaphos.io.fragpipe` | `read_fragpipe_sites` | Reads FragPipe's pre-collapsed abundance files. |
 | `alphaphos.preprocess.collapse` | `collapse_sites` | PSM → site AnnData with `Protein\|Gene\|Site\|Mult` keys, top-N attribution, three localization strategies. |
+| `alphaphos.preprocess.collapse_precursors` | `collapse_precursors`, `precursor_to_site_view` | PSM → precursor AnnData (`Protein\|Gene\|Peptide\|Charge\|Mods`). No residue attribution, no localization masking — use for detection / differential when localization is unreliable on low-abundance features. Bridges back to site keys via `precursor_to_site_view` for KSEA. |
 | `alphaphos.preprocess.filter` | `filter_by_completeness` | Global / any-group / each-group strategies. |
 | `alphaphos.preprocess.impute` | `impute_hybrid`, `impute_knn_site_based` | Per-cell MAR-KNN + MNAR-Gaussian hybrid, or legacy-parity KNN. |
 | `alphaphos.preprocess.batch_correct` | `batch_correct_combat` | inmoose pycombat wrapper with double-correct guard. |
