@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -145,6 +146,31 @@ class TestMatchSites:
         mr = match_sites([iso_key], db=db)
         assert mr.stats["n_matched_tier3"] == 1
         assert mr.stats["n_matched_tier2"] == 0
+
+    @pytest.mark.parametrize(
+        "uniprot_dtype",
+        ["object", "string", "string[pyarrow]"],
+    )
+    def test_nan_uniprot_rows_are_skipped_not_crashing(self, uniprot_dtype):
+        # Regression: CI runs 28884069731 / 28884037587 failed with
+        # AttributeError: 'float' object has no attribute 'split' inside
+        # _build_lookup_indices because 249 rows in the shipped test DB
+        # had NaN in substrate_uniprot, and .astype(str) on some pandas
+        # backends leaks NaN/pd.NA through instead of coercing to "nan".
+        # A row with NaN uniprot must be quietly skipped, and the rest
+        # of the DB must still index correctly.
+        na_value = pd.NA if uniprot_dtype.startswith("string") else np.nan
+        db = pd.DataFrame(
+            {
+                "substrate_uniprot": pd.array(["P00533", na_value, "P42229"], dtype=uniprot_dtype),
+                "substrate_gene": ["EGFR", "GENE_NO_UP", "STAT5A"],
+                "residue": ["Y", "S", "Y"],
+                "position": [1172, 100, 694],
+            }
+        )
+        mr = match_sites(["P00533|EGFR|Y1172|M1"], db=db)
+        assert mr.stats["n_matched_tier2"] + mr.stats["n_matched_tier3"] == 1
+        assert mr.stats["n_unmatched"] == 0
 
 
 class TestAttachSiteIds:

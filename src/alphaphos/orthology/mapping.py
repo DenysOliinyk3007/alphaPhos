@@ -274,7 +274,18 @@ def map_to_human(
         decoy_segments = _build_segment_indexes(decoy_index, window_len, n_segments)
 
     # ---- 2. Per-site lookup: exact first, fuzzy fallback if enabled -----
-    source_windows = adata.var[kseq_col].astype(str).fillna("").to_numpy()
+    # Strip the ``_LEFT*S*RIGHT_`` ornaments that :func:`alphaphos.add_kinase_windows`
+    # writes -- the flanking underscores mark protein-boundary padding and the
+    # stars flank the phospho residue.  The lookup index stores raw AA windows,
+    # so ornaments must be removed for identity + fuzzy matching to work.
+    source_windows = (
+        adata.var[kseq_col]
+        .astype(str)
+        .fillna("")
+        .str.replace("_", "", regex=False)
+        .str.replace("*", "", regex=False)
+        .to_numpy()
+    )
     n_sites = len(source_windows)
 
     # Per-site outputs

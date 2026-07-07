@@ -274,14 +274,17 @@ def _build_lookup_indices(
     uniprot_triples: set[tuple[str, str, int]] = set()
     gene_map: dict[tuple[str, str, int], str] = {}
 
+    # fillna("") before astype(str) so a NaN/NA in any pandas backend
+    # (object / pyarrow-string / nullable-string) becomes "" rather than
+    # leaking through as a float/pd.NA that later .split() calls choke on.
     for uniprot_field, gene, residue, position in zip(
-        db[COL_UNIPROT].astype(str),
-        db[COL_GENE].astype(str),
-        db[COL_RESIDUE].astype(str),
+        db[COL_UNIPROT].fillna("").astype(str),
+        db[COL_GENE].fillna("").astype(str),
+        db[COL_RESIDUE].fillna("").astype(str),
         db[COL_POSITION],
         strict=True,
     ):
-        if pd.isna(position):
+        if pd.isna(position) or not uniprot_field:
             continue
         pos = int(position)
         # Uniprot tier: expand semicolon-joined groups
