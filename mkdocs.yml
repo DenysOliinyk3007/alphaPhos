@@ -61,6 +61,7 @@ nav:
     - Preprocess:
       - Overview: modules/preprocess/index.md
       - alphaphos.preprocess.collapse: modules/preprocess/collapse.md
+      - alphaphos.preprocess.collapse_precursors: modules/preprocess/collapse_precursors.md
       - alphaphos.preprocess.filter: modules/preprocess/filter.md
       - alphaphos.preprocess.impute: modules/preprocess/imputation.md
       - alphaphos.preprocess.batch_correct: modules/preprocess/batch_correct.md

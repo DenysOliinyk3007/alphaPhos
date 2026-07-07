@@ -16,6 +16,12 @@ from alphaphos.preprocess.collapse import (
     collapse_sites,
     resolve_settings,
 )
+from alphaphos.preprocess.collapse_precursors import (
+    DEFAULT_PRECURSOR_COLLAPSE_SETTINGS,
+    collapse_precursors,
+    precursor_to_site_view,
+    resolve_precursor_settings,
+)
 from alphaphos.preprocess.contaminants import (
     filter_contaminants,
     get_default_contaminants_fasta,
@@ -41,6 +47,14 @@ __all__ = [
     "collapse_sites",
     "DEFAULT_COLLAPSE_SETTINGS",
     "resolve_settings",
+    # Precursor-level collapse -- sibling of collapse_sites, no residue
+    # attribution / no localization masking.  Used when localization is
+    # unreliable on low-abundance features and detection matters more than
+    # residue resolution.
+    "collapse_precursors",
+    "DEFAULT_PRECURSOR_COLLAPSE_SETTINGS",
+    "resolve_precursor_settings",
+    "precursor_to_site_view",
     # Condition-aware Class I masking (legacy shape; used internally by collapse
     # for now, exposed as a public helper for callers with externally-collapsed data).
     "apply_condition_aware_classI_mask",

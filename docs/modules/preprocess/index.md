@@ -4,11 +4,18 @@ PSM &rarr; site &rarr; ready-for-stats pipeline. Five steps, five functions.
 
 | Step | Function | Input | Output |
 | --- | --- | --- | --- |
-| 1. Collapse | [`collapse_sites`](collapse.md) | PSM `pd.DataFrame` | site `AnnData` |
-| 2. Filter | [`filter_by_completeness`](filter.md) | `AnnData` | `AnnData` (fewer sites) |
+| 1a. Collapse (sites) | [`collapse_sites`](collapse.md) | PSM `pd.DataFrame` | site `AnnData` |
+| 1b. Collapse (precursors) | [`collapse_precursors`](collapse_precursors.md) | PSM `pd.DataFrame` | precursor `AnnData` |
+| 2. Filter | [`filter_by_completeness`](filter.md) | `AnnData` | `AnnData` (fewer features) |
 | 3. Impute | [`impute_hybrid`](imputation.md) / [`impute_knn_site_based`](imputation.md) | `AnnData` | `AnnData` (no NaN in log2 layer) |
 | 4. Batch correct (optional) | [`batch_correct_combat`](batch_correct.md) | `AnnData` | `AnnData` (batch-adjusted + pre-correction copy) |
-| 5. Differential test | [`diff_exp_limma`](../stats/index.md) | `AnnData` | per-site `pd.DataFrame` |
+| 5. Differential test | [`diff_exp_limma`](../stats/index.md) | `AnnData` | per-feature `pd.DataFrame` |
+
+Steps 1a and 1b are alternatives -- pick one based on the analysis question.
+See [`collapse_precursors`](collapse_precursors.md#when-to-use-precursor-level-over-site-level)
+for a concrete "when to use which" table; a common workflow keeps both in
+parallel (precursor-level for detection / differential, site-level for
+KSEA / pathway analyses that need residue attribution).
 
 ## Typical pipeline
 
