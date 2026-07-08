@@ -294,8 +294,17 @@ def _pca_nipals(
 
         scores[:, comp] = t
         loadings[:, comp] = p
-        # Eigenvalue proxy: variance of the scores column (unbiased)
-        variance[comp] = float(np.var(t, ddof=1)) if n > 1 else 0.0
+        # Variance explained: SS of this component's reconstruction at OBSERVED
+        # cells, divided by (n-1) to match sklearn/PPCA units.  The classical
+        # ``np.var(t, ddof=1)`` NIPALS eigenvalue blows up on sparse data
+        # because the least-squares update ``t_i = Sum(mask * X * p) /
+        # Sum(mask * p^2)`` divides by a small denominator when few features
+        # are observed for sample i, inflating ``|t|`` without a matching
+        # counter-inflation of the true signal.  The mask-aware
+        # reconstruction-SS/(n-1) is bounded by the mask-aware total variance
+        # (see ``_total_variance``), so variance_ratio stays in [0, 1].
+        recon_ss = float(np.sum(np.where(mask, deflate, 0.0) ** 2))
+        variance[comp] = recon_ss / (n - 1) if n > 1 else 0.0
 
     return scores, loadings, variance
 
@@ -399,14 +408,30 @@ def _pca_ppca(
 
     # Orient with SVD of W: makes loadings orthonormal and orders components
     # by descending singular value (matches sklearn convention).
-    U, _S, VT = np.linalg.svd(W, full_matrices=False)
-    R = VT  # (k, k) rotation from PPCA basis to SVD basis
-    scores = Z_mean @ R.T  # rotate posterior means into PC basis
-    loadings = U  # already orthonormal columns
-    # Variance = eigenvalues of the score covariance
-    variance = np.array(
-        [float(np.var(scores[:, comp], ddof=1)) if n > 1 else 0.0 for comp in range(k)]
-    )
+    U, _S, _VT = np.linalg.svd(W, full_matrices=False)
+    loadings = U  # (m, k), unit-norm columns
+
+    # Compute projection-style scores mask-aware, matching the NIPALS + sklearn
+    # convention (scores = X projected onto loading directions).  The PPCA EM
+    # output ``Z_mean`` is the posterior of the LATENT variable z which has
+    # unit variance in the prior; treating it as PC scores under-reports the
+    # observed-space variance explained by each component (Z_mean has variance
+    # ~1 while projections have variance ~ eigenvalue of the sample
+    # covariance).  Projecting X onto U puts scores in the same units as
+    # sklearn/NIPALS so variance_ratio is comparable across methods.
+    Xw = np.where(mask, X, 0.0)
+    score_num = Xw @ loadings  # (n, k)
+    score_den = mask_f @ (loadings**2)  # (n, k)
+    score_den = np.where(score_den > 0, score_den, 1.0)
+    scores = score_num / score_den
+
+    # Variance per component: SS of reconstruction at observed cells / (n-1).
+    # Same formulation as NIPALS -- bounded by mask-aware total variance.
+    variance = np.zeros(k, dtype=np.float64)
+    for comp in range(k):
+        deflate = np.outer(scores[:, comp], loadings[:, comp])
+        recon_ss = float(np.sum(np.where(mask, deflate, 0.0) ** 2))
+        variance[comp] = recon_ss / (n - 1) if n > 1 else 0.0
     return scores, loadings, variance
 
 
@@ -457,8 +482,17 @@ def _center_scale(
 
 
 def _total_variance(X: np.ndarray) -> float:
-    """Sum of per-feature variances (NaN-safe).  Used to normalise variance ratios."""
-    with np.errstate(all="ignore"):
-        v = np.nanvar(X, axis=0, ddof=1)
-    v = np.where(np.isnan(v), 0.0, v)
-    return float(np.sum(v))
+    """Total variance = SS at observed cells / (n-1).
+
+    Mask-aware: NaN cells contribute nothing.  On complete data this
+    matches ``sum_j(var(X[:,j], ddof=1))`` (the classical trace of the
+    covariance matrix); on masked data it stays in the same units so
+    variance ratios against ``_pca_nipals`` / ``_pca_ppca`` per-component
+    variances (also SS/(n-1)) stay in [0, 1].
+    """
+    n = X.shape[0]
+    if n <= 1:
+        return 0.0
+    mask = ~np.isnan(X)
+    ss = float(np.sum(np.where(mask, X, 0.0) ** 2))
+    return ss / (n - 1)
