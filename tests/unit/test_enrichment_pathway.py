@@ -293,7 +293,7 @@ class TestGeneExtraction:
             {"log2fc": [2.0], "fdr": [0.001]},
             index=["totally_bogus"],
         )
-        with pytest.raises(ValueError, match="No parseable alphaPhos keys"):
+        with pytest.raises(ValueError, match="No parseable gene names"):
             pathway_enrichment(diff, libraries=["GO_BP"], background="phosphoproteome")
 
     def test_key_column_supported(self, mock_gseapy):

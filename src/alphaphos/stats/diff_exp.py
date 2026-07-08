@@ -485,3 +485,231 @@ def _finalize_result(
     result.attrs["treatment"] = treatment
     result.attrs["control"] = control
     return result
+
+
+# =============================================================================
+# Multi-contrast + ANOVA (H3 from the PhosPy borrowings audit).
+# =============================================================================
+
+
+def diff_exp_limma_contrasts(
+    adata: ad.AnnData,
+    *,
+    condition_column: str,
+    contrasts: list[tuple[str, str]] | dict[str, tuple[str, str]],
+    covariates: list[str] | None = None,
+    block_column: str | None = None,
+    layer: str | None = LAYER_INTENSITY_LOG2,
+    joint: bool = True,
+    advanced: dict | None = None,
+) -> dict[str, pd.DataFrame]:
+    """Multi-contrast moderated t-tests on one ``AnnData``.
+
+    Parameters
+    ----------
+    adata, condition_column, covariates, layer
+        As in :func:`diff_exp_limma`.
+    contrasts
+        Either a list of ``(treatment, control)`` tuples (keys auto-
+        generated as ``f"{treatment}_vs_{control}"``) or a dict
+        ``{name: (treatment, control)}``.
+    block_column
+        Optional paired-block factor (e.g. ``"patient"``) added to the
+        design as fixed effects.  Only used when ``joint=True``.
+    joint
+        - ``True`` (default): fit **one** linear model across all samples
+          with all condition levels + covariates + block, then test each
+          contrast on that joint fit.  Uses alphaPhos's own moderation
+          (:mod:`alphaphos.stats.linear_model`) -- proper cross-feature
+          variance shrinkage jointly across all contrasts.  Independent
+          of inmoose.
+        - ``False``: fall back to a loop of :func:`diff_exp_limma` calls,
+          each on the 2-group subset for its contrast.  Uses inmoose per
+          contrast, so ``advanced`` overrides apply.  Per-pair variance
+          estimation (no joint moderation).
+
+    Returns
+    -------
+    dict[str, pandas.DataFrame]
+        One entry per contrast, insertion order preserved.  Columns::
+
+            log2fc / estimate  se  t_stat  p_value  fdr  ave_expr [ df_moderated ]
+
+        ``joint=True`` results carry a ``df_moderated`` column; the
+        ``.attrs["prior_variance"]`` / ``prior_df`` fields record the
+        joint EB prior estimated across all features.  ``joint=False``
+        results match :func:`diff_exp_limma`'s columns exactly (log2fc,
+        se, t_stat, p_value, fdr, B, ave_expr).
+    """
+    if isinstance(contrasts, list):
+        contrasts = {f"{t}_vs_{c}": (t, c) for t, c in contrasts}
+    if not contrasts:
+        raise ValueError("contrasts must be non-empty")
+
+    if not joint:
+        # Per-pair loop.  advanced kwargs pass through to diff_exp_limma.
+        if not _HAS_STATS_DEPS:
+            raise ImportError(
+                "diff_exp_limma_contrasts(joint=False) requires inmoose "
+                "and patsy.  Install with `pip install alphaPhos[stats]`."
+            )
+        if block_column is not None:
+            raise ValueError(
+                "block_column is only supported when joint=True.  For "
+                "joint=False, encode the block factor as a categorical "
+                "covariate via covariates=..."
+            )
+        results: dict[str, pd.DataFrame] = {}
+        for name, pair in contrasts.items():
+            if not isinstance(pair, tuple) or len(pair) != 2:
+                raise ValueError(f"contrasts[{name!r}] must be a (treatment, control) tuple")
+            treatment, control = pair
+            results[name] = diff_exp_limma(
+                adata,
+                condition_column=condition_column,
+                comparison=(treatment, control),
+                covariates=covariates,
+                layer=layer,
+                advanced=advanced,
+            )
+        return results
+
+    # ----- joint=True path (default): use our own moderated stack.
+    from alphaphos.stats.design import design_matrix
+    from alphaphos.stats.linear_model import (
+        contrasts_fit,
+        fit_f_dist,
+        lm_fit,
+        moderated_t_test,
+    )
+
+    # Validate the requested contrasts against the observed levels.
+    obs_levels = set(adata.obs[condition_column].astype(str).unique())
+    for name, pair in contrasts.items():
+        if not isinstance(pair, tuple) or len(pair) != 2:
+            raise ValueError(f"contrasts[{name!r}] must be a (treatment, control) tuple")
+        for lv in pair:
+            if str(lv) not in obs_levels:
+                raise ValueError(
+                    f"contrasts[{name!r}] references level {lv!r} which is "
+                    f"not in adata.obs[{condition_column!r}] "
+                    f"(available: {sorted(obs_levels)})"
+                )
+
+    X = _get_matrix(adata, layer=layer)
+    _validate_no_nan(X, layer=layer)
+    _validate_log_scale(X, layer=layer)
+
+    dm = design_matrix(
+        adata,
+        condition_column=condition_column,
+        covariates=covariates,
+        block_column=block_column,
+    )
+    fit = lm_fit(X, dm.frame.to_numpy(), coefficient_labels=dm.coefficient_labels)
+    # Fit the EB prior once, reused across all contrasts.
+    prior = fit_f_dist(fit.sigma_sq, residual_df=fit.df_residual)
+
+    # Build one column per contrast.  Condition-column encoding is
+    # ``condition[<sanitized_level>]`` -- map raw level -> sanitized.
+    coef_index = {label: i for i, label in enumerate(dm.coefficient_labels)}
+    C = np.zeros((len(dm.coefficient_labels), len(contrasts)), dtype=np.float64)
+    for j, (_name, (trt, ctrl)) in enumerate(contrasts.items()):
+        trt_safe = dm.level_sanitization[str(trt)]
+        ctrl_safe = dm.level_sanitization[str(ctrl)]
+        trt_coef = f"{condition_column}[{trt_safe}]"
+        ctrl_coef = f"{condition_column}[{ctrl_safe}]"
+        C[coef_index[trt_coef], j] = 1.0
+        C[coef_index[ctrl_coef], j] = -1.0
+
+    cf = contrasts_fit(fit, C, contrast_labels=list(contrasts.keys()))
+    raw_results = moderated_t_test(
+        cf,
+        var_names=list(adata.var_names),
+        prior=prior,
+    )
+
+    # Normalise column names to match diff_exp_limma's convention (log2fc,
+    # ave_expr) so downstream code that consumes both is uniform.
+    ave_expr = X.mean(axis=0)
+    finalized: dict[str, pd.DataFrame] = {}
+    for name, r in raw_results.items():
+        trt, ctrl = contrasts[name]
+        r = r.rename(columns={"estimate": "log2fc"})
+        r["ave_expr"] = ave_expr
+        r.attrs["contrast_string"] = f"{condition_column}[{trt}]-{condition_column}[{ctrl}]"
+        r.attrs["contrast_direction"] = (
+            f"log2fc = mean({trt}) - mean({ctrl}); positive = up in {trt!r}"
+        )
+        r.attrs["treatment"] = trt
+        r.attrs["control"] = ctrl
+        r.attrs["prior_variance"] = prior.prior_variance
+        r.attrs["prior_df"] = prior.prior_df
+        finalized[name] = r
+    return finalized
+
+
+def diff_exp_anova(
+    adata: ad.AnnData,
+    *,
+    condition_column: str,
+    covariates: list[str] | None = None,
+    layer: str | None = LAYER_INTENSITY_LOG2,
+) -> pd.DataFrame:
+    """Moderated F-test per feature across all condition levels (ANOVA-style).
+
+    Answers **"does the mean differ anywhere across the K levels of
+    ``condition_column``?"** as a single moderated F-statistic per
+    feature.  Complements :func:`diff_exp_limma` (pairwise) and
+    :func:`diff_exp_limma_contrasts` (multiple named pairwise).
+
+    Uses alphaPhos's own limma-style empirical-Bayes moderation
+    (Smyth 2004 fitFDist / moderated F-statistic; see
+    :mod:`alphaphos.stats.linear_model`).  Independent of inmoose --
+    fully working on multi-condition designs.
+
+    See :func:`alphaphos.stats.linear_model.moderated_f_test` for the
+    full docstring; this function is a thin wrapper that builds the
+    design + contrast matrices from an ``AnnData`` + ``condition_column``.
+    """
+    # Deferred to avoid a circular import at module load.
+    from alphaphos.stats.design import design_matrix
+    from alphaphos.stats.linear_model import lm_fit, moderated_f_test
+
+    obs = adata.obs
+    if condition_column not in obs.columns:
+        raise KeyError(f"condition_column {condition_column!r} not in adata.obs")
+    if obs[condition_column].isna().any():
+        raise ValueError(f"adata.obs[{condition_column!r}] has NaN; drop or impute first.")
+    levels = sorted(obs[condition_column].astype(str).unique())
+    if len(levels) < 2:
+        raise ValueError(f"condition_column {condition_column!r} needs >=2 levels; got {levels}")
+
+    X = _get_matrix(adata, layer=layer)
+    _validate_no_nan(X, layer=layer)
+    _validate_log_scale(X, layer=layer)
+
+    dm = design_matrix(
+        adata,
+        condition_column=condition_column,
+        covariates=covariates,
+    )
+    fit = lm_fit(X, dm.frame.to_numpy(), coefficient_labels=dm.coefficient_labels)
+
+    # Contrast matrix: every non-reference condition minus the reference.
+    # Joint F across these K-1 contrasts is the ANOVA "any differs" test.
+    ref_coef = dm.condition_coefficients[0]
+    other_coefs = dm.condition_coefficients[1:]
+    C = np.zeros((len(dm.coefficient_labels), len(other_coefs)))
+    ref_idx = dm.coefficient_labels.index(ref_coef)
+    for j, other in enumerate(other_coefs):
+        idx = dm.coefficient_labels.index(other)
+        C[idx, j] = 1.0
+        C[ref_idx, j] = -1.0
+
+    result = moderated_f_test(fit, contrasts=C, var_names=list(adata.var_names))
+    result.attrs["condition_column"] = condition_column
+    result.attrs["condition_levels"] = tuple(levels)
+    result.attrs["reference_level"] = dm.reference_level
+    result.attrs["covariates"] = tuple(covariates or ())
+    return result
