@@ -34,7 +34,7 @@ __version__ = "0.15.0"
 # Expose the top-tier enrichment namespace so callers can write
 # ``ap.enrichment.kinase_activity(...)`` / ``ap.enrichment.ora(...)`` /
 # ``ap.enrichment.gsea(...)`` directly.
-from alphaphos import dimred, enrichment, orthology
+from alphaphos import dimred, enrichment, orthology, proteome
 from alphaphos.io.diann import (
     DEFAULT_DIANN_IO_SETTINGS,
     resolve_diann_io_settings,
@@ -112,6 +112,7 @@ __all__ = [
     "enrichment",
     "orthology",
     "dimred",
+    "proteome",
     "add_kinase_windows",
     "load_fasta",
     "to_anndata",
