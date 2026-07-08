@@ -28,13 +28,13 @@ See :func:`collapse_sites` for the settings dict; see
 for domain-specific tooling.
 """
 
-__version__ = "0.17.0"
+__version__ = "0.18.0"
 
 # Public entry points, re-exported for convenience.
 # Expose the top-tier enrichment namespace so callers can write
 # ``ap.enrichment.kinase_activity(...)`` / ``ap.enrichment.ora(...)`` /
 # ``ap.enrichment.gsea(...)`` directly.
-from alphaphos import dimred, enrichment, orthology, proteome
+from alphaphos import dimred, enrichment, orthology, proteome, stats
 from alphaphos.io.diann import (
     DEFAULT_DIANN_IO_SETTINGS,
     resolve_diann_io_settings,
@@ -73,9 +73,9 @@ from alphaphos.preprocess.collapse_precursors import (
 )
 from alphaphos.preprocess.filter import filter_by_completeness
 from alphaphos.preprocess.impute import impute_hybrid, impute_knn_site_based
-from alphaphos import stats
 from alphaphos.stats.diff_exp import (
     DEFAULT_STATS_SETTINGS,
+    anova_hits,
     diff_exp_anova,
     diff_exp_limma,
     diff_exp_limma_contrasts,
@@ -116,6 +116,7 @@ __all__ = [
     "diff_exp_limma",
     "diff_exp_limma_contrasts",
     "diff_exp_anova",
+    "anova_hits",
     "stats",
     "DEFAULT_STATS_SETTINGS",
     "enrichment",

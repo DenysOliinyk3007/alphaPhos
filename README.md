@@ -2,7 +2,7 @@
 
 Phosphoproteomics analysis toolkit.
 
-**Status:** pre-alpha (v0.17.0). Standard 2-condition workflows (Spectronaut / DIA-NN / FragPipe → sites → filter → impute → optional ComBat → limma → PCA / KSEA / enrichment) are covered end-to-end and validated on real data. Multi-contrast / multi-group designs (moderated F-test, paired-block, arbitrary contrasts) ship via `ap.diff_exp_anova` + `ap.diff_exp_limma_contrasts` on a clean-room Smyth 2004 stack (bit-exact vs inmoose on the 2-group case). Cross-species orthology (mouse ↔ human) is validated on full SwissProt. UMAP / t-SNE are not yet implemented.
+**Status:** pre-alpha (v0.18.0). Standard 2-condition workflows (Spectronaut / DIA-NN / FragPipe → sites → filter → impute → optional ComBat → limma → PCA / KSEA / enrichment) are covered end-to-end and validated on real data. Multi-contrast / multi-group designs (moderated F-test, paired-block, arbitrary contrasts) ship via `ap.diff_exp_anova` + `ap.diff_exp_limma_contrasts` on a clean-room Smyth 2004 stack (bit-exact vs inmoose on the 2-group case). Cross-species orthology (mouse ↔ human) is validated on full SwissProt. UMAP / t-SNE are not yet implemented.
 
 ## Install
 
@@ -56,7 +56,7 @@ result = ap.diff_exp_limma(
 #   log2fc, se, t_stat, p_value, fdr, B, ave_expr
 ```
 
-## What ships in v0.17.0
+## What ships in v0.18.0
 
 | Module | Function | Notes |
 | --- | --- | --- |
@@ -69,7 +69,7 @@ result = ap.diff_exp_limma(
 | `alphaphos.preprocess.filter` | `filter_by_completeness` | Global / any-group / each-group strategies. |
 | `alphaphos.preprocess.impute` | `impute_hybrid`, `impute_knn_site_based` | Per-cell MAR-KNN + MNAR-Gaussian hybrid, or legacy-parity KNN. |
 | `alphaphos.preprocess.batch_correct` | `batch_correct_combat` | inmoose pycombat wrapper with double-correct guard. |
-| `alphaphos.stats.diff_exp` | `diff_exp_limma`, `diff_exp_limma_contrasts`, `diff_exp_anova` | Two-group moderated t-test (`diff_exp_limma`, inmoose backend), multi-contrast moderated t (`diff_exp_limma_contrasts`, joint fit — one linear model, N contrasts), and moderated F-test across all condition levels (`diff_exp_anova`, ANOVA-style). Batch / covariate / paired-block adjustment supported. |
+| `alphaphos.stats.diff_exp` | `diff_exp_limma`, `diff_exp_limma_contrasts`, `diff_exp_anova`, `anova_hits` | Two-group moderated t-test (`diff_exp_limma`, inmoose backend), multi-contrast moderated t (`diff_exp_limma_contrasts`, joint fit — one linear model, N contrasts), and moderated F-test across all condition levels (`diff_exp_anova`, ANOVA-style). Batch / covariate / paired-block adjustment supported. `anova_hits(anova, fdr_threshold=0.05)` is a two-line convenience for `(hits, background)` ready for `ap.enrichment.ora`. |
 | `alphaphos.stats.design` | `design_matrix`, `DesignMatrix` | Typed design-matrix builder for the multi-contrast + ANOVA path. Categorical + continuous + batch covariates + paired-block factor, no-intercept parameterisation. |
 | `alphaphos.stats.moderated` + `linear_model` | (internal) | Clean-room Smyth 2004 empirical-Bayes stack (`fit_f_dist`, `moderate_variance`, `lm_fit`, `contrasts_fit`, `moderated_t_test`, `moderated_f_test`). MIT-licensed, numerically bit-exact vs inmoose on 2-group and vs PhosPy on the EB-prior fit to ~1e-13. |
 | `alphaphos.dimred` | `pca`, `compare_imputation_impact`, `loadings_for_enrichment`, `feature_variance_contribution`, `sample_distance`, `hierarchical_cluster` | Standard / NIPALS / PPCA backends behind one entrypoint. NaN-aware. `compare_imputation_impact` flags whether imputation distorts sample-space structure. `loadings_for_enrichment` bridges PC loadings straight into `alphaphos.enrichment.gsea` / `.ora` / `.kinase_activity` with no wrappers. |
@@ -78,7 +78,7 @@ result = ap.diff_exp_limma(
 | `alphaphos.kinase.enrichment` | Kinase library enrichment | Same optional dep. |
 | `alphaphos.enrichment.ksea` | `kinase_activity` | Kinase-activity inference via decoupler ULM (default) / MLM against OmniPath (default), curated PTM DB, or a user-supplied network. |
 | `alphaphos.enrichment` (site-set) | `emit_libraries`, `load_libraries`, `ora`, `gsea` | PTM functional DB (8 curated sources, ~504k relations) → GMT libraries → Fisher ORA + Subramanian preranked GSEA. Site-level counterpart to `pathway_enrichment` (which is gene-level). |
-| `alphaphos.enrichment.pathway` | `pathway_enrichment` | Gene-level pathway ORA via gseapy Enrichr (GO BP/MF/CC + KEGG + Reactome + Hallmark by default). Phosphoproteome background by default; proteome background preferred if available. |
+| `alphaphos.enrichment.pathway` | `pathway_enrichment` | Gene-level pathway ORA via gseapy Enrichr (GO BP/MF/CC + KEGG + Reactome + Hallmark by default). Phosphoproteome background by default; proteome background preferred if available.  Signed input (`direction="split"|"up"|"down"|"both"`) uses `log2fc`; **for ANOVA output use `direction="any"`** (direction-agnostic, needs only `fdr`). |
 | `alphaphos.enrichment.pathway_gsea` | `pathway_gsea` | Gene-level preranked GSEA (Subramanian 2005 via gseapy prerank) on the same Enrichr libraries. Complements ORA for coherent-motion pathways. Site→gene collapse via max-\|log2fc\| default or lowest-per-site-FDR. |
 | `alphaphos.orthology` | `map_to_human` | Cross-species phospho-site translation via ±7 flanking-window matching against the target proteome, with target-decoy FDR (Elias-Gygi 2007), optional ±30 broader-window verification, and paralog disambiguation. Validated on full mouse SwissProt (60.2% mapping rate; species-entrapment FDR ≤ 5×10⁻⁴). |
 | `alphaphos.dose_response` | `fit_dose_response` | CurveCurator wrapper (optional `curve_curator`). |

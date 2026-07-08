@@ -132,6 +132,55 @@ def parse_alphaphos_key(key: str) -> ParsedKey | None:
     )
 
 
+def canonicalise_site_ids(
+    keys,
+    *,
+    drop_unparseable: bool = True,
+) -> list[str]:
+    """alphaPhos ``Protein|Gene|Site|Mult`` -> canonical ``Protein_AApos``.
+
+    The PTM-DB GMT libraries emitted by :func:`emit_libraries` use the
+    canonical ``Protein_AApos`` site-ID format
+    (``P00533_S1046``).  Diff-exp results are indexed by alphaPhos site
+    keys (``P00533|EGFR|S1046|M1``).  This helper bridges the two
+    formats so downstream calls like
+    :func:`alphaphos.enrichment.ora` can accept ANOVA / limma hit lists
+    directly:
+
+    >>> hits, bg = ap.anova_hits(anova, fdr_threshold=0.05)
+    >>> hits = ap.enrichment.canonicalise_site_ids(hits)
+    >>> bg = ap.enrichment.canonicalise_site_ids(bg)
+    >>> ap.enrichment.ora(hits, bg, libraries=PTM_LIBS)
+
+    Parameters
+    ----------
+    keys
+        Any iterable of alphaPhos site keys (``pd.Index``, list, or
+        anything iterable).  Multi-mapped protein groups (``P1;P2``)
+        collapse to the first accession.
+    drop_unparseable
+        If True (default), keys that don't match the
+        ``Protein|Gene|<STY><pos>|M<mult>`` regex are silently dropped.
+        If False, they are kept as their original string (useful when
+        the input is a mix of alphaPhos keys and already-canonical
+        ``Protein_AApos`` IDs).
+
+    Returns
+    -------
+    list of str
+        Canonical ``Protein_AApos`` IDs, in input order.
+    """
+    out: list[str] = []
+    for k in keys:
+        parsed = parse_alphaphos_key(k)
+        if parsed is None:
+            if not drop_unparseable:
+                out.append(str(k))
+            continue
+        out.append(parsed.canonical_site_id)
+    return out
+
+
 def match_sites(
     query_keys: pd.Index | list[str],
     *,

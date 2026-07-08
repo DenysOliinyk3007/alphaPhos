@@ -12,6 +12,101 @@ While in `0.x`, breaking API changes may appear in any MINOR bump (`0.1 → 0.2`
 
 _Nothing yet._
 
+## [0.18.0] - 2026-07-08
+
+### Added -- ANOVA → downstream enrichment integration
+
+Follow-up to the 0.17.0 multi-contrast / ANOVA statistics: wires
+`diff_exp_anova` output cleanly into the existing enrichment consumers,
+so a full multi-group workflow (ANOVA → site ORA + gene pathway ORA)
+runs end-to-end without user-side glue.
+
+- **`ap.anova_hits(anova, fdr_threshold=0.05)`** — one-liner splitting an
+  ANOVA / F-test result into ``(hits, background)`` ready for
+  :func:`alphaphos.enrichment.ora`.  Drops rows with NaN FDR from both
+  arms (they were not tested and do not belong in the Fisher table).
+
+- **`ap.enrichment.pathway_enrichment(direction="any")`** — new
+  direction-agnostic mode.  Skips the up/down sign split, takes every
+  gene below ``fdr_threshold`` as a single foreground, does not require
+  ``stat_col``.  Works identically on phospho (default key parser) and
+  proteome (via ``gene_column=``).  This is the ANOVA-friendly path
+  through gene-level pathway ORA.
+
+- **`ap.enrichment.canonicalise_site_ids(keys, drop_unparseable=True)`**
+  — public helper bridging alphaPhos
+  ``Protein|Gene|Site|Mult`` keys to the ``Protein_AApos`` format used
+  by the PTM-DB GMT libraries.  Makes the site-level ORA path a
+  three-liner::
+
+      hits, bg = ap.anova_hits(anova, fdr_threshold=0.05)
+      hits = ap.enrichment.canonicalise_site_ids(hits)
+      bg   = ap.enrichment.canonicalise_site_ids(bg)
+      ap.enrichment.ora(hits, bg, libraries=PTM_LIBS)
+
+### Added -- input-shape guards for signed enrichment methods
+
+`pathway_gsea`, `kinase_activity`: detect ANOVA-shape input (missing
+``stat_col`` but ``F`` column present) and raise a `ValueError` that
+points users to the correct alternative (`pathway_enrichment(direction=
+"any")` for direction-agnostic ORA, or `diff_exp_limma_contrasts` for
+signed downstream).  Replaces a bare `KeyError` on missing column.
+
+### Added -- cardio ANOVA end-to-end walkthrough
+
+New example demonstrating the full three-layer ANOVA → downstream
+pipeline on the cardiomyocyte DVP dataset:
+
+- `examples/cardio_anova.py` -- runnable script.
+- `examples/cardio_anova_walkthrough.ipynb` -- annotated notebook, all
+  cells pre-executed on the shipped ``test_data/proteome_path/`` data.
+
+Layers: **proteome**, **phospho** (raw), and **normalized**
+(phospho / matched-sample parent-protein, log2 subtraction).  The
+notebook demonstrates that the normalized layer is where the biology
+sharpens: after protein-abundance is removed, the surviving ANOVA hits
+are 2–3× enriched for phospho sites that **actually change substrate
+function** (`disrupts_ppi` log2FE=+1.20 fdr=0.024, `alters_stability`
+log2FE=+1.44 fdr=0.024) — signal that raw phospho ORA does not
+surface (top-quartile Ochoa functional sites appear **depleted** there).
+
+Top-10 ANOVA hits at the normalized layer are the textbook
+cardiomyopathy panel: **ACTC1** (α-cardiac actin), **MYH7**
+(β-myosin heavy chain, the classic HCM/DCM gene), **DSP**
+(desmoplakin, ARVC gene), MTOR, NEBL — none of which surface at the
+top of the raw phospho layer.
+
+### Docs
+
+- `diff_exp_anova` docstring gets a "Downstream compatibility" section
+  laying out which enrichment consumers work directly on ANOVA output
+  and which require per-contrast input.
+- `pathway_enrichment` docstring documents the new `direction="any"`
+  mode and its intended pairing with `diff_exp_anova`.
+- README module-table rows expanded for the new API surface
+  (`anova_hits`, `canonicalise_site_ids`, `direction="any"`).
+
+### Tests
+
+- 17 new tests across three files:
+  - `test_stats_moderated.py`: 4 tests for `anova_hits`
+    (fdr split, NaN handling, real diff_exp_anova end-to-end, missing
+    column raises).
+  - `test_enrichment_pathway.py`: 3 tests for
+    `pathway_enrichment(direction="any")` (all-sig foreground, ANOVA-
+    shape without stat_col, signed modes still fail loud on
+    ANOVA-shape input).
+  - `test_enrichment_pathway_gsea.py`: 2 tests for the ANOVA-shape
+    guard on `pathway_gsea`.
+  - `test_enrichment_ksea.py`: 2 tests for the ANOVA-shape guard on
+    `kinase_activity`.
+  - `test_enrichment_matching.py`: 6 tests for
+    `canonicalise_site_ids` (basic conversion, multi-protein groups,
+    unparseable drop / keep, pandas Index input, end-to-end
+    `anova_hits → canonicalise → ora`).
+
+Full suite: **756 / 756 passing**.
+
 ## [0.17.0] - 2026-07-08
 
 ### Added -- multi-contrast + ANOVA moderated statistics

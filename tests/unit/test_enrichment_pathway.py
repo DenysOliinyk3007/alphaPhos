@@ -175,6 +175,48 @@ class TestDirectionOptions:
         with pytest.raises(ValueError, match="direction must be"):
             pathway_enrichment(diff, direction="sideways")
 
+    def test_any_direction_takes_all_significant(self, mock_gseapy):
+        # direction='any' = ANOVA/F-test path: single foreground of
+        # every gene with fdr<threshold, regardless of sign.
+        diff = _make_diff_exp(n_up=10, n_down=5, n_null=20)
+        out = pathway_enrichment(
+            diff, libraries=["GO_BP"], background="phosphoproteome", direction="any"
+        )
+        assert set(out["direction"].unique()) == {"any"}
+        assert len(mock_gseapy) == 1
+        # 15 sig genes (up + down), null=20 excluded (fdr=0.9)
+        assert len(mock_gseapy[0]["gene_list"]) == 15
+
+    def test_any_direction_accepts_anova_shaped_input_no_stat_col(self, mock_gseapy):
+        # Simulate diff_exp_anova output: has 'F' and 'fdr', no 'log2fc'.
+        rows = []
+        for i in range(10):
+            rows.append((f"P0000{i}|SIGGENE{i}|S{100 + i}|M1", 15.0, 0.001))
+        for i in range(20):
+            rows.append((f"R0000{i}|NULLGENE{i}|S{200 + i}|M1", 1.0, 0.9))
+        keys, fs, fdrs = zip(*rows, strict=True)
+        anova = pd.DataFrame({"F": fs, "fdr": fdrs}, index=list(keys))
+
+        # stat_col=None must be accepted in this mode.
+        out = pathway_enrichment(
+            anova,
+            libraries=["GO_BP"],
+            background="phosphoproteome",
+            direction="any",
+            stat_col=None,
+        )
+        assert set(out["direction"].unique()) == {"any"}
+        assert len(mock_gseapy[0]["gene_list"]) == 10
+
+    def test_signed_direction_rejects_missing_stat_col(self):
+        # ANOVA-shape input (no log2fc) must fail loudly on a signed mode.
+        anova = pd.DataFrame(
+            {"F": [15.0], "fdr": [0.001]},
+            index=["P|G|S100|M1"],
+        )
+        with pytest.raises(ValueError, match="stat_col"):
+            pathway_enrichment(anova, libraries=["GO_BP"], direction="split")
+
 
 class TestBackgroundResolution:
     def test_phosphoproteome_default(self, mock_gseapy):

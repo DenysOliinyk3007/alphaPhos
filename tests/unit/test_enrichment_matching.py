@@ -8,6 +8,7 @@ import pytest
 
 from alphaphos.enrichment import (
     TEST_FIXTURE_PATH,
+    canonicalise_site_ids,
     load_ptm_db,
     match_sites,
     parse_alphaphos_key,
@@ -93,6 +94,59 @@ class TestParseAlphaphosKey:
     )
     def test_bad_input_returns_none(self, bad_key):
         assert parse_alphaphos_key(bad_key) is None
+
+
+class TestCanonicaliseSiteIds:
+    """Bridge between alphaPhos site keys and PTM-DB GMT ``Protein_AApos`` IDs."""
+
+    def test_basic_conversion(self):
+        keys = ["P00533|EGFR|Y1172|M1", "Q13164|MAPK7|T733|M3"]
+        got = canonicalise_site_ids(keys)
+        assert got == ["P00533_Y1172", "Q13164_T733"]
+
+    def test_multi_protein_group_first_accession(self):
+        got = canonicalise_site_ids(["P57059;A0A0B4J2F2|SIK1|S575|M2"])
+        assert got == ["P57059_S575"]
+
+    def test_unparseable_dropped_by_default(self):
+        keys = ["P00533|EGFR|Y1172|M1", "junk", "already_P00533_Y999"]
+        got = canonicalise_site_ids(keys)
+        # "junk" and "already_P00533_Y999" are both unparseable -> dropped.
+        assert got == ["P00533_Y1172"]
+
+    def test_unparseable_kept_when_flag_off(self):
+        # drop_unparseable=False: keep unparseable strings as-is (lets you
+        # pass a mixed list of alphaPhos keys and already-canonical IDs).
+        keys = ["P00533|EGFR|Y1172|M1", "already_canonical_P42_S1", "junk"]
+        got = canonicalise_site_ids(keys, drop_unparseable=False)
+        assert got == ["P00533_Y1172", "already_canonical_P42_S1", "junk"]
+
+    def test_accepts_pandas_index(self):
+        # Real use case: hand it df.index directly, not a list.
+        idx = pd.Index(["P00533|EGFR|Y1172|M1", "Q13164|MAPK7|T733|M3"])
+        got = canonicalise_site_ids(idx)
+        assert got == ["P00533_Y1172", "Q13164_T733"]
+
+    def test_end_to_end_anova_hits_to_ora_ready(self):
+        # The pattern users will actually write:
+        #   hits, bg = ap.anova_hits(anova)
+        #   hits = ap.enrichment.canonicalise_site_ids(hits)
+        #   bg   = ap.enrichment.canonicalise_site_ids(bg)
+        #   ap.enrichment.ora(hits, bg, libraries=PTM_LIBS)
+        # This test verifies the format shape ora expects.
+        import alphaphos as ap
+
+        anova = pd.DataFrame(
+            {"fdr": [0.001, 0.001, 0.5]},
+            index=["P00533|EGFR|Y1172|M1", "Q13164|MAPK7|T733|M3", "P57059|SIK1|S575|M1"],
+        )
+        hits, bg = ap.anova_hits(anova, fdr_threshold=0.05)
+        hits = canonicalise_site_ids(hits)
+        bg = canonicalise_site_ids(bg)
+        assert set(hits) == {"P00533_Y1172", "Q13164_T733"}
+        assert set(bg) == {"P00533_Y1172", "Q13164_T733", "P57059_S575"}
+        # hits is a proper subset of bg (a hard precondition of ora()).
+        assert set(hits).issubset(set(bg))
 
 
 class TestMatchSites:

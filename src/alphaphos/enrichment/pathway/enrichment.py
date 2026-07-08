@@ -64,14 +64,14 @@ def pathway_enrichment(
     *,
     fdr_threshold: float = 0.05,
     log2fc_threshold: float = 0.0,
-    direction: Literal["up", "down", "both", "split"] = "split",
+    direction: Literal["up", "down", "both", "split", "any"] = "split",
     libraries: list[str] | None = None,
     background: Literal["phosphoproteome", "genome"] | list[str] | pd.DataFrame = "phosphoproteome",
     organism: Literal["human", "mouse"] = "human",
     key_column: str | None = None,
     gene_column: str | None = None,
     cache_dir: str | Path | None = None,
-    stat_col: str = "log2fc",
+    stat_col: str | None = "log2fc",
     fdr_col: str = "fdr",
 ) -> pd.DataFrame:
     """Gene-level pathway ORA on significant phosphosites.
@@ -79,15 +79,17 @@ def pathway_enrichment(
     Parameters
     ----------
     diff_exp_result
-        DataFrame from :func:`alphaphos.diff_exp_limma`, indexed by
+        DataFrame from :func:`alphaphos.diff_exp_limma` (or
+        :func:`diff_exp_anova` for direction-agnostic ORA), indexed by
         alphaPhos ``Protein|Gene|Site|Mult`` keys.  Must carry the
-        ``log2fc`` and ``fdr`` columns (or the columns named by
-        ``stat_col`` / ``fdr_col``).
+        ``fdr`` column (or the column named by ``fdr_col``).  Signed
+        modes (``direction`` in ``{"up", "down", "split", "both"}``)
+        additionally require the column named by ``stat_col``.
     fdr_threshold
         FDR cutoff for calling a site significant.  Default 0.05.
     log2fc_threshold
         Minimum absolute ``log2fc`` for a site to count.  Default 0
-        (any signed effect).
+        (any signed effect).  Ignored when ``direction="any"``.
     direction
         - ``"split"`` (default) -- run up- and down-regulated sets
           separately and stack the results (adds a ``direction`` column).
@@ -95,6 +97,10 @@ def pathway_enrichment(
         - ``"both"`` -- combine up and down into one gene list (loses
           sign information; use only when the question is direction-
           agnostic).
+        - ``"any"`` -- direction-agnostic; take all sites below
+          ``fdr_threshold`` regardless of sign.  **Use this for ANOVA
+          output** (:func:`diff_exp_anova` has no signed statistic).
+          ``stat_col`` may be ``None`` in this mode.
     libraries
         Enrichr library slugs.  Defaults to GO BP/MF/CC + KEGG +
         Reactome + MSigDB Hallmark for the chosen organism.  See
@@ -147,8 +153,10 @@ def pathway_enrichment(
     n_background_genes, thresholds, gseapy version, and n_foreground per
     direction.
     """
-    if direction not in ("up", "down", "both", "split"):
-        raise ValueError(f"direction must be 'up', 'down', 'both', or 'split'; got {direction!r}")
+    if direction not in ("up", "down", "both", "split", "any"):
+        raise ValueError(
+            f"direction must be 'up', 'down', 'both', 'split', or 'any'; got {direction!r}"
+        )
     organism = organism.lower()  # type: ignore[assignment]
     if organism not in ("human", "mouse"):
         raise ValueError(f"organism must be 'human' or 'mouse'; got {organism!r}")
@@ -171,8 +179,23 @@ def pathway_enrichment(
         raise ValueError("libraries must be non-empty")
 
     keys = _extract_keys(diff_exp_result, key_column)
-    stats = diff_exp_result[stat_col].to_numpy()
+    if fdr_col not in diff_exp_result.columns:
+        raise ValueError(
+            f"fdr_col={fdr_col!r} not in diff_exp_result columns "
+            f"(available: {list(diff_exp_result.columns)})"
+        )
     fdrs = diff_exp_result[fdr_col].to_numpy()
+    if direction == "any":
+        stats = None
+    else:
+        if stat_col is None or stat_col not in diff_exp_result.columns:
+            raise ValueError(
+                f"stat_col={stat_col!r} required for direction={direction!r} "
+                f"(available columns: {list(diff_exp_result.columns)}). "
+                "For ANOVA / F-test output use direction='any', which needs "
+                "only fdr_col."
+            )
+        stats = diff_exp_result[stat_col].to_numpy()
 
     if gene_column is not None:
         if gene_column not in diff_exp_result.columns:
@@ -198,15 +221,6 @@ def pathway_enrichment(
             "gene_column='<name>' (e.g. gene_column='PG_Genes')."
         )
 
-    up_genes, down_genes = _select_hits(
-        keys=keys,
-        stats=stats,
-        fdrs=fdrs,
-        key_to_gene=key_to_gene,
-        fdr_threshold=fdr_threshold,
-        log2fc_threshold=log2fc_threshold,
-    )
-
     bg_genes, background_type = _resolve_background(
         background,
         diff_exp_keys=keys,
@@ -216,12 +230,29 @@ def pathway_enrichment(
     outdir = str(cache_dir) if cache_dir is not None else None
 
     to_run: list[tuple[str, list[str]]] = []
-    if direction in ("up", "split"):
-        to_run.append(("up", up_genes))
-    if direction in ("down", "split"):
-        to_run.append(("down", down_genes))
-    if direction == "both":
-        to_run.append(("both", sorted(set(up_genes) | set(down_genes))))
+    if direction == "any":
+        any_genes = _select_any_hits(
+            keys=keys,
+            fdrs=fdrs,
+            key_to_gene=key_to_gene,
+            fdr_threshold=fdr_threshold,
+        )
+        to_run.append(("any", any_genes))
+    else:
+        up_genes, down_genes = _select_hits(
+            keys=keys,
+            stats=stats,
+            fdrs=fdrs,
+            key_to_gene=key_to_gene,
+            fdr_threshold=fdr_threshold,
+            log2fc_threshold=log2fc_threshold,
+        )
+        if direction in ("up", "split"):
+            to_run.append(("up", up_genes))
+        if direction in ("down", "split"):
+            to_run.append(("down", down_genes))
+        if direction == "both":
+            to_run.append(("both", sorted(set(up_genes) | set(down_genes))))
 
     frames: list[pd.DataFrame] = []
     n_foreground_per_direction: dict[str, int] = {}
@@ -334,6 +365,26 @@ def _select_hits(
         elif s < -log2fc_threshold:
             down.add(gene)
     return sorted(up), sorted(down)
+
+
+def _select_any_hits(
+    *,
+    keys: list[str],
+    fdrs,
+    key_to_gene: dict[str, str],
+    fdr_threshold: float,
+) -> list[str]:
+    """Direction-agnostic significant-gene list -- for ANOVA / F-test input."""
+    hits: set[str] = set()
+    for k, q in zip(keys, fdrs, strict=True):
+        gene = key_to_gene.get(str(k))
+        if gene is None:
+            continue
+        if pd.isna(q):
+            continue
+        if q < fdr_threshold:
+            hits.add(gene)
+    return sorted(hits)
 
 
 def _resolve_background(

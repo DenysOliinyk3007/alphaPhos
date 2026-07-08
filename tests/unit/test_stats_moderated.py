@@ -30,7 +30,6 @@ from alphaphos.stats.moderated import (
     moderate_variance,
 )
 
-
 # ---------------------------------------------------------------------------
 # _trigamma_inverse round-trip
 # ---------------------------------------------------------------------------
@@ -143,10 +142,12 @@ def _make_two_group_adata(n=8, p=500, effect_features=50, seed=0):
     rng = np.random.default_rng(seed)
     X = rng.normal(10, 1, size=(n, p))
     X[: n // 2, :effect_features] += 1.5
-    obs = pd.DataFrame({"group": ["A"] * (n // 2) + ["B"] * (n - n // 2)},
-                        index=[f"s{i}" for i in range(n)])
+    obs = pd.DataFrame(
+        {"group": ["A"] * (n // 2) + ["B"] * (n - n // 2)}, index=[f"s{i}" for i in range(n)]
+    )
     adata = ad.AnnData(
-        X=X.astype(np.float64), obs=obs,
+        X=X.astype(np.float64),
+        obs=obs,
         var=pd.DataFrame(index=[f"g{i}" for i in range(p)]),
     )
     adata.layers["intensity_log2"] = adata.X.copy()
@@ -165,8 +166,10 @@ class TestModeratedTMatchesInmoose:
         adata = _make_two_group_adata()
         r_inmoose = ap.diff_exp_limma(adata, condition_column="group", comparison=("A", "B"))
         r_joint = ap.diff_exp_limma_contrasts(
-            adata, condition_column="group",
-            contrasts={"A_vs_B": ("A", "B")}, joint=True,
+            adata,
+            condition_column="group",
+            contrasts={"A_vs_B": ("A", "B")},
+            joint=True,
         )["A_vs_B"]
 
         common = r_inmoose.index.intersection(r_joint.index)
@@ -200,8 +203,10 @@ class TestModeratedF:
 
         adata = _make_two_group_adata()
         r_t = ap.diff_exp_limma_contrasts(
-            adata, condition_column="group",
-            contrasts={"A_vs_B": ("A", "B")}, joint=True,
+            adata,
+            condition_column="group",
+            contrasts={"A_vs_B": ("A", "B")},
+            joint=True,
         )["A_vs_B"]
         r_f = ap.diff_exp_anova(adata, condition_column="group")
 
@@ -225,10 +230,13 @@ class TestModeratedF:
         X = rng.normal(0, 1, size=(3 * n_per, p))
         X[n_per : 2 * n_per, :20] += 2.0
         X[2 * n_per :, :20] += 4.0
-        obs = pd.DataFrame({"group": ["A"] * n_per + ["B"] * n_per + ["C"] * n_per},
-                            index=[f"s{i}" for i in range(3 * n_per)])
+        obs = pd.DataFrame(
+            {"group": ["A"] * n_per + ["B"] * n_per + ["C"] * n_per},
+            index=[f"s{i}" for i in range(3 * n_per)],
+        )
         adata = ad.AnnData(
-            X=X.astype(np.float64), obs=obs,
+            X=X.astype(np.float64),
+            obs=obs,
             var=pd.DataFrame(index=[f"g{i}" for i in range(p)]),
         )
         adata.layers["intensity_log2"] = adata.X.copy()
@@ -258,10 +266,79 @@ class TestLoopContrasts:
 
         adata = _make_two_group_adata()
         r_loop = ap.diff_exp_limma_contrasts(
-            adata, condition_column="group",
-            contrasts={"A_vs_B": ("A", "B")}, joint=False,
+            adata,
+            condition_column="group",
+            contrasts={"A_vs_B": ("A", "B")},
+            joint=False,
         )["A_vs_B"]
-        r_direct = ap.diff_exp_limma(
-            adata, condition_column="group", comparison=("A", "B")
-        )
+        r_direct = ap.diff_exp_limma(adata, condition_column="group", comparison=("A", "B"))
         pd.testing.assert_frame_equal(r_loop, r_direct)
+
+
+# ---------------------------------------------------------------------------
+# anova_hits: ANOVA output -> (hits, background) for ORA
+# ---------------------------------------------------------------------------
+
+
+class TestAnovaHits:
+    def test_splits_by_fdr(self):
+        import alphaphos as ap
+
+        df = pd.DataFrame(
+            {"fdr": [0.001, 0.02, 0.05, 0.5]},
+            index=["a", "b", "c", "d"],
+        )
+        hits, bg = ap.anova_hits(df, fdr_threshold=0.05)
+        assert hits == ["a", "b"]
+        assert bg == ["a", "b", "c", "d"]
+
+    def test_drops_nan_from_both_arms(self):
+        # Untested features (NaN fdr) must not appear in either arm --
+        # they weren't in the Fisher table.
+        import alphaphos as ap
+
+        df = pd.DataFrame(
+            {"fdr": [0.001, np.nan, 0.5, np.nan]},
+            index=["a", "b", "c", "d"],
+        )
+        hits, bg = ap.anova_hits(df)
+        assert hits == ["a"]
+        assert bg == ["a", "c"]
+
+    def test_end_to_end_from_diff_exp_anova(self):
+        # Real handoff: diff_exp_anova -> anova_hits -> ora-ready lists.
+        import alphaphos as ap
+
+        rng = np.random.default_rng(0)
+        n_per, p = 5, 60
+        X = rng.normal(0, 1, size=(3 * n_per, p))
+        X[n_per : 2 * n_per, :10] += 3.0
+        X[2 * n_per :, :10] += 6.0
+        obs = pd.DataFrame(
+            {"group": ["A"] * n_per + ["B"] * n_per + ["C"] * n_per},
+            index=[f"s{i}" for i in range(3 * n_per)],
+        )
+        adata = ad.AnnData(
+            X=X.astype(np.float64),
+            obs=obs,
+            var=pd.DataFrame(index=[f"g{i}" for i in range(p)]),
+        )
+        adata.layers["intensity_log2"] = adata.X.copy()
+
+        anova = ap.diff_exp_anova(adata, condition_column="group")
+        hits, bg = ap.anova_hits(anova, fdr_threshold=0.05)
+
+        # Background is every tested feature (no NaNs here).
+        assert len(bg) == p
+        # Hits are a strict subset of background.
+        assert set(hits).issubset(set(bg))
+        # Signal features g0..g9 should dominate the hit list.
+        signal_hits = [h for h in hits if int(h.lstrip("g")) < 10]
+        assert len(signal_hits) >= 8, hits
+
+    def test_raises_on_missing_fdr_column(self):
+        import alphaphos as ap
+
+        df = pd.DataFrame({"F": [1.0]}, index=["a"])
+        with pytest.raises(KeyError, match="fdr_col"):
+            ap.anova_hits(df)
