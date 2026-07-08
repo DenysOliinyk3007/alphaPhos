@@ -671,6 +671,27 @@ def diff_exp_anova(
     See :func:`alphaphos.stats.linear_model.moderated_f_test` for the
     full docstring; this function is a thin wrapper that builds the
     design + contrast matrices from an ``AnnData`` + ``condition_column``.
+
+    Downstream compatibility
+    ------------------------
+    ANOVA output is **unsigned** (F ≥ 0, no direction).  So the
+    downstream analyses that make sense on it are ORA-style
+    (direction-agnostic), not signed:
+
+    - **Site ORA** (:func:`alphaphos.enrichment.ora`): supported
+      natively via :func:`alphaphos.anova_hits` -- ``hits, bg =
+      ap.anova_hits(anova); ap.enrichment.ora(hits, bg, libraries)``.
+    - **Gene pathway ORA** (:func:`alphaphos.enrichment.pathway_enrichment`):
+      pass ``direction="any"`` -- ``ap.enrichment.pathway_enrichment(anova,
+      direction="any", background=[...])``.  Works identically for
+      phospho (default key parser) and proteome (with ``gene_column=``).
+
+    Signed methods (:func:`alphaphos.enrichment.gsea`,
+    :func:`alphaphos.enrichment.pathway_gsea`,
+    :func:`alphaphos.enrichment.kinase_activity`) **cannot run on ANOVA
+    output** -- they need a per-feature direction (up vs down).  Re-run
+    per-contrast with :func:`diff_exp_limma_contrasts` and hand each
+    resulting DataFrame to those consumers.
     """
     # Deferred to avoid a circular import at module load.
     from alphaphos.stats.design import design_matrix
@@ -713,3 +734,49 @@ def diff_exp_anova(
     result.attrs["reference_level"] = dm.reference_level
     result.attrs["covariates"] = tuple(covariates or ())
     return result
+
+
+def anova_hits(
+    anova_result: pd.DataFrame,
+    *,
+    fdr_threshold: float = 0.05,
+    fdr_col: str = "fdr",
+) -> tuple[list[str], list[str]]:
+    """Split an ANOVA / F-test result into ``(hits, background)`` for ORA.
+
+    Two-line convenience over :func:`alphaphos.enrichment.ora` for the
+    common "which pathways / site-sets are enriched among ANOVA hits?"
+    question:
+
+    >>> anova = ap.diff_exp_anova(adata, condition_column="disease")
+    >>> hits, bg = ap.anova_hits(anova, fdr_threshold=0.05)
+    >>> ap.enrichment.ora(hits, bg, libraries)
+
+    Parameters
+    ----------
+    anova_result
+        Output of :func:`diff_exp_anova` -- any DataFrame with an
+        ``fdr`` column also works.
+    fdr_threshold
+        Rows with FDR strictly less than this are hits.  Default 0.05.
+    fdr_col
+        Name of the FDR column.  Default ``"fdr"``.
+
+    Returns
+    -------
+    hits, background : list[str], list[str]
+        Row labels for the two ORA arms.  Both suitable as direct inputs
+        to :func:`alphaphos.enrichment.ora`.  Rows with NaN FDR are
+        dropped from **both** lists -- they were not tested and do not
+        belong in either arm of the Fisher table.
+    """
+    if fdr_col not in anova_result.columns:
+        raise KeyError(
+            f"fdr_col {fdr_col!r} not in anova_result columns; "
+            f"available: {list(anova_result.columns)}"
+        )
+    fdr = anova_result[fdr_col]
+    tested = fdr.notna()
+    tested_index = anova_result.index[tested]
+    hits_index = anova_result.index[tested & (fdr < fdr_threshold)]
+    return [str(x) for x in hits_index], [str(x) for x in tested_index]

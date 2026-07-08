@@ -120,6 +120,22 @@ def kinase_activity(
 
     net = _resolve_network(network, organism=organism, cache_path=cache_path)
 
+    if stat_col not in diff_exp_result.columns:
+        if "F" in diff_exp_result.columns:
+            raise ValueError(
+                f"stat_col={stat_col!r} not in diff_exp_result columns, but "
+                "an 'F' column is present -- this looks like diff_exp_anova "
+                "output.  Kinase activity inference (ULM/MLM) requires a "
+                "**signed** per-site statistic to infer activation vs "
+                "inhibition, which ANOVA does not produce.  Re-run "
+                "per-contrast with diff_exp_limma_contrasts(...) and pass "
+                "each contrast's DataFrame to kinase_activity separately."
+            )
+        raise ValueError(
+            f"stat_col={stat_col!r} not in diff_exp_result columns "
+            f"(available: {list(diff_exp_result.columns)})"
+        )
+
     if key_column is not None:
         site_series = diff_exp_result[key_column]
         stat_series = diff_exp_result[stat_col]

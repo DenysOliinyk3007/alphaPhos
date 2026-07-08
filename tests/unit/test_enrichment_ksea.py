@@ -202,6 +202,30 @@ class TestKinaseActivitySynthetic:
                 fdr_method="by",
             )
 
+    def test_anova_shape_raises_helpful_error(self):
+        # diff_exp_anova output: 'F' + 'fdr', no 'log2fc' -> signed
+        # KSEA is undefined, so we want a clear pointer to the fix.
+        anova = pd.DataFrame(
+            {"F": [15.0, 2.0], "fdr": [0.001, 0.5]},
+            index=["S1", "S2"],
+        )
+        with pytest.raises(ValueError, match="ANOVA|diff_exp_anova"):
+            kinase_activity(
+                anova,
+                network=pd.DataFrame({"source": ["K"], "target": ["S1"]}),
+                method="ulm",
+            )
+
+    def test_missing_stat_col_without_F_raises_plain_error(self):
+        df = pd.DataFrame({"log2fc": [1.0]}, index=["S1"])
+        with pytest.raises(ValueError, match="not in diff_exp_result columns"):
+            kinase_activity(
+                df,
+                network=pd.DataFrame({"source": ["K"], "target": ["S1"]}),
+                method="ulm",
+                stat_col="nonexistent",
+            )
+
     def test_provenance_stamped(self):
         diff_exp, net = self._make_synthetic_result("KIN_UP4", "KIN_DOWN4")
         result = kinase_activity(diff_exp, network=net, method="ulm", min_substrates=5)

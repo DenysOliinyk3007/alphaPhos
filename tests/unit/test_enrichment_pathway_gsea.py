@@ -295,6 +295,29 @@ class TestNaNHandling:
             pathway_gsea(diff, libraries=["GO_BP"])
 
 
+class TestAnovaShapeGuard:
+    """diff_exp_anova output has no signed metric -- must fail loud."""
+
+    def test_anova_shape_raises_helpful_error(self):
+        # Simulate diff_exp_anova output: has 'F' + 'fdr', no 'log2fc'.
+        anova = pd.DataFrame(
+            {"F": [15.0, 2.0], "fdr": [0.001, 0.5]},
+            index=["P1|GA|S1|M1", "P2|GB|S2|M1"],
+        )
+        with pytest.raises(ValueError, match="ANOVA|diff_exp_anova"):
+            pathway_gsea(anova, libraries=["GO_BP"])
+
+    def test_missing_stat_col_without_F_raises_plain_keyerror(self):
+        # A DataFrame that just lacks the requested stat_col -- no
+        # ANOVA-specific hint expected, just the plain "not in columns" msg.
+        df = pd.DataFrame(
+            {"log2fc": [1.0]},
+            index=["P1|GA|S1|M1"],
+        )
+        with pytest.raises(ValueError, match="not in diff_exp_result columns"):
+            pathway_gsea(df, libraries=["GO_BP"], stat_col="nonexistent")
+
+
 class TestLibraryFailureIsolation:
     def test_one_library_fail_does_not_kill_run(self, monkeypatch):
         """If a library errors (e.g., 404), skip it and continue."""

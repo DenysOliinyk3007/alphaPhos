@@ -172,6 +172,22 @@ def pathway_gsea(
         raise ValueError("libraries must be non-empty")
 
     keys = _extract_keys(diff_exp_result, key_column)
+    if stat_col not in diff_exp_result.columns:
+        if "F" in diff_exp_result.columns:
+            raise ValueError(
+                f"stat_col={stat_col!r} not in diff_exp_result columns, but "
+                "an 'F' column is present -- this looks like diff_exp_anova "
+                "output.  Preranked GSEA requires a **signed** ranking "
+                "metric (positive = up), which ANOVA does not produce.  "
+                "For direction-agnostic pathway enrichment on ANOVA hits, "
+                "use pathway_enrichment(direction='any').  For signed GSEA, "
+                "re-run per-contrast with diff_exp_limma_contrasts(...) and "
+                "pass its per-contrast DataFrames."
+            )
+        raise ValueError(
+            f"stat_col={stat_col!r} not in diff_exp_result columns "
+            f"(available: {list(diff_exp_result.columns)})"
+        )
     stats = diff_exp_result[stat_col].to_numpy()
     fdrs = diff_exp_result[fdr_col].to_numpy() if site_to_gene_agg == "top_significant" else None
 

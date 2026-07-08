@@ -51,6 +51,7 @@ from alphaphos.enrichment.libraries import emit_libraries, load_gmt, load_librar
 from alphaphos.enrichment.matching import (
     MatchResult,
     attach_site_ids,
+    canonicalise_site_ids,
     match_sites,
     parse_alphaphos_key,
 )
@@ -76,6 +77,7 @@ __all__ = [
     "load_libraries",
     "match_sites",
     "attach_site_ids",
+    "canonicalise_site_ids",
     "parse_alphaphos_key",
     "MatchResult",
     "ora",

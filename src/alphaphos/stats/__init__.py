@@ -16,6 +16,7 @@ of Smyth 2004 (see :mod:`alphaphos.stats.moderated` and
 from alphaphos.stats.design import DesignMatrix, design_matrix
 from alphaphos.stats.diff_exp import (
     DEFAULT_STATS_SETTINGS,
+    anova_hits,
     diff_exp_anova,
     diff_exp_limma,
     diff_exp_limma_contrasts,
@@ -25,6 +26,7 @@ __all__ = [
     "diff_exp_limma",
     "diff_exp_limma_contrasts",
     "diff_exp_anova",
+    "anova_hits",
     "design_matrix",
     "DesignMatrix",
     "DEFAULT_STATS_SETTINGS",
