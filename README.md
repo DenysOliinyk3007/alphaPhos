@@ -2,7 +2,7 @@
 
 Phosphoproteomics analysis toolkit.
 
-**Status:** pre-alpha (v0.15.0). Standard 2-condition workflows (Spectronaut / DIA-NN / FragPipe → sites → filter → impute → optional ComBat → limma → PCA / KSEA / enrichment) are covered end-to-end and validated on real data. Cross-species orthology (mouse ↔ human) is validated on full SwissProt. Multi-contrast ANOVA and UMAP / t-SNE are not yet implemented.
+**Status:** pre-alpha (v0.16.0). Standard 2-condition workflows (Spectronaut / DIA-NN / FragPipe → sites → filter → impute → optional ComBat → limma → PCA / KSEA / enrichment) are covered end-to-end and validated on real data. Cross-species orthology (mouse ↔ human) is validated on full SwissProt. Multi-contrast ANOVA and UMAP / t-SNE are not yet implemented.
 
 ## Install
 
@@ -56,13 +56,14 @@ result = ap.diff_exp_limma(
 #   log2fc, se, t_stat, p_value, fdr, B, ave_expr
 ```
 
-## What ships in v0.15.0
+## What ships in v0.16.0
 
 | Module | Function | Notes |
 | --- | --- | --- |
 | `alphaphos.io.spectronaut` | `read_spectronaut` | Column pruning at read time. Handles decoys + contaminants. |
 | `alphaphos.io.diann` | `read_diann` | Manuscript-validated on nanoPhos. Requires DIA-NN ≥1.9. |
 | `alphaphos.io.fragpipe` | `read_fragpipe_sites` | Reads FragPipe's pre-collapsed abundance files. |
+| `alphaphos.proteome` | `read_spectronaut_short`, `read_spectronaut_long`, `collapse_proteome`, `phospho_over_proteome` | Proteome (non-phospho) DIA analysis with Spectronaut short + long report formats.  Same AnnData shape as phospho — filter / impute / batch-correct / limma / PCA all work unchanged.  `phospho_over_proteome` divides phospho intensities by parent-protein intensities to yield log-fraction-phosphorylated (removes protein-abundance confounding). |
 | `alphaphos.preprocess.collapse` | `collapse_sites` | PSM → site AnnData with `Protein\|Gene\|Site\|Mult` keys, top-N attribution, three localization strategies. |
 | `alphaphos.preprocess.collapse_precursors` | `collapse_precursors`, `precursor_to_site_view` | PSM → precursor AnnData (`Protein\|Gene\|Peptide\|Charge\|Mods`). No residue attribution, no localization masking — use for detection / differential when localization is unreliable on low-abundance features. Bridges back to site keys via `precursor_to_site_view` for KSEA. |
 | `alphaphos.preprocess.filter` | `filter_by_completeness` | Global / any-group / each-group strategies. |

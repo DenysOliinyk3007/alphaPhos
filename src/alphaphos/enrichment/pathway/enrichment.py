@@ -69,6 +69,7 @@ def pathway_enrichment(
     background: Literal["phosphoproteome", "genome"] | list[str] | pd.DataFrame = "phosphoproteome",
     organism: Literal["human", "mouse"] = "human",
     key_column: str | None = None,
+    gene_column: str | None = None,
     cache_dir: str | Path | None = None,
     stat_col: str = "log2fc",
     fdr_col: str = "fdr",
@@ -114,6 +115,17 @@ def pathway_enrichment(
     key_column
         If site keys live in a column rather than the index, name it
         here.
+    gene_column
+        Column in ``diff_exp_result`` carrying gene symbols directly.  Use
+        this for **proteome input** (where the row index is a protein-group
+        key without an embedded gene), e.g.::
+
+            result["gene"] = adata_prot.var.loc[result.index, "PG_Genes"].values
+            ap.enrichment.pathway_enrichment(result, gene_column="gene", ...)
+
+        Semicolon-joined multi-gene entries take the first name.  When set,
+        overrides the phospho-key parser.  ``None`` (default) uses the
+        phospho ``Protein|Gene|Site|Mult`` parser.
     cache_dir
         Directory for gseapy to cache Enrichr library GMTs.  Defaults
         to gseapy's own cache (``~/.gseapy/`` on POSIX,
@@ -162,11 +174,28 @@ def pathway_enrichment(
     stats = diff_exp_result[stat_col].to_numpy()
     fdrs = diff_exp_result[fdr_col].to_numpy()
 
-    key_to_gene = _keys_to_genes(keys)
+    if gene_column is not None:
+        if gene_column not in diff_exp_result.columns:
+            raise ValueError(
+                f"gene_column={gene_column!r} not found in diff_exp_result "
+                f"columns (available: {list(diff_exp_result.columns)})"
+            )
+        # Direct gene lookup (proteome workflow).  Semicolon-joined
+        # multi-gene entries: keep the first name.
+        gene_series = diff_exp_result[gene_column].astype(str).str.split(";").str[0]
+        key_to_gene = {
+            str(k): g
+            for k, g in zip(keys, gene_series, strict=True)
+            if isinstance(g, str) and g and g.lower() != "nan"
+        }
+    else:
+        key_to_gene = _keys_to_genes(keys)
     if not key_to_gene:
         raise ValueError(
-            "No parseable alphaPhos keys in diff_exp_result. Expected "
-            "'Protein|Gene|Site|Mult' format in index (or key_column)."
+            "No parseable gene names extracted from diff_exp_result.  For "
+            "phospho input, keys must be in 'Protein|Gene|Site|Mult' format.  "
+            "For proteome input, attach a gene column and pass "
+            "gene_column='<name>' (e.g. gene_column='PG_Genes')."
         )
 
     up_genes, down_genes = _select_hits(

@@ -12,6 +12,131 @@ While in `0.x`, breaking API changes may appear in any MINOR bump (`0.1 → 0.2`
 
 _Nothing yet._
 
+## [0.16.0] - 2026-07-08
+
+### Added -- `alphaphos.proteome` subpackage
+
+New top-level module for proteome (non-phospho) DIA analysis. Two
+Spectronaut input formats are supported; both land in the same AnnData
+shape so every downstream op that works on phospho AnnData works on
+proteome AnnData with the same interface (filter / impute /
+batch-correct / limma / PCA / pathway ORA + GSEA).
+
+- **`read_spectronaut_short(path, condition_df=None)`** — reads the
+  wide, pre-collapsed protein-group report (~2 MB parquet). Regex-
+  extracts run names from the `[N]_<runname>_raw_PG_Quantity` column
+  headers, log2-transforms, attaches `condition_df` to `.obs`. Fast;
+  trusts Spectronaut's internally-computed MaxLFQ-style `PG.Quantity`.
+- **`read_spectronaut_long(path, pg_qvalue_max=0.01, eg_qvalue_max=0.01,
+  drop_decoys=True, drop_contaminants=True, ...)`** — reads the
+  precursor-level report with the **same QC filters as the phospho
+  `read_spectronaut`** (reuses the bundled MaxQuant `contaminants.fasta`).
+  Auto-coerces string `EG.Qvalue` → float. Falls back to
+  `EG.ModifiedSequence` when `EG.PrecursorId` is absent (older Spectronaut
+  exports).
+- **`collapse_proteome(prec_df, condition_df=None,
+  aggregation_method="sum"|"median"|"top3", min_precursors=None)`** —
+  aggregates precursors → protein groups. Output shape matches
+  `read_spectronaut_short` so downstream is interchangeable.
+- **`phospho_over_proteome(adata_phos, adata_prot, sample_pairing=
+  "auto"|dict, missing_protein="drop"|"carry"|"fail",
+  protein_group_policy="first"|"best_q")`** — **the killer feature for
+  paired studies**: divides phospho intensities by matched-sample
+  parent-protein intensities in log2 space to yield "log fraction
+  phosphorylated" (removes protein-abundance confounding from phospho
+  fold-changes). Sample pairing via DVP well-ID regex
+  (`_A1`..`_G11`) by default, or explicit `{phos: prot}` dict.
+
+**Real-data validation** on 77-well cardiomyocyte DVP dataset (Mann lab
+single-cell DVP, 5 disease groups × 3 tissue regions):
+- Short reader: 77 samples × 5,644 proteins.
+- Long reader: 3.58 M → 3.48 M precursor rows after Q + contaminant
+  filters (2.82% contaminants).
+- Short vs long agreement: Pearson r = 0.92 (methodological +1.9 log2
+  offset from `sum(EG.TotalQuantity)` vs MaxLFQ; users pick one path
+  per analysis).
+- Pairing: 76/76 phospho wells matched to proteome via well-ID; 17,153
+  / 20,953 sites matched a protein group.
+- Textbook cardiomyopathy biology recovered end-to-end: **MYH7 down**
+  (FDR 9×10⁻⁷), DSP down, TTN down; **PLN up in proteome**; **PRKACA
+  (PKA) inhibited** (KSEA score −3.85, FDR 0.006) — canonical
+  β-adrenergic desensitization; **MAP2K3/6 → p38 MAPK activated**;
+  Hallmark Enrichr: **glycolysis / pyruvate metabolism / oxidative
+  phosphorylation / mTORC1 signalling** — the failing-heart metabolic
+  switch.
+
+### Added -- `gene_column=` parameter on gene-level enrichment
+
+`alphaphos.enrichment.pathway_enrichment` and `pathway_gsea` gain a new
+optional `gene_column: str | None` parameter. When set, gene names are
+read directly from that column of the diff-exp DataFrame instead of
+being parsed from the phospho `Protein|Gene|Site|Mult` site-key format.
+Enables the proteome workflow:
+
+```python
+result["gene"] = adata_prot.var.loc[result.index, "PG_Genes"].values
+ap.enrichment.pathway_enrichment(result, gene_column="gene", ...)
+ap.enrichment.pathway_gsea(result, gene_column="gene", ...)
+```
+
+Semicolon-joined multi-gene entries take the first name. Default
+`None` preserves the phospho-key parser — fully backwards compatible.
+
+### Fixed -- `alphaphos.dimred` variance ratios > 1 on masked data
+
+Both NIPALS and PPCA previously reported per-PC variance that could
+exceed the total variance on sparse-NaN input, producing
+`variance_ratio` values > 1 (up to ~1000 in extreme cases). On the
+real cardiomyocyte 72 × 4,687 phospho matrix, NIPALS-on-raw was
+reporting `PC1 = 10.768` (should be ≤ 1).
+
+**Root causes:**
+- NIPALS: score update `t_i = Σⱼ(mask·X·p) / Σⱼ(mask·p²)` divides by
+  a small denominator when few features are observed for sample `i`,
+  inflating `|t|` and therefore `var(t, ddof=1)`.
+- PPCA: scores were the SVD-rotated posterior means of the latent
+  variable `z ~ N(0, I)` (unit-ish variance under the prior) rather
+  than the projection-space scores that sklearn/NIPALS return, so
+  per-PC variance was ~10× too small.
+
+**Fix (both methods now use):**
+- Per-PC variance = SS of reconstruction at observed cells / (n-1).
+- Total variance = SS of centered X at observed cells / (n-1).
+- PPCA additionally switches scores to the mask-aware projection
+  `X @ loadings`, matching NIPALS's convention so `.obsm["X_pca"]`
+  is semantically consistent across all three methods.
+
+**Verified**: on complete data, all three methods now give
+`variance_ratio` matching sklearn's to 4 decimals (sklearn 0.4313,
+NIPALS 0.4313, PPCA 0.4312 for the top-5 PCs of a 20 × 100 random
+matrix). On the real cardiomyocyte 72 × 4,687 phospho matrix with
+~30% NaN, both NIPALS and PPCA now give bounded, near-identical
+cumulative ratios (~0.376 across top-5). Four regression tests added
+in `TestNipals` and `TestPpca`; 36/36 dimred tests pass.
+
+### Added -- proteome walkthrough notebook
+
+`examples/proteome_walkthrough.ipynb` (16 cells, ~75 s wall time)
+runs the full proteome pipeline end-to-end on the bundled
+cardiomyocyte DVP data. Demonstrates:
+
+- Both short + long reader paths and their consistency check.
+- Phospho ↔ proteome pairing via `phospho_over_proteome`.
+- `batch_correct_combat` with a synthetic batch.
+- `dimred.pca` + per-PC disease-η² on all three layers (proteome /
+  phospho / normalized).
+- `diff_exp_limma`, `kinase_activity` (KSEA), `pathway_enrichment`
+  and `pathway_gsea` on all three layers.
+
+Recovers textbook cardiomyopathy signatures (see proteome subpackage
+notes above).
+
+### Tests
+
+**720 tests pass** (up from 716 in 0.15.0): +4 dimred regression
+tests for the NIPALS/PPCA variance-ratio bounds. Ruff check +
+format both clean.
+
 ## [0.15.0] - 2026-07-07
 
 ### Added -- `alphaphos.dimred` module (top-level)

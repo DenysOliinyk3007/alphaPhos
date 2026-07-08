@@ -168,6 +168,39 @@ class TestNipals:
                 r = _absolute_correlation(scores[:, i], scores[:, j])
                 assert r < 0.3, f"NIPALS PC{i} and PC{j} correlated: {r:.3f}"
 
+    def test_variance_ratio_bounded_on_sparse_masked_data(self):
+        # Regression: on sparse NaN data (samples have few observed features),
+        # NIPALS previously produced score-column variance blow-ups (variance
+        # ratios >1, sometimes reaching 1000+) because t_i = Sum(mask*X*p) /
+        # Sum(mask*p^2) divides by a small denominator when few features are
+        # observed for sample i. The mask-aware SS-based variance keeps
+        # ratios in [0, 1] regardless of masking.
+        rng = np.random.default_rng(7)
+        X = rng.normal(0, 1, size=(20, 100))
+        X[rng.random(X.shape) < 0.3] = np.nan  # 30% missing
+        adata = _make_adata(X)
+        result = ap.dimred.pca(adata, n_components=5, handle_missing="nipals")
+        ratios = result.uns["pca"]["variance_ratio"]
+        assert (ratios >= 0).all(), f"negative variance_ratio: {ratios}"
+        assert (ratios <= 1).all(), f"variance_ratio > 1 on sparse NIPALS: {ratios}"
+        # First 5 PCs of a 20x100 random matrix shouldn't sum above 1 either.
+        assert ratios.sum() <= 1.0 + 1e-9, f"cumulative variance_ratio > 1: {ratios.sum()}"
+
+    def test_variance_ratio_matches_sklearn_on_complete_data(self):
+        # Backwards-compat check: on complete data, NIPALS variance_ratio must
+        # match sklearn's exactly (the SS-based formulation reduces to the
+        # eigenvalue formulation when there are no masked cells).
+        X = _synthetic_signal(n_samples=20, n_features=100, seed=3)
+        adata = _make_adata(X)
+        r_nip = ap.dimred.pca(adata, n_components=5, handle_missing="nipals")
+        r_sk = ap.dimred.pca(adata, n_components=5, handle_missing="error")
+        np.testing.assert_allclose(
+            r_nip.uns["pca"]["variance_ratio"],
+            r_sk.uns["pca"]["variance_ratio"],
+            atol=1e-6,
+            err_msg="NIPALS variance_ratio must match sklearn on complete data",
+        )
+
 
 # ===========================================================================
 # PPCA
@@ -195,6 +228,44 @@ class TestPpca:
         pc1 = result.obsm["X_pca"][:, 0]
         n_half = len(pc1) // 2
         assert abs(pc1[:n_half].mean() - pc1[n_half:].mean()) > 0.3
+
+    def test_variance_ratio_matches_sklearn_on_complete_data(self):
+        # Regression: PPCA previously returned per-PC variance = var(Z_mean,
+        # ddof=1) which is the LATENT-space variance (unit-ish under the
+        # prior) rather than the observed-space projection variance.  That
+        # made variance_ratio ~10x too small vs sklearn/NIPALS.  The fix
+        # projects X onto the SVD-oriented loadings and computes the
+        # mask-aware reconstruction SS/(n-1), consistent with NIPALS.
+        rng = np.random.default_rng(3)
+        X = rng.normal(0, 1, size=(20, 100))
+        adata = _make_adata(X)
+        r_pp = ap.dimred.pca(
+            adata, n_components=5, handle_missing="ppca", advanced={"max_iter": 200, "tol": 1e-7}
+        )
+        r_sk = ap.dimred.pca(adata, n_components=5, handle_missing="error")
+        np.testing.assert_allclose(
+            r_pp.uns["pca"]["variance_ratio"].sum(),
+            r_sk.uns["pca"]["variance_ratio"].sum(),
+            atol=1e-3,
+            err_msg="PPCA cumulative variance_ratio must match sklearn on complete data",
+        )
+        # Per-PC agreement is looser because PPCA's EM introduces small
+        # rotations within near-degenerate subspaces.  Total is the strict check.
+
+    def test_variance_ratio_bounded_on_sparse_masked_data(self):
+        # Regression: PPCA on masked data must not exceed 1.0 per PC or in
+        # aggregate.  Uses the same 30% NaN random matrix as the NIPALS bound test.
+        rng = np.random.default_rng(7)
+        X = rng.normal(0, 1, size=(20, 100))
+        X[rng.random(X.shape) < 0.3] = np.nan
+        adata = _make_adata(X)
+        result = ap.dimred.pca(
+            adata, n_components=5, handle_missing="ppca", advanced={"max_iter": 200, "tol": 1e-7}
+        )
+        ratios = result.uns["pca"]["variance_ratio"]
+        assert (ratios >= 0).all(), f"negative variance_ratio: {ratios}"
+        assert (ratios <= 1).all(), f"variance_ratio > 1 on sparse PPCA: {ratios}"
+        assert ratios.sum() <= 1.0 + 1e-9, f"cumulative variance_ratio > 1: {ratios.sum()}"
 
 
 # ===========================================================================
