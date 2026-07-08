@@ -12,6 +12,103 @@ While in `0.x`, breaking API changes may appear in any MINOR bump (`0.1 → 0.2`
 
 _Nothing yet._
 
+## [0.17.0] - 2026-07-08
+
+### Added -- multi-contrast + ANOVA moderated statistics
+
+Two new top-level entry points for multi-group / multi-contrast designs
+on a clean-room Smyth 2004 empirical-Bayes stack:
+
+- **`ap.diff_exp_anova(adata, condition_column=..., covariates=None,
+  block_column=None, layer=..., reference_level=None)`** — moderated
+  F-test across all condition levels. One test per feature answering
+  "does *any* group differ from the reference?" -- the natural first-pass
+  filter for multi-group cohorts before drilling into individual
+  contrasts.
+- **`ap.diff_exp_limma_contrasts(adata, condition_column=...,
+  contrasts={"name": (group_a, group_b), ...}, joint=True|False,
+  covariates=None, block_column=None, layer=...)`** — moderated t-test
+  for arbitrary user-defined contrasts. `joint=True` (default) fits one
+  linear model shared across all contrasts, so the empirical-Bayes
+  prior sees the full residual pool (higher power than looping
+  `diff_exp_limma` per pair). `joint=False` re-runs `diff_exp_limma`
+  per contrast for a manual sanity-check path. Returns a dict of
+  per-contrast per-feature DataFrames.
+
+Both support continuous / categorical covariates, paired-block designs
+(patient as a fixed effect), and any of the standard preprocessing paths
+(filter / impute / batch-correct).
+
+**Internal (public via `alphaphos.stats.*`, MIT-licensed clean-room re-
+implementation from Smyth 2004; PhosPy is GPL-3.0 and was used only as
+a numerical oracle, not as a source):**
+
+- `alphaphos.stats.design.design_matrix(...)` + typed `DesignMatrix`
+  dataclass — categorical + continuous + batch covariates + paired-block
+  factor, no-intercept `0 + condition` parameterisation.
+- `alphaphos.stats.moderated.fit_f_dist`, `moderate_variance` — Smyth
+  2004 empirical-Bayes prior fit + moderation
+  (method-of-moments on log-variances via digamma / trigamma).
+  Trigamma-inverse via bracketed root-finding
+  (`scipy.optimize.brentq`).
+- `alphaphos.stats.linear_model.lm_fit`, `contrasts_fit`,
+  `moderated_t_test`, `moderated_f_test` — QR-based per-feature OLS,
+  contrast reprojection via `Cᵀ (XᵀX)⁻¹ C`, moderated
+  t (`estimate / √(σ²_mod · unscaled)`) and moderated
+  F (`q_g / (n_contrasts · σ²_mod)`).
+
+**Numerical validation:**
+
+- vs `inmoose` `diff_exp_limma` on real EGF phospho (2 conditions,
+  n=15,186 sites): **2,057 = 2,057** significant hits (identical),
+  `|t_inmoose − t_joint| = 4.5e-13`, `|F − t²| = 1.7e-13`.
+- vs `PhosPy` empirical-Bayes prior fit on the same synthetic
+  input: `s0²` diff `2.75e-13`, `df0` diff `6.82e-12`.
+- Wald identity F = t² on 2-group designs to `1.7e-13`.
+
+**Real-data biology validation** on the cardiomyopathy dataset:
+
+- Phospho (5 disease groups × 72 samples, 4,687 sites): **1,188 F-sig
+  at FDR<0.05**; per-contrast: ICM 1,350 / HCM 1,132 / NICM 1,069 /
+  ACM 167. Top F hits SYNPO2L / CKM / SORBS1 / CALU / RBM14 — sarcomere-
+  specific, cardiomyocyte-relevant.
+- Proteome (5 disease groups × 70 samples, 4,489 proteins): **777
+  F-sig at FDR<0.05**; per-contrast: ICM 462 / HCM 361 / NICM 339 /
+  ACM 130. Top F hits P00915 (CA1), P69905 (HBA1), P68871 (HBB),
+  P02042 (HBD), Q8WX93 (PALLD) — surfaces a **differential-
+  vascularisation signal in the protein layer that the phospho layer
+  filters out**. Different biology at each layer, same pipeline.
+
+### Added -- 19 stats regression tests
+
+`tests/unit/test_stats_moderated.py`:
+
+- 8 parametric trigamma-inverse round-trips (max err 3.6e-11).
+- 3 empirical-Bayes prior recovery tests (synthetic scaled-F, n=5000).
+- 3 `lm_fit` sanity tests (single-contrast recovery, QR-vs-inv agreement,
+  residual-df arithmetic).
+- 1 bit-exact `moderated_t` vs `inmoose` regression.
+- 2 `moderated_f` tests including the Wald F = t² identity.
+- 1 joint-vs-looped-contrasts equivalence test.
+
+Full suite: **739 / 739 passing**.
+
+### Fixed
+
+- `test_enrichment_pathway.py` + `test_enrichment_pathway_gsea.py`: two
+  error-message assertions were still matching the old
+  `"No parseable alphaPhos keys"` string after the 0.16.0 `gene_column=`
+  change swapped in `"No parseable gene names"`. Corrected in this
+  release.
+
+### Docs
+
+- `README.md`: dropped the "No multi-contrast ANOVA / F-test" limitation
+  line, refreshed the module table with the new
+  `alphaphos.stats.design` + `alphaphos.stats.moderated` +
+  `alphaphos.stats.linear_model` rows, and rewrote the top-of-README
+  status line to reflect that multi-group designs now ship.
+
 ## [0.16.0] - 2026-07-08
 
 ### Added -- `alphaphos.proteome` subpackage

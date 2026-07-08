@@ -28,7 +28,7 @@ See :func:`collapse_sites` for the settings dict; see
 for domain-specific tooling.
 """
 
-__version__ = "0.16.0"
+__version__ = "0.17.0"
 
 # Public entry points, re-exported for convenience.
 # Expose the top-tier enrichment namespace so callers can write
@@ -73,7 +73,13 @@ from alphaphos.preprocess.collapse_precursors import (
 )
 from alphaphos.preprocess.filter import filter_by_completeness
 from alphaphos.preprocess.impute import impute_hybrid, impute_knn_site_based
-from alphaphos.stats.diff_exp import DEFAULT_STATS_SETTINGS, diff_exp_limma
+from alphaphos import stats
+from alphaphos.stats.diff_exp import (
+    DEFAULT_STATS_SETTINGS,
+    diff_exp_anova,
+    diff_exp_limma,
+    diff_exp_limma_contrasts,
+)
 
 
 # QC dashboard: only imported lazily to avoid pulling bokeh at package import.
@@ -108,6 +114,9 @@ __all__ = [
     "batch_correct_combat",
     "DEFAULT_COMBAT_SETTINGS",
     "diff_exp_limma",
+    "diff_exp_limma_contrasts",
+    "diff_exp_anova",
+    "stats",
     "DEFAULT_STATS_SETTINGS",
     "enrichment",
     "orthology",
