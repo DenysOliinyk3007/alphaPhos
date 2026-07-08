@@ -28,7 +28,7 @@ See :func:`collapse_sites` for the settings dict; see
 for domain-specific tooling.
 """
 
-__version__ = "0.15.0"
+__version__ = "0.16.0"
 
 # Public entry points, re-exported for convenience.
 # Expose the top-tier enrichment namespace so callers can write
