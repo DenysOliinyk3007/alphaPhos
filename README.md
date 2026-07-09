@@ -2,7 +2,7 @@
 
 Phosphoproteomics analysis toolkit.
 
-**Status:** pre-alpha (v0.18.0). Standard 2-condition workflows (Spectronaut / DIA-NN / FragPipe → sites → filter → impute → optional ComBat → limma → PCA / KSEA / enrichment) are covered end-to-end and validated on real data. Multi-contrast / multi-group designs (moderated F-test, paired-block, arbitrary contrasts) ship via `ap.diff_exp_anova` + `ap.diff_exp_limma_contrasts` on a clean-room Smyth 2004 stack (bit-exact vs inmoose on the 2-group case). Cross-species orthology (mouse ↔ human) is validated on full SwissProt. UMAP / t-SNE are not yet implemented.
+**Status:** pre-alpha (v0.19.0). Standard 2-condition workflows (Spectronaut / DIA-NN / FragPipe → sites → filter → impute → optional ComBat → limma → PCA / KSEA / enrichment) are covered end-to-end and validated on real data. Multi-contrast / multi-group designs (moderated F-test, paired-block, arbitrary contrasts) ship via `ap.diff_exp_anova` + `ap.diff_exp_limma_contrasts` on a clean-room Smyth 2004 stack (bit-exact vs inmoose on the 2-group case). Cross-species orthology (mouse ↔ human) is validated on full SwissProt. UMAP / t-SNE are not yet implemented.
 
 ## Install
 
@@ -56,7 +56,7 @@ result = ap.diff_exp_limma(
 #   log2fc, se, t_stat, p_value, fdr, B, ave_expr
 ```
 
-## What ships in v0.18.0
+## What ships in v0.19.0
 
 | Module | Function | Notes |
 | --- | --- | --- |
@@ -81,6 +81,7 @@ result = ap.diff_exp_limma(
 | `alphaphos.enrichment.pathway` | `pathway_enrichment` | Gene-level pathway ORA via gseapy Enrichr (GO BP/MF/CC + KEGG + Reactome + Hallmark by default). Phosphoproteome background by default; proteome background preferred if available.  Signed input (`direction="split"|"up"|"down"|"both"`) uses `log2fc`; **for ANOVA output use `direction="any"`** (direction-agnostic, needs only `fdr`). |
 | `alphaphos.enrichment.pathway_gsea` | `pathway_gsea` | Gene-level preranked GSEA (Subramanian 2005 via gseapy prerank) on the same Enrichr libraries. Complements ORA for coherent-motion pathways. Site→gene collapse via max-\|log2fc\| default or lowest-per-site-FDR. |
 | `alphaphos.orthology` | `map_to_human` | Cross-species phospho-site translation via ±7 flanking-window matching against the target proteome, with target-decoy FDR (Elias-Gygi 2007), optional ±30 broader-window verification, and paralog disambiguation. Validated on full mouse SwissProt (60.2% mapping rate; species-entrapment FDR ≤ 5×10⁻⁴). |
+| `alphaphos.signalome` | `build_signalome`, `SignalomeResult`, per-stage helpers (`cluster_sites`, `derive_protein_modules`, `build_module_assignments`, `build_module_table`, `build_kinase_network`, `build_expanded_table`) | Module detection + kinase-network extraction on kinase-prediction matrices (e.g. Yaffe PSSM scores from `score_kinases`). Ward hierarchical clustering + auto module-count selection (scale-aware `scoring_mode`), protein-level module resolution via cluster-signature grouping, module × kinase % share table, kinase-kinase correlation network (signed / positive-only / absolute policies), denormalised expanded view. Clean-room MIT re-implementation of the [PhosR](https://github.com/PYangLab/PhosR) (Kim et al. 2021 *Cell Rep Meth*) / [PhosPy](https://github.com/falconsmilie/phospy) signalome algorithm — bit-exact parity validated stage-by-stage. See [docs/modules/signalome/](docs/modules/signalome/index.md). |
 | `alphaphos.dose_response` | `fit_dose_response` | CurveCurator wrapper (optional `curve_curator`). |
 | `alphaphos.qc` | `generate_dashboard` | Bokeh QC HTML report (optional `bokeh`). |
 

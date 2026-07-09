@@ -12,6 +12,160 @@ While in `0.x`, breaking API changes may appear in any MINOR bump (`0.1 → 0.2`
 
 _Nothing yet._
 
+## [0.19.0] - 2026-07-09
+
+### Added -- `alphaphos.signalome` subpackage
+
+Module detection + kinase-network extraction from a per-site kinase-
+prediction matrix (e.g. Yaffe PSSM scores from `ap.score_kinases`).
+Ports the signalome algorithm from PhosR (Kim et al. 2021,
+*Cell Rep Meth*) via PhosPy (github.com/falconsmilie/phospy) as a
+numerical oracle -- alphaPhos code is a clean-room MIT re-implementation.
+
+**Single-call entry point**:
+
+```python
+result = ap.build_signalome(
+    prediction_matrix,                # (sites x kinases) DataFrame
+    kinase_substrates=my_network,     # {kinase: [substrate_site_ids]}; auto-derived if None
+    scoring_mode="auto",              # "exact" or "sampled" for scale control
+    network_correlation_threshold=0.5,
+)
+```
+
+Returns a frozen `SignalomeResult` with:
+
+- `.site_assignments` -- per-site DataFrame: `module_id`,
+  `top_kinase`, tie diagnostics, module-level attribution
+- `.protein_modules` -- protein -> module_id `pd.Series`
+- `.module_table` -- (modules x kinases) percent-share matrix
+- `.network` -- `KinaseNetwork(edges, nodes, candidate_correlations,
+  provenance)` from kinase-column Pearson correlations
+- `.expanded` -- denormalised per-focal-kinase view for graph
+  export tools
+- `.clustering` -- Ward tree + module-count selection diagnostics
+- `.provenance` -- pipeline settings + counts
+
+**Per-stage functions** for advanced use / testing: `precondition_scores`,
+`build_ward_tree`, `cut_labels`, `summarize_profile_degeneracy`,
+`select_module_count`, `cluster_sites`, `derive_protein_modules`,
+`build_module_assignments`, `select_kinase_substrates`,
+`build_module_table`, `build_kinase_network`, `build_expanded_table`,
+`extract_site_metadata`, `extract_site_to_protein`, `resolve_scoring_mode`.
+
+### Added -- scale-aware clustering (module-count selection)
+
+Explicit `scoring_mode` on `cluster_sites` and `select_module_count`:
+
+- `"exact"` -- full `N x N` Pearson correlation matrix for candidate
+  scoring.  `O(N^2)` memory; recommended for `N <= max_exact_sites`
+  (default 5000).
+- `"sampled"` -- per-cluster subsampling; `O(N * S)` memory where
+  `S = n_clusters * max_samples_per_cluster` (default 200).
+- `"auto"` (default) -- picks `"exact"` when `N <= max_exact_sites`,
+  otherwise `"sampled"` with a `UserWarning`.
+
+Deterministic under `seed` in sampled mode.  Provenance records
+`scoring_mode_used` so callers know when auto-approximation kicked in.
+
+### Numerical parity
+
+Bit-exact stage-by-stage vs PhosPy on real algorithms
+(`tests/unit/test_signalome_phospy_parity.py`):
+
+- Ward linkage matrix + cluster labels: identical (`atol == 0`).
+- Auto-selected module count: matches PhosPy's rule (filter by
+  `min_median_correlation >= threshold`, rank candidates by
+  `mean_median_correlation` with smallest `k` as tiebreak).  This
+  differs from the naive "smallest passing `k`" strategy I initially
+  used -- aligned to PhosPy after finding the divergence.
+- `protein_modules` (cluster-signature grouping): identical.
+- Module table (percent shares): identical to floating-point precision.
+- Kinase network edges (correlations) + nodes (degrees + n_substrates):
+  identical.
+- Expanded table content: **every column of every row matches PhosPy**
+  after common sort, including JSON-encoded `linked_kinases`,
+  `regulated_module_ids`, `support_kinases` fields.
+
+### Real-data cardio validation
+
+`examples/cardio_signalome.py` runs the full pipeline on the shipped
+cardiomyocyte DVP phospho dataset (72 samples, 20,953 raw sites ->
+4,687 after filter+impute -> 4,454 S/T sites after kinase library
+scoring; 311 Ser/Thr kinases via Yaffe / Johnson 2023 PSSMs) and
+compares stage-by-stage against PhosPy on the 4,000-site subset that
+fits under PhosPy's own scale guards.
+
+**Runtime**: `build_signalome` finishes in ~10 s on this matrix
+(4,454 sites x 311 kinases, `scoring_mode="auto"` -> `exact` at this
+scale).  Selects 8 modules via fallback threshold, produces 1,347
+protein-modules with support, 14,326 kinase-network edges, 57,456
+expanded rows.
+
+**Biology recovered**: top modules attribute to canonical cardiac
+kinases (DNA-PK / CAMK2 in module 1, p38 MAPK family in module 7,
+SGK1 / RSK2 / AKT2 in module 9).  Top network edges are established
+kinase paralog pairs whose substrates overlap heavily -- CK2A1-CK2A2
+(0.994), CDK8-CDK19 (0.991), AMPKA1-AMPKA2 (0.988), CDK17-CDK18,
+PAK4-PAK5, CDK12-CDK13, AKT1/2/3, ROCK1-ROCK2, DAPK1-DAPK3.
+
+**Real-data PhosPy parity** on the cardio prediction matrix (4000
+sites x 311 kinases):
+
+- Ward linkage max-diff: **0.00e+00**.
+- Cluster labels at `k=8`: **identical**.
+- `protein_modules` across 1,167 proteins: **exact match**.
+- Module table `(133 x 311)` max-diff: **0.00e+00**.
+- Network edges: 14,126 = 14,126, same set, max-diff **0.00e+00**;
+  nodes (degree + n_substrates): **exact match**.
+
+### Docs + examples
+
+- `docs/modules/signalome/index.md` -- full narrative doc: biology
+  intro, algorithm walk-through with ASCII pipeline diagram, public
+  API reference, `scoring_mode` scaling guide, deliberate deviations
+  from PhosPy, testing + parity guarantee, PhosR/PhosPy attribution
+  + citation guidance.
+- README module table row expanded to reference the signalome
+  subpackage.
+- `examples/cardio_signalome.py` -- end-to-end walkthrough on the
+  shipped cardio phospho DVP dataset (collapse -> filter -> impute ->
+  add_kinase_windows -> score_kinases -> build_signalome), followed by
+  a real-data stage-by-stage PhosPy parity check on the same
+  prediction matrix.  See "Real-data cardio validation" above.
+
+### Tests
+
+57 new tests across 3 files:
+
+- `test_signalome_clustering.py` (25 tests) -- preconditioning, Ward
+  tree, cut_labels, resolve_scoring_mode auto/exact/sampled behaviour,
+  profile degeneracy, module-count selection with new PhosPy-aligned
+  rule.
+- `test_signalome_pipeline.py` (15 tests) -- protein resolution,
+  assignments (lex tie-break, module-level majority vote), module
+  table (% shares, block-biology recovery), kinase network
+  (within-block edges, degree consistency, positive-only policy),
+  expanded table (all-kinase coverage, JSON validity), orchestrator
+  (defaults, derived substrates, requested_module_count).
+- `test_signalome_phospy_parity.py` (17 tests) -- stage-by-stage
+  bit-exact parity vs PhosPy at multiple sizes (`n_sites=200`, `1000`),
+  including the full expanded table content check.  Skipped
+  automatically when PhosPy isn't installed.
+
+Full suite: **813 passing**, 0 failures, 0 lint or format errors.
+
+### Attribution
+
+The signalome method was introduced in PhosR (Kim et al. 2021,
+*Cell Reports Methods* 1(6): 100056,
+https://doi.org/10.1016/j.crmeth.2021.100056), an R package.  PhosPy
+(https://github.com/falconsmilie/phospy) is a Python port of PhosR
+under GPL-3.0.  alphaPhos's signalome subpackage is a **clean-room
+MIT re-implementation** from published methods, with PhosPy used only
+as a numerical oracle during development (no code copied).  Citation
+recommendation: cite PhosR for the underlying algorithm.
+
 ## [0.18.0] - 2026-07-08
 
 ### Added -- ANOVA → downstream enrichment integration
