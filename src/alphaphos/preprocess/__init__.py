@@ -64,7 +64,7 @@ __all__ = [
     # Site-completeness filter (drop sites failing valid-fraction threshold)
     "filter_by_completeness",
     # Imputation (phospho-aware)
-    "impute_knn_site_based",  # Dublin-equivalent; legacy-parity path
+    "impute_knn_site_based",  # legacy-parity KNN; prefer impute_hybrid for new work
     "impute_hybrid",  # MAR (site-KNN) + MNAR (downshifted Gaussian) per cell
     # AnnData construction escape hatch -- use collapse_sites in normal workflows.
     "to_anndata",

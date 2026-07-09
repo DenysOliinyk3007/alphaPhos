@@ -6,10 +6,10 @@ Two functions, both operating on an ``AnnData`` with shape
 - :func:`impute_knn_site_based` — site-based k-NN imputation. The "right
   direction" of KNN for phospho data with n_samples << n_features:
   finds the k most similar SITES for each missing cell, not the k most
-  similar SAMPLES. Matches Dublin's ``impute_phosphosites`` exactly at
-  defaults (``n_neighbors=int(sqrt(n_samples))``, ``weights='uniform'``)
-  and reproduces R-limma to numerical precision in the EGF benchmark
-  (Pearson r = 1.0000 on logFC).
+  similar SAMPLES. Defaults match the KNN-imputation conventions from
+  the legacy pipeline this replaced (``n_neighbors=int(sqrt(n_samples))``,
+  ``weights='uniform'``) and reproduce R-limma to numerical precision
+  in the EGF benchmark (Pearson r = 1.0000 on logFC).
 
 - :func:`impute_hybrid` — per-cell hybrid MAR/MNAR imputation. Combines
   site-based KNN (for MAR cells, where the value is "missed but
@@ -91,21 +91,20 @@ def impute_knn_site_based(
 ) -> ad.AnnData:
     """Site-based KNN imputation (the right direction for phospho 3v3 data).
 
-    Drop-in replacement for Dublin's ``impute_phosphosites``: same algorithm,
-    same defaults. Reproduces R-limma on the EGF benchmark at Pearson
-    r = 1.0000 on logFC.
+    Reproduces R-limma on the EGF benchmark at Pearson r = 1.0000 on
+    logFC.  Kept as the legacy-parity path; the statistically-defensible
+    default for new analyses is :func:`impute_hybrid`.
 
     Parameters
     ----------
     adata
         AnnData with shape (n_samples, n_sites). All site columns must
         have at least one observed value (run
-        ``apt.pp.filter_data_completeness(action='drop')`` first).
+        :func:`alphaphos.filter_by_completeness` first).
     n_neighbors
-        Number of neighbor sites to use. Default ``int(sqrt(n_samples))``
-        — Dublin's convention.
+        Number of neighbor sites to use. Default ``int(sqrt(n_samples))``.
     weights
-        ``"uniform"`` (default, Dublin) or ``"distance"``.
+        ``"uniform"`` (default) or ``"distance"``.
     layer
         Which layer to impute. Default ``"intensity_log2"`` -- the canonical
         log2 slot produced by ``collapse_sites``, and the slot every

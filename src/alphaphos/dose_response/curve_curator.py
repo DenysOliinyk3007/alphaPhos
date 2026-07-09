@@ -20,8 +20,7 @@ For multi-timepoint experiments (one dose-response per timepoint),
 and concatenates the per-curve results. For single-timepoint experiments,
 pass ``timepoint_col=None``.
 
-Direct port of the uPhosHT lab convention
-(``Dublin/uPhosHT/src/phosphoscape_cc.py``) adapted to alphaPhos's
+Ported from the uPhosHT lab convention and adapted to alphaPhos's
 AnnData-centric idiom: doses, timepoints, and DMSO membership live in
 ``adata.obs`` columns; site ids come from ``adata.var.index``;
 intensities come from ``adata.X`` (log2; this module converts to linear
