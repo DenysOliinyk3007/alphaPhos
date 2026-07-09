@@ -67,6 +67,58 @@ def get_pca_dataframe(
     return df
 
 
+def get_tsne_dataframe(
+    adata: ad.AnnData,
+    *,
+    include_obs: bool = True,
+) -> pd.DataFrame:
+    """One row per sample; columns = t-SNE dims + ``.obs`` metadata.
+
+    Ready-to-plot DataFrame after :func:`alphaphos.dimred.tsne`.
+    """
+    if "X_tsne" not in adata.obsm:
+        raise KeyError("adata.obsm['X_tsne'] not found. Run alphaphos.dimred.tsne(adata) first.")
+    coords = np.asarray(adata.obsm["X_tsne"])
+    df = pd.DataFrame(
+        coords,
+        columns=[f"tSNE{i + 1}" for i in range(coords.shape[1])],
+        index=adata.obs_names.astype(str),
+    )
+    if include_obs and adata.obs.shape[1] > 0:
+        df = df.join(adata.obs)
+    ns = adata.uns.get("tsne", {}) if hasattr(adata, "uns") else {}
+    for key in ("perplexity", "seed", "max_iter", "method", "n_pca_components"):
+        if key in ns:
+            df.attrs[key] = ns[key]
+    return df
+
+
+def get_umap_dataframe(
+    adata: ad.AnnData,
+    *,
+    include_obs: bool = True,
+) -> pd.DataFrame:
+    """One row per sample; columns = UMAP dims + ``.obs`` metadata.
+
+    Ready-to-plot DataFrame after :func:`alphaphos.dimred.umap`.
+    """
+    if "X_umap" not in adata.obsm:
+        raise KeyError("adata.obsm['X_umap'] not found. Run alphaphos.dimred.umap(adata) first.")
+    coords = np.asarray(adata.obsm["X_umap"])
+    df = pd.DataFrame(
+        coords,
+        columns=[f"UMAP{i + 1}" for i in range(coords.shape[1])],
+        index=adata.obs_names.astype(str),
+    )
+    if include_obs and adata.obs.shape[1] > 0:
+        df = df.join(adata.obs)
+    ns = adata.uns.get("umap", {}) if hasattr(adata, "uns") else {}
+    for key in ("n_neighbors", "min_dist", "metric", "seed", "n_pca_components"):
+        if key in ns:
+            df.attrs[key] = ns[key]
+    return df
+
+
 def get_pca_loadings(
     adata: ad.AnnData,
     *,

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "alphaPhos"
-version = "0.19.0"
+version = "0.20.0"
 description = "Phosphoproteomics analysis toolkit — IO, preprocessing, PTM site mapping, statistics, KSEA, enrichment, acquisition, QC and visualization."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -41,6 +41,9 @@ enrichment = [
     "gseapy>=1.1",
     "decoupler>=2.0",
     "omnipath>=1.0",
+]
+dimred = [
+    "umap-learn>=0.5",
 ]
 dev = [
     "ruff>=0.6",

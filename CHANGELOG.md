@@ -12,6 +12,84 @@ While in `0.x`, breaking API changes may appear in any MINOR bump (`0.1 → 0.2`
 
 _Nothing yet._
 
+## [0.20.0] - 2026-07-10
+
+### Added -- t-SNE + UMAP in `alphaphos.dimred`
+
+Closes the "UMAP / t-SNE are not yet implemented" limitation flagged in
+the README status line since 0.15.  Both share the same API as
+`ap.dimred.pca`, so any pipeline that ended in
+``ap.dimred.pca(adata)`` can swap in ``ap.dimred.tsne(adata)`` or
+``ap.dimred.umap(adata)`` with no other changes.
+
+- **`ap.dimred.tsne(adata, ...)`** -- Barnes-Hut t-SNE via
+  ``sklearn.manifold.TSNE``.  No new dependency (sklearn is core).
+  Default perplexity 30, auto-clipped when ``perplexity >= n_samples``.
+  Deterministic given ``seed``.  Sample coordinates written to
+  ``adata.obsm["X_tsne"]``, provenance to ``adata.uns["tsne"]``.
+- **`ap.dimred.umap(adata, ...)`** -- UMAP via ``umap-learn`` (McInnes
+  et al. 2018).  Guarded behind the new ``[dimred]`` optional extra
+  (``pip install "alphaphos[dimred]"``).  Default ``n_neighbors=15``,
+  ``min_dist=0.1``, ``metric="euclidean"`` -- match ``umap-learn`` +
+  scanpy defaults.  Auto-clips ``n_neighbors`` when it exceeds
+  ``n_samples``.  Sample coordinates written to ``adata.obsm["X_umap"]``,
+  provenance to ``adata.uns["umap"]``.
+- **NaN handling**: neither method has native NaN support.  Both raise
+  a clear ``ValueError`` on NaN input with a pointer to
+  ``ap.impute_hybrid`` or the ``n_pca_components=`` bridge.
+- **Small-n reliability warnings**: emit ``UserWarning`` when
+  ``n_samples < MIN_RECOMMENDED_N_TSNE`` (=30) or
+  ``n_samples < MIN_RECOMMENDED_N_UMAP`` (=20).  Thresholds derived
+  from an empirical sweep on synthetic 2- and 3-group data (10 seeds
+  per (n, config), boost = 2-3 std, features = 400): below these,
+  silhouette recovery is either variable across seeds (t-SNE) or
+  collapses to near-zero (UMAP), while PCA remains reliable at
+  n >= 6.  See ``scratchpad/tsne_umap_n_threshold_study.py`` for
+  the sweep.  Silence via ``warnings.filterwarnings("ignore",
+  category=UserWarning)`` when you know what you're doing.
+- **`n_pca_components=` bridge**: when set, ``tsne`` and ``umap`` read
+  ``adata.obsm["X_pca"]`` (from a prior ``ap.dimred.pca`` call) as
+  their input instead of the raw layer -- the scanpy convention for
+  pre-reducing high-dimensional feature matrices before manifold
+  learning.  Works with any of the ``pca(handle_missing=)`` backends
+  so the whole pipeline stays NaN-tolerant.
+- **`ap.dimred.get_tsne_dataframe`, `ap.dimred.get_umap_dataframe`** --
+  plot-ready ``DataFrame`` accessors matching the existing
+  ``get_pca_dataframe`` pattern: sample coordinates + ``.obs`` metadata
+  joined in one frame, method settings in ``.attrs``.
+
+### Docs + release
+
+- README status line dropped the "not yet implemented" clause; module
+  table row for ``alphaphos.dimred`` expanded to document the new
+  functions + the NaN policy.
+- New ``[dimred]`` optional-extra advertised in the install snippet.
+- 27 new unit tests in ``tests/unit/test_dimred_manifold.py`` covering
+  the settings resolvers, NaN guard, ``perplexity`` / ``n_neighbors``
+  clipping, seed determinism, cluster-recovery on 2-block synthetic
+  input, the ``n_pca_components=`` bridge, both DataFrame
+  accessors, and the new small-n warnings (fires below threshold,
+  does not fire at threshold, constants exported).  UMAP tests
+  auto-skip when ``umap-learn`` is absent.
+- Full suite: **840 tests passing**, ruff check + ruff format --check
+  clean.
+
+### Real-data validation
+
+- **Cardio phospho** (n=72, 5 disease groups x 3 tissue regions):
+  PCA, t-SNE, and UMAP all recover the same primary structure
+  (Healthy vs Disease as the dominant axis).  Silhouette per method:
+  PCA -0.01, t-SNE +0.11, UMAP +0.09 for disease labels.  Region is
+  not a driver in any method (silhouette ~0), patient is
+  anti-clustered (spread across the embedding by tissue region).
+  Runtimes on the full 4,687-site matrix: PCA 0.03s, t-SNE 3.1s,
+  UMAP 7.9s.  The ``n_pca_components=10`` bridge speeds t-SNE up
+  30x and UMAP 60x with negligible loss of structure.
+- **EGF +/-** (n=6): PCA gives silhouette 0.51, t-SNE 0.12, UMAP
+  degenerates (all points collapse to a tiny cluster,
+  centroid separation 0.32 vs 96 for PCA).  Motivated the small-n
+  warning thresholds above.
+
 ## [0.19.0] - 2026-07-09
 
 ### Added -- `alphaphos.signalome` subpackage

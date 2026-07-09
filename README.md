@@ -2,13 +2,14 @@
 
 Phosphoproteomics analysis toolkit.
 
-**Status:** pre-alpha (v0.19.0). Standard 2-condition workflows (Spectronaut / DIA-NN / FragPipe → sites → filter → impute → optional ComBat → limma → PCA / KSEA / enrichment) are covered end-to-end and validated on real data. Multi-contrast / multi-group designs (moderated F-test, paired-block, arbitrary contrasts) ship via `ap.diff_exp_anova` + `ap.diff_exp_limma_contrasts` on a clean-room Smyth 2004 stack (bit-exact vs inmoose on the 2-group case). Cross-species orthology (mouse ↔ human) is validated on full SwissProt. UMAP / t-SNE are not yet implemented.
+**Status:** pre-alpha (v0.20.0). Standard 2-condition workflows (Spectronaut / DIA-NN / FragPipe → sites → filter → impute → optional ComBat → limma → PCA / KSEA / enrichment) are covered end-to-end and validated on real data. Multi-contrast / multi-group designs (moderated F-test, paired-block, arbitrary contrasts) ship via `ap.diff_exp_anova` + `ap.diff_exp_limma_contrasts` on a clean-room Smyth 2004 stack (bit-exact vs inmoose on the 2-group case). Cross-species orthology (mouse ↔ human) is validated on full SwissProt. PCA / t-SNE / UMAP all ship in `ap.dimred` with a shared API.
 
 ## Install
 
 ```bash
 pip install -e .                # core (Python-only)
 pip install -e ".[stats]"       # + inmoose for limma differential testing + ComBat batch correction
+pip install -e ".[dimred]"      # + umap-learn for ap.dimred.umap (t-SNE ships with sklearn)
 pip install -e ".[dev,docs]"    # development
 ```
 
@@ -56,7 +57,7 @@ result = ap.diff_exp_limma(
 #   log2fc, se, t_stat, p_value, fdr, B, ave_expr
 ```
 
-## What ships in v0.19.0
+## What ships in v0.20.0
 
 | Module | Function | Notes |
 | --- | --- | --- |
@@ -72,7 +73,7 @@ result = ap.diff_exp_limma(
 | `alphaphos.stats.diff_exp` | `diff_exp_limma`, `diff_exp_limma_contrasts`, `diff_exp_anova`, `anova_hits` | Two-group moderated t-test (`diff_exp_limma`, inmoose backend), multi-contrast moderated t (`diff_exp_limma_contrasts`, joint fit — one linear model, N contrasts), and moderated F-test across all condition levels (`diff_exp_anova`, ANOVA-style). Batch / covariate / paired-block adjustment supported. `anova_hits(anova, fdr_threshold=0.05)` is a two-line convenience for `(hits, background)` ready for `ap.enrichment.ora`. |
 | `alphaphos.stats.design` | `design_matrix`, `DesignMatrix` | Typed design-matrix builder for the multi-contrast + ANOVA path. Categorical + continuous + batch covariates + paired-block factor, no-intercept parameterisation. |
 | `alphaphos.stats.moderated` + `linear_model` | (internal) | Clean-room Smyth 2004 empirical-Bayes stack (`fit_f_dist`, `moderate_variance`, `lm_fit`, `contrasts_fit`, `moderated_t_test`, `moderated_f_test`). MIT-licensed, numerically bit-exact vs inmoose on 2-group and vs PhosPy on the EB-prior fit to ~1e-13. |
-| `alphaphos.dimred` | `pca`, `compare_imputation_impact`, `loadings_for_enrichment`, `feature_variance_contribution`, `sample_distance`, `hierarchical_cluster` | Standard / NIPALS / PPCA backends behind one entrypoint. NaN-aware. `compare_imputation_impact` flags whether imputation distorts sample-space structure. `loadings_for_enrichment` bridges PC loadings straight into `alphaphos.enrichment.gsea` / `.ora` / `.kinase_activity` with no wrappers. |
+| `alphaphos.dimred` | `pca`, `tsne`, `umap`, `get_pca_dataframe`, `get_tsne_dataframe`, `get_umap_dataframe`, `compare_imputation_impact`, `loadings_for_enrichment`, `feature_variance_contribution`, `sample_distance`, `hierarchical_cluster` | **PCA** (standard / NIPALS / PPCA backends behind one entrypoint, NaN-aware). **t-SNE** via `sklearn.manifold.TSNE` (Barnes-Hut) and **UMAP** via `umap-learn` (via optional `[dimred]` extra) -- both share the same API: layer / `n_pca_components` / `seed` / `copy`, embedding to `.obsm["X_{pca,tsne,umap}"]`, provenance to `.uns[...]`. NaN handling: impute upstream or pre-reduce with a NaN-aware PCA and pass `n_pca_components=`. `compare_imputation_impact` flags whether imputation distorts sample-space structure. `loadings_for_enrichment` bridges PC loadings straight into `alphaphos.enrichment.gsea` / `.ora` / `.kinase_activity` with no wrappers. |
 | `alphaphos.kinase.annotation` | `add_kinase_windows`, `load_fasta` | ±7-residue windows around each site from a proteome FASTA. |
 | `alphaphos.kinase.library` | Yaffe PWM scoring | Requires the optional `kinase_library` package. |
 | `alphaphos.kinase.enrichment` | Kinase library enrichment | Same optional dep. |
