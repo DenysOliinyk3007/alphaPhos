@@ -17,6 +17,7 @@ import pandas as pd
 import pytest
 from scipy.special import polygamma
 
+from alphaphos.stats.diff_exp import _HAS_STATS_DEPS
 from alphaphos.stats.linear_model import (
     contrasts_fit,
     lm_fit,
@@ -28,6 +29,11 @@ from alphaphos.stats.moderated import (
     _trigamma_inverse,
     fit_f_dist,
     moderate_variance,
+)
+
+_needs_inmoose = pytest.mark.skipif(
+    not _HAS_STATS_DEPS,
+    reason="inmoose + patsy not installed; run `pip install alphaPhos[stats]`.",
 )
 
 # ---------------------------------------------------------------------------
@@ -154,6 +160,7 @@ def _make_two_group_adata(n=8, p=500, effect_features=50, seed=0):
     return adata
 
 
+@_needs_inmoose
 class TestModeratedTMatchesInmoose:
     """Numerical parity check: the clean-room Smyth 2004 stack must match
     the inmoose (R-limma port) 2-group path to floating-point machine
@@ -258,6 +265,7 @@ class TestModeratedF:
 # ---------------------------------------------------------------------------
 
 
+@_needs_inmoose
 class TestLoopContrasts:
     def test_joint_false_equals_diff_exp_limma_per_pair(self):
         # joint=False should return identical columns to a manual loop of
