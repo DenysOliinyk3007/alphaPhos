@@ -8,7 +8,6 @@ condition-aware comparison, contaminant breakdown, hybrid-imputation
 MAR/MNAR split, pipeline waterfall, replicate correlation matrix.
 """
 
-from alphaphos.qc.dashboard import generate_dashboard
 from alphaphos.qc.metrics import (
     compute_classI_comparison,
     compute_contaminant_breakdown,
@@ -42,6 +41,19 @@ from alphaphos.qc.psm_metrics import (
     compute_run_tic_per_sample,
 )
 from alphaphos.qc.queue_io import load_acquisition_queue
+
+
+# ``generate_dashboard`` is lazy-imported.  Its implementation lives in
+# ``alphaphos.qc.dashboard`` and pulls in bokeh (an optional ``[qc]`` extra).
+# Importing the qc namespace on a bare-core install must not require bokeh,
+# so this wrapper defers the import until call time.  See
+# feedback_optional_extra_imports.md in agent memory.
+def generate_dashboard(*args, **kwargs):
+    """See :func:`alphaphos.qc.dashboard.generate_dashboard`."""
+    from alphaphos.qc.dashboard import generate_dashboard as _gd
+
+    return _gd(*args, **kwargs)
+
 
 __all__ = [
     "generate_dashboard",
