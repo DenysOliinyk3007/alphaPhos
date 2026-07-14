@@ -31,6 +31,7 @@ from alphaphos.qc.queue_io import load_acquisition_queue
 REPO = Path(__file__).resolve().parents[2]
 CARDIO_QUEUE = REPO / "test_data" / "qc" / "queue_ElKr_phosphoDVP.csv"
 CARDIO_PSM = REPO / "test_data" / "proteome_path" / "cardiomyocytes_dvp_phospho_raw.parquet"
+_HAS_CARDIO_INPUTS = CARDIO_PSM.exists() and CARDIO_QUEUE.exists()
 
 
 def _make_synthetic_psm_df(
@@ -265,7 +266,7 @@ class TestPsmCountsQueueIntegration:
         assert counts.attrs["provenance"]["n_matched_queue"] == 3
 
 
-@pytest.mark.skipif(not CARDIO_PSM.exists(), reason="cardio parquet not shipped")
+@pytest.mark.skipif(not _HAS_CARDIO_INPUTS, reason="cardio parquet or queue not shipped")
 class TestPsmCountsCardio:
     def test_cardio_end_to_end(self):
         psm = pd.read_parquet(CARDIO_PSM)
@@ -475,7 +476,7 @@ class TestContaminantFractionQueueIntegration:
         assert contam.attrs["provenance"]["n_matched_queue"] == 3
 
 
-@pytest.mark.skipif(not CARDIO_PSM.exists(), reason="cardio parquet not shipped")
+@pytest.mark.skipif(not _HAS_CARDIO_INPUTS, reason="cardio parquet or queue not shipped")
 class TestContaminantFractionCardio:
     def test_cardio_end_to_end(self):
         psm = pd.read_parquet(CARDIO_PSM)
@@ -507,7 +508,7 @@ class TestContaminantFractionCardio:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skipif(not CARDIO_PSM.exists(), reason="cardio parquet not shipped")
+@pytest.mark.skipif(not _HAS_CARDIO_INPUTS, reason="cardio parquet or queue not shipped")
 class TestCardioIntegration:
     def test_cardio_end_to_end(self):
         psm = pd.read_parquet(CARDIO_PSM)
