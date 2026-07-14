@@ -16,7 +16,13 @@ from alphaphos.qc.queue_io import DEFAULT_BLANK_PATTERN, load_acquisition_queue
 REPO = Path(__file__).resolve().parents[2]
 CARDIO_QUEUE = REPO / "test_data" / "qc" / "queue_ElKr_phosphoDVP.csv"
 
+# The Xcalibur cardio queue CSV is used for real-format regression tests
+# but isn't shipped with the repo (large, project-specific).  Guard the
+# real-file tests with a class-level skipif so CI stays green without it.
+_HAS_CARDIO_QUEUE = CARDIO_QUEUE.exists()
 
+
+@pytest.mark.skipif(not _HAS_CARDIO_QUEUE, reason="cardio Xcalibur queue not shipped")
 class TestLoadAcquisitionQueue:
     def test_cardio_queue_shape_and_columns(self):
         q = load_acquisition_queue(CARDIO_QUEUE)
@@ -43,14 +49,17 @@ class TestLoadAcquisitionQueue:
         assert 77 in q["injection_order"].tolist()
         assert 80 in q["injection_order"].tolist()
 
-    def test_missing_file_raises(self, tmp_path):
-        with pytest.raises(FileNotFoundError, match="not found"):
-            load_acquisition_queue(tmp_path / "does_not_exist.csv")
-
     def test_blank_pattern_disabled_keeps_all(self):
         q = load_acquisition_queue(CARDIO_QUEUE, blank_pattern=None)
         assert len(q) == 158
         assert q.attrs["provenance"]["n_blank_removed"] == 0
+
+
+# Tests below use synthetic / tmp_path files -- always runnable.
+class TestLoadAcquisitionQueueSynthetic:
+    def test_missing_file_raises(self, tmp_path):
+        with pytest.raises(FileNotFoundError, match="not found"):
+            load_acquisition_queue(tmp_path / "does_not_exist.csv")
 
     def test_custom_blank_pattern(self, tmp_path):
         # Synthetic queue with a custom "wash" convention
