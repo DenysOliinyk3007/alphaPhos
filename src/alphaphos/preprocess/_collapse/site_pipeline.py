@@ -418,12 +418,38 @@ def compute_site_metadata(
     meta["multiplicity"] = meta[PTM_NUM].astype(np.int64).clip(upper=3)
 
     # Protein group / gene canonicalization for the key.
+    # For contaminant provenance: when a PG lists a contaminant-tagged
+    # protein alongside its untagged twin (Spectronaut convention on
+    # ambiguous matches, e.g. "Cont_P05783;P05783"), we surface the
+    # contaminant tag in the site key rather than let Spectronaut's
+    # ordering hide it.  A boolean ``is_contaminant_match`` column
+    # (in the metadata + var frame) records the flag explicitly.
+    from alphaphos.preprocess.contaminants import DEFAULT_CONTAMINANT_PREFIXES
+
+    def _pick_first_prefer_contam(pg_string: str) -> str:
+        parts = [p.strip() for p in str(pg_string).split(";") if p.strip()]
+        if not parts:
+            return ""
+        for prefix in DEFAULT_CONTAMINANT_PREFIXES:
+            for p in parts:
+                if p.startswith(prefix):
+                    return p
+        return parts[0]
+
+    def _has_contam_match(pg_string: str) -> bool:
+        parts = [p.strip() for p in str(pg_string).split(";") if p.strip()]
+        return any(p.startswith(prefix) for p in parts for prefix in DEFAULT_CONTAMINANT_PREFIXES)
+
     if collapse_level == "PG":
-        meta["protein_group_id"] = meta[COL_PG_PROTEIN_GROUPS].astype(str).str.split(";").str[0]
+        meta["protein_group_id"] = (
+            meta[COL_PG_PROTEIN_GROUPS].astype(str).map(_pick_first_prefer_contam)
+        )
         meta["gene"] = meta[COL_PG_GENES].astype(str).str.split(";").str[0]
     else:  # "P" -- keep full string, downstream explodes it later
         meta["protein_group_id"] = meta[COL_PG_PROTEIN_GROUPS].astype(str)
         meta["gene"] = meta[COL_PG_GENES].astype(str)
+
+    meta["is_contaminant_match"] = meta[COL_PG_PROTEIN_GROUPS].astype(str).map(_has_contam_match)
 
     # Build the three key flavors.
     meta[VAR_FULL_KEY] = [
