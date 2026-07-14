@@ -226,3 +226,104 @@ class TestTopNAttributionWiring:
         cdf = _make_synthetic_conditions()
         with pytest.raises(ValueError, match="top_n_attribution must be bool"):
             ap.collapse_sites(psm_df, condition_df=cdf, advanced={"top_n_attribution": "yes"})
+
+
+# ---------------------------------------------------------------------------
+# Contaminant provenance in the collapse output
+# ---------------------------------------------------------------------------
+
+
+def _make_psm_with_contam_variants(
+    sample_pg: dict[str, tuple[str, str]],
+) -> pd.DataFrame:
+    """Two-sample PSM where each site's protein group can be overridden.
+
+    ``sample_pg`` maps ``"gene"`` -> ``(protein_groups_string, gene_symbol)``.
+    Same phospho precursor per site for simplicity.
+    """
+    rows = []
+    for sample in ("s1", "s2"):
+        for i, (_gene, (pg, gene_symbol)) in enumerate(sample_pg.items()):
+            rows.append(
+                {
+                    "R.FileName": sample,
+                    "EG.PrecursorId": f"_S[Phospho (STY)]{'A' * (i + 3)}_.2",
+                    "EG.TotalQuantity (Settings)": 1000 + i * 100,
+                    "PEP.PeptidePosition": str(100 + i * 10),
+                    "EG.PTMAssayProbability": 0.95,
+                    "EG.PTMLocalizationProbabilities": (
+                        f"_S[Phospho (STY): 95.0%]{'A' * (i + 3)}_"
+                    ),
+                    "PG.Genes": gene_symbol,
+                    "PG.ProteinGroups": pg,
+                }
+            )
+    df = pd.DataFrame(rows)
+    df.attrs["source_path"] = "synthetic.parquet"
+    df.attrs["n_rows_loaded"] = len(df)
+    return df
+
+
+def _cdf():
+    return pd.DataFrame({"sample": ["s1", "s2"], "condition": ["a", "b"]})
+
+
+class TestContaminantSurfacing:
+    """Sites with any Cont_-tagged protein must announce that in the site key
+    and in ``adata.var['is_contaminant_match']``, regardless of Spectronaut's
+    within-PG ordering.
+    """
+
+    def test_clean_pg_has_no_contam_flag(self):
+        psm = _make_psm_with_contam_variants(
+            {"CLEAN": ("P12345", "AKT1")},
+        )
+        adata = ap.collapse_sites(psm, condition_df=_cdf())
+        assert "is_contaminant_match" in adata.var.columns
+        assert not adata.var["is_contaminant_match"].any()
+        # Key uses the untouched accession
+        assert any(k.startswith("P12345|AKT1") for k in adata.var_names)
+
+    def test_contam_first_key_shows_prefix_and_flag_set(self):
+        # Spectronaut wrote the contaminant tag first (cardio-observed order).
+        psm = _make_psm_with_contam_variants(
+            {"KRTLIKE": ("Cont_P05783;P05783", "KRT18")},
+        )
+        adata = ap.collapse_sites(psm, condition_df=_cdf())
+        # Key preserves the Cont_ marker
+        assert any(k.startswith("Cont_P05783|KRT18") for k in adata.var_names)
+        # Flag is set
+        assert bool(adata.var["is_contaminant_match"].all())
+
+    def test_contam_second_still_surfaces_prefix_in_key(self):
+        # Spectronaut wrote the untagged accession first -- WITHOUT the fix
+        # the site key would silently drop the Cont_ marker.  Our fix picks
+        # the contaminant-tagged variant regardless of order.
+        psm = _make_psm_with_contam_variants(
+            {"AMBIG": ("P05783;Cont_P05783", "KRT18")},
+        )
+        adata = ap.collapse_sites(psm, condition_df=_cdf())
+        # The Cont_ marker must still appear in the key
+        assert any(k.startswith("Cont_P05783|KRT18") for k in adata.var_names), (
+            f"Cont_ marker lost from site key; got: {list(adata.var_names)}"
+        )
+        assert bool(adata.var["is_contaminant_match"].all())
+
+    def test_flag_targets_only_contam_rows(self):
+        # Two sites: one clean, one ambiguous.  Only the ambiguous one is flagged.
+        psm = _make_psm_with_contam_variants(
+            {
+                "CLEAN": ("P12345", "AKT1"),
+                "AMBIG": ("P05783;Cont_P05783", "KRT18"),
+            }
+        )
+        adata = ap.collapse_sites(psm, condition_df=_cdf())
+        flagged_keys = adata.var_names[adata.var["is_contaminant_match"].fillna(False)]
+        assert len(flagged_keys) >= 1
+        for k in flagged_keys:
+            assert k.startswith("Cont_"), f"flagged key {k!r} missing Cont_ marker"
+        unflagged_keys = adata.var_names[~adata.var["is_contaminant_match"].fillna(False)]
+        for k in unflagged_keys:
+            assert not k.startswith(("Cont_", "CON__", "contam_")), (
+                f"unflagged key {k!r} unexpectedly contains contam prefix"
+            )

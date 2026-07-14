@@ -45,6 +45,10 @@ enrichment = [
 dimred = [
     "umap-learn>=0.5",
 ]
+qc = [
+    "plotly>=5",
+    "kaleido>=0.2",
+]
 dev = [
     "ruff>=0.6",
     "pytest>=8.0",
