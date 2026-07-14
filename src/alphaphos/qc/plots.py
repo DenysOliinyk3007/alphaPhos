@@ -15,9 +15,29 @@ import math
 
 import numpy as np
 import pandas as pd
-from bokeh.models import ColumnDataSource, HoverTool, Legend, LegendItem
-from bokeh.palettes import Category10_10, Category20_20, Viridis256
-from bokeh.plotting import figure
+
+# bokeh is an optional ``[qc]`` extra.  Guard the imports so ``import
+# alphaphos.qc.plots`` succeeds on a bare-core install; the individual
+# plot builders below raise a friendly error when actually called.
+try:
+    from bokeh.models import ColumnDataSource, HoverTool, Legend, LegendItem
+    from bokeh.palettes import Category10_10, Category20_20, Viridis256
+    from bokeh.plotting import figure
+
+    _BOKEH_IMPORT_ERROR: ImportError | None = None
+except ImportError as _exc:  # pragma: no cover - covered by CI bare-core matrix
+    ColumnDataSource = HoverTool = Legend = LegendItem = None  # type: ignore[assignment]
+    Category10_10 = Category20_20 = Viridis256 = None  # type: ignore[assignment]
+    figure = None  # type: ignore[assignment]
+    _BOKEH_IMPORT_ERROR = _exc
+
+
+def _require_bokeh() -> None:
+    if _BOKEH_IMPORT_ERROR is not None:
+        raise ImportError(
+            "alphaphos.qc.plots requires bokeh.  Install with `pip install 'alphaphos[qc]'`."
+        ) from _BOKEH_IMPORT_ERROR
+
 
 # factor_cmap removed — pre-computed color columns are more robust in the
 # presence of null/unexpected values in the data source

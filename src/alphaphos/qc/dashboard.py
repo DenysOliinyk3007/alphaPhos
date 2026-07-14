@@ -26,10 +26,21 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pandas as pd
-from bokeh.embed import file_html
-from bokeh.layouts import column, row
-from bokeh.models import Div
-from bokeh.resources import INLINE
+
+# bokeh is an optional ``[qc]`` extra.  Guard the import so ``import
+# alphaphos.qc.dashboard`` succeeds on a bare-core install; calling
+# ``generate_dashboard`` raises a friendly error below when bokeh is
+# genuinely needed.
+try:
+    from bokeh.embed import file_html
+    from bokeh.layouts import column, row
+    from bokeh.models import Div
+    from bokeh.resources import INLINE
+
+    _BOKEH_IMPORT_ERROR: ImportError | None = None
+except ImportError as _exc:  # pragma: no cover - covered by CI bare-core matrix
+    file_html = column = row = Div = INLINE = None  # type: ignore[assignment]
+    _BOKEH_IMPORT_ERROR = _exc
 
 from alphaphos.qc.metrics import (
     compute_classI_comparison,
@@ -81,6 +92,13 @@ def _format_pipeline_params_html(params: dict) -> str:
     return "<ul style='font-family:monospace;font-size:11pt;'>" + "".join(items) + "</ul>"
 
 
+def _require_bokeh() -> None:
+    if _BOKEH_IMPORT_ERROR is not None:
+        raise ImportError(
+            "generate_dashboard requires bokeh.  Install with `pip install 'alphaphos[qc]'`."
+        ) from _BOKEH_IMPORT_ERROR
+
+
 def generate_dashboard(
     adata: ad.AnnData,
     output_path: str | Path,
@@ -120,6 +138,7 @@ def generate_dashboard(
     Path
         The path to the written HTML file.
     """
+    _require_bokeh()
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
