@@ -28,7 +28,7 @@ See :func:`collapse_sites` for the settings dict; see
 for domain-specific tooling.
 """
 
-__version__ = "0.20.0"
+__version__ = "0.21.0"
 
 # Public entry points, re-exported for convenience.
 # Expose the top-tier enrichment namespace so callers can write
@@ -74,6 +74,7 @@ from alphaphos.preprocess.collapse_precursors import (
 from alphaphos.preprocess.filter import filter_by_completeness
 from alphaphos.preprocess.impute import impute_hybrid, impute_knn_site_based
 from alphaphos.preprocess.impute_pimms import impute_pimms
+from alphaphos.recommend import recommend_pipeline
 from alphaphos.signalome import SignalomeResult, build_signalome
 from alphaphos.stats.diff_exp import (
     DEFAULT_STATS_SETTINGS,
@@ -119,6 +120,7 @@ __all__ = [
     "impute_hybrid",
     "impute_knn_site_based",
     "impute_pimms",
+    "recommend_pipeline",
     "batch_correct_combat",
     "DEFAULT_COMBAT_SETTINGS",
     "diff_exp_limma",

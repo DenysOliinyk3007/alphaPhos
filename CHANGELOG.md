@@ -12,6 +12,44 @@ While in `0.x`, breaking API changes may appear in any MINOR bump (`0.1 → 0.2`
 
 _Nothing yet._
 
+## [0.21.0] - 2026-07-16
+
+### Added -- `ap.recommend_pipeline` advisory decision tree
+
+New top-level function that inspects an ``AnnData`` plus a stated
+analytical goal and prints a copy-paste-ready pipeline recipe:
+Class-I cutoff, per-cell design audit, completeness-filter parameters,
+whether to impute, which imputer, and which DE call.
+
+- **`ap.recommend_pipeline(adata, *, goal, data_type, primary_factor,
+  secondary_factor=None, subject_col=None)`** — prints to stdout, returns
+  ``None``.  Executes nothing beyond a cheap filter dry-run used to
+  estimate the recipe's retention.  Read the trace, copy the code,
+  apply it yourself.
+- **Goals**: ``primary_de`` (main + interaction), ``marginal_de``,
+  ``interaction_de``, ``onoff_discovery``, ``profiling``, ``viz_only``.
+- **Data types**: ``phospho`` / ``other_ptm`` (Class-I filter on
+  ``var["mean_loc_prob"]``), ``proteome`` (skips PTM filter).
+- **Design audit**: any ``primary × secondary`` cell with n<3 samples
+  is auto-flagged for dropping so ``keep_strategy="each"`` stays viable.
+- **Filter sizing**: ``min_valid_n = max(3, min(10, round(0.6 × smallest_cell)))``.
+  Capped at 10 because past that the test is well-powered and higher
+  thresholds drop good sites without adding rigour.
+- **Imputer selection**: KNN for n<50 (below PIMMS's paper floor);
+  PIMMS-DAE for n>=300 (~10 s vs ~25 min for KNN at cohort scale);
+  PIMMS-DAE when post-filter NaN>=40%; KNN otherwise.  Skipped entirely
+  when the DE method handles NaN natively (limma observed-only,
+  msqrob2, on/off detection) and post-filter NaN<60%.
+
+Empirical basis: 10-config grouping grid over the sfPhospho 304-fiber
+cohort plus MAE benchmarks across EGF (n=6), cardio (n=69), bulk phospho
+(n=99), SF phospho (n=304), and bulk proteome (n=367) — see
+``scratchpad/sfphospho_grouping_grid.py`` and ``scratchpad/imputation_benchmark_*``.
+
+The advisor is additive.  All existing calls (``filter_by_completeness``,
+``impute_pimms/knn/hybrid``, ``diff_exp_*``, ``on_off_detection``) keep
+their current signatures and behaviour.
+
 ## [0.20.0] - 2026-07-10
 
 ### Added -- t-SNE + UMAP in `alphaphos.dimred`
