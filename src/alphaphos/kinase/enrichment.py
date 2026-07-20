@@ -25,9 +25,9 @@ substrate sets are non-randomly distributed in the foreground / ranking.
 Pipeline position
 -----------------
 These run **downstream** of differential analysis (e.g.
-``apt.tl.diff_exp_ebayes``), using the diff_exp table plus a per-site
-sequence lookup as inputs. Complements per-site PWM prediction in
-``alphaphos.kinase.library``.
+:func:`alphaphos.diff_exp_limma` or :func:`alphaphos.diff_exp_anova`),
+using the diff_exp table plus a per-site sequence lookup as inputs.
+Complements per-site PWM prediction in ``alphaphos.kinase.library``.
 """
 
 from __future__ import annotations
@@ -130,7 +130,7 @@ def kinase_enrichment_from_diffexp(
     Parameters
     ----------
     diff_results
-        A differential analysis output (e.g. ``apt.tl.diff_exp_ebayes``).
+        A differential analysis output (e.g. :func:`alphaphos.diff_exp_limma`).
         Must contain the columns named by ``id_col``, ``lfc_col``,
         ``pval_col``.
     sequence_lookup

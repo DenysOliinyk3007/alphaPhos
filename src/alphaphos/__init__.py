@@ -73,6 +73,7 @@ from alphaphos.preprocess.collapse_precursors import (
 )
 from alphaphos.preprocess.filter import filter_by_completeness
 from alphaphos.preprocess.impute import impute_hybrid, impute_knn_site_based
+from alphaphos.preprocess.impute_pimms import impute_pimms
 from alphaphos.signalome import SignalomeResult, build_signalome
 from alphaphos.stats.diff_exp import (
     DEFAULT_STATS_SETTINGS,
@@ -80,6 +81,11 @@ from alphaphos.stats.diff_exp import (
     diff_exp_anova,
     diff_exp_limma,
     diff_exp_limma_contrasts,
+)
+from alphaphos.stats.on_off import (
+    annotate_imputed_provenance,
+    diff_exp_limma_observed_only,
+    on_off_detection,
 )
 
 
@@ -112,11 +118,15 @@ __all__ = [
     "filter_by_completeness",
     "impute_hybrid",
     "impute_knn_site_based",
+    "impute_pimms",
     "batch_correct_combat",
     "DEFAULT_COMBAT_SETTINGS",
     "diff_exp_limma",
     "diff_exp_limma_contrasts",
+    "diff_exp_limma_observed_only",
     "diff_exp_anova",
+    "on_off_detection",
+    "annotate_imputed_provenance",
     "anova_hits",
     "stats",
     "DEFAULT_STATS_SETTINGS",

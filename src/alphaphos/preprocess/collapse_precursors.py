@@ -168,9 +168,17 @@ def collapse_precursors(
 
     One row per unique precursor identifier
     ``(peptide_sequence, charge, modifications)`` per protein group, one
-    column per sample. No residue-level parsing, no localization masking.
-    Modification information is preserved on ``.var``; the best-localized
-    site (if any) is annotated too but never used to filter.
+    column per sample.  No residue-level parsing.  Modification
+    information is preserved on ``.var``; the best-localized site (if
+    any) is annotated too.
+
+    **Localization gating**: by default a Class-I gate on the precursor's
+    best localization probability (``classI_cutoff=0.75``) drops precursors
+    whose PTMs are all poorly localized -- see
+    :data:`DEFAULT_PRECURSOR_COLLAPSE_SETTINGS`.  Pass
+    ``advanced={"classI_cutoff": None}`` for a truly localization-agnostic
+    peptide view (e.g. when the downstream analysis wants EVERY precursor,
+    including those with only a diffuse phospho signal).
 
     Parameters
     ----------

@@ -98,7 +98,14 @@ logger = logging.getLogger("alphaphos.preprocess.collapse")
 
 DEFAULT_COLLAPSE_SETTINGS: dict[str, Any] = {
     "search_engine": "SN",  # "SN" | "Diann" | "Fragpipe" | "Peaks" (only SN implemented)
-    "quantification_level": "MS2",  # "MS2" | "MS1" | "auto" (fallback chain per schemas.py)
+    # "MS2" | "MS1" | "auto".  Default "MS2" prefers ``FG.MS2Quantity``
+    # (Spectronaut MS2 Fragment Ion Report).  When that column is absent
+    # (as in a standard Spectronaut "Normal" report), the reader logs a
+    # UserWarning and falls back to ``EG.TotalQuantity (Settings)`` -- the
+    # precursor-level total intensity that ships with the Normal report.
+    # See ``alphaphos.io.spectronaut`` for the exact fallback chain per
+    # search engine.  Pass ``"auto"`` explicitly to skip the warning.
+    "quantification_level": "MS2",
     "top_n_attribution": True,  # Spectronaut over-export dedup (safe default; on)
     "cutoff": 0.75,  # loc cutoff for per_run / global_max
     "classI_cutoff": 0.75,  # loc cutoff for the condition-aware mask

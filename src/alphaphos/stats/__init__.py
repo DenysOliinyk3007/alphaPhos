@@ -21,11 +21,19 @@ from alphaphos.stats.diff_exp import (
     diff_exp_limma,
     diff_exp_limma_contrasts,
 )
+from alphaphos.stats.on_off import (
+    annotate_imputed_provenance,
+    diff_exp_limma_observed_only,
+    on_off_detection,
+)
 
 __all__ = [
     "diff_exp_limma",
     "diff_exp_limma_contrasts",
+    "diff_exp_limma_observed_only",
     "diff_exp_anova",
+    "on_off_detection",
+    "annotate_imputed_provenance",
     "anova_hits",
     "design_matrix",
     "DesignMatrix",

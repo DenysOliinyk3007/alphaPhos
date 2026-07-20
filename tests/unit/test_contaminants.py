@@ -102,6 +102,23 @@ class TestParseFastaAccessions:
         acc = parse_fasta_accessions(p)
         assert acc == {"P00761", "P02769", "P19013"}
 
+    def test_prefixed_accession_also_yields_bare(self, tmp_path):
+        # Newer MaxQuant fastas use "CON__P02769" as the accession token;
+        # we must also index the bare "P02769" so that Spectronaut's
+        # ambiguous "Cont_P02769;P02769" is fully caught by the fasta
+        # lookup rather than surviving the filter.
+        p = self._write_fasta(
+            tmp_path,
+            ">CON__P02769 SWISS-PROT:CON__P02769|ALBU_BOVIN Bovine serum albumin\nMSEQ\n"
+            ">Cont_P05787 Keratin 8\nMSEQ\n"
+            ">contam_P00761 Trypsin\nMKFL\n",
+        )
+        acc = parse_fasta_accessions(p)
+        # Both prefixed AND bare forms are in the accession set
+        assert "CON__P02769" in acc and "P02769" in acc
+        assert "Cont_P05787" in acc and "P05787" in acc
+        assert "contam_P00761" in acc and "P00761" in acc
+
     def test_empty_fasta(self, tmp_path):
         p = self._write_fasta(tmp_path, "")
         assert parse_fasta_accessions(p) == set()
