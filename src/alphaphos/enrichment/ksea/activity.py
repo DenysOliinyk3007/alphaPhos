@@ -253,7 +253,24 @@ def _resolve_network(
     if network == "omnipath":
         return fetch_omnipath_ks_network(organism=organism, cache_path=cache_path)
     if network == "ptm_db":
-        return load_ptm_ks_network()
+        try:
+            return load_ptm_ks_network()
+        except FileNotFoundError as exc:
+            # The PTM functional-DB parquet is a planned Zenodo release
+            # (v0.20.x era) but is not shipped with the package.  Surface
+            # that clearly so users don't guess it's a broken install.
+            raise FileNotFoundError(
+                "network='ptm_db' requires the PTM functional-database parquet, "
+                "which is not shipped with alphaPhos (planned Zenodo release). "
+                "Options:\n"
+                "  A) Use the OmniPath-backed network: "
+                "network='omnipath' (requires internet on first call, then cached).\n"
+                "  B) Build the DB locally from the source xlsx via "
+                "``scripts/build_ptm_db.py``, then pass its output path to "
+                "``load_ptm_ks_network(db_path=...)``.\n"
+                "  C) Supply your own K-S DataFrame with 'source'/'target' "
+                "columns to ``kinase_activity(network=<df>)``."
+            ) from exc
     raise ValueError(f"network must be 'omnipath', 'ptm_db', or a DataFrame; got {network!r}")
 
 

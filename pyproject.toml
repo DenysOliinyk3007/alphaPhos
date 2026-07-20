@@ -46,8 +46,26 @@ dimred = [
     "umap-learn>=0.5",
 ]
 qc = [
+    "bokeh>=3.0",   # generate_dashboard (v1 dashboard composer)
+    "plotly>=5",    # v2 panels (retention_time_drift, psm_counts, run_tic, contaminant_fraction)
+    "kaleido>=0.2", # plotly static image export (write_image)
+]
+pimms = [
+    "pimms-learn>=0.5",  # Webel et al. 2024 Nat Commun; wraps torch + fastai
+]
+all = [
+    # Convenience: install every non-dev/docs runtime extra.  Kept in sync
+    # with the extras above.
+    "inmoose>=0.9.1",
+    "patsy>=0.5",
+    "gseapy>=1.1",
+    "decoupler>=2.0",
+    "omnipath>=1.0",
+    "umap-learn>=0.5",
+    "bokeh>=3.0",
     "plotly>=5",
     "kaleido>=0.2",
+    "pimms-learn>=0.5",
 ]
 dev = [
     "ruff>=0.6",

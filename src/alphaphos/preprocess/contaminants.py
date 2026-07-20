@@ -74,6 +74,13 @@ def parse_fasta_accessions(fasta_path: str | Path) -> set[str]:
     Subsequent tokens of the form ``DB:ACC[;ACC2;...]`` are also scanned
     so that TREMBL secondary IDs are captured.
 
+    Newer MaxQuant fastas prefix every header with ``CON__`` /
+    ``Cont_`` / ``contam_``.  We store BOTH the raw (prefixed) accession
+    and the prefix-stripped bare accession so that Spectronaut's
+    ambiguous convention ``Cont_P02769;P02769`` catches the bare BSA
+    accession via fasta lookup rather than letting it survive the
+    contaminant filter.
+
     Parameters
     ----------
     fasta_path
@@ -82,10 +89,14 @@ def parse_fasta_accessions(fasta_path: str | Path) -> set[str]:
     Returns
     -------
     set[str]
-        Unique protein accessions found in the headers.
+        Unique protein accessions found in the headers.  When the header
+        carries a contaminant-prefixed accession, both the prefixed and
+        the bare form are included.
     """
     path = Path(fasta_path)
     known_db_prefixes = ("SWISS-PROT", "TREMBL", "REFSEQ", "ENSEMBL", "H-INV", "GI")
+    # Keep in lockstep with DEFAULT_CONTAMINANT_PREFIXES at module top.
+    contam_prefixes = DEFAULT_CONTAMINANT_PREFIXES
     accessions: set[str] = set()
 
     def _yield_accessions_from_token(tok: str) -> Iterable[str]:
@@ -97,8 +108,17 @@ def parse_fasta_accessions(fasta_path: str | Path) -> set[str]:
         for sub in tok.split(";"):
             # | separates name suffix (e.g. "P00761|TRYP_PIG")
             acc = sub.split("|", 1)[0].strip()
-            if acc:
-                yield acc
+            if not acc:
+                continue
+            yield acc
+            # Also yield the prefix-stripped form so bare accessions in
+            # Spectronaut's "Cont_X;X" ambiguity lookups still match.
+            for pfx in contam_prefixes:
+                if acc.startswith(pfx):
+                    stripped = acc[len(pfx) :]
+                    if stripped:
+                        yield stripped
+                    break
 
     with path.open(encoding="utf-8") as f:
         for line in f:

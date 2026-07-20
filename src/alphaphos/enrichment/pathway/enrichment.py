@@ -270,11 +270,14 @@ def pathway_enrichment(
             len(bg_genes) if bg_genes is not None else -1,
             len(libraries),
         )
+        # gseapy.enrichr expects lowercase organism (e.g. 'human', 'mouse').
+        # Older versions accepted 'Human' too; newer ones ValueError.  We
+        # normalise to lowercase at input (line above) and pass through here.
         enr = gp.enrichr(
             gene_list=genes,
             gene_sets=libraries,
             background=bg_genes,
-            organism=organism.capitalize(),
+            organism=organism,
             outdir=outdir,
             verbose=False,
             no_plot=True,

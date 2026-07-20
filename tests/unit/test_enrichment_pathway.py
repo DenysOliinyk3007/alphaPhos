@@ -107,6 +107,23 @@ class TestBasicMockedRun:
         # Two calls: one for 'up', one for 'down'
         assert len(mock_gseapy) == 2
 
+    def test_organism_passed_to_gseapy_is_lowercase(self, mock_gseapy):
+        # Newer gseapy versions ValueError on 'Human'; only 'human' works.
+        # Ensure we pass whatever we normalised, unchanged, to gseapy.
+        diff = _make_diff_exp(n_up=10, n_down=5, n_null=20)
+        pathway_enrichment(
+            diff, libraries=["GO_BP"], background="phosphoproteome", organism="human"
+        )
+        assert all(call["organism"] == "human" for call in mock_gseapy)
+
+    def test_organism_uppercase_input_normalised_to_lowercase(self, mock_gseapy):
+        # Users passing 'Human' get lowercased and gseapy sees 'human'.
+        diff = _make_diff_exp(n_up=10, n_down=5, n_null=20)
+        pathway_enrichment(
+            diff, libraries=["GO_BP"], background="phosphoproteome", organism="Human"
+        )  # type: ignore[arg-type]
+        assert all(call["organism"] == "human" for call in mock_gseapy)
+
     def test_output_schema(self, mock_gseapy):
         diff = _make_diff_exp()
         out = pathway_enrichment(diff, libraries=["GO_BP"], background="phosphoproteome")

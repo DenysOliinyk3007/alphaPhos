@@ -38,32 +38,45 @@ VALID_STRATEGIES = ("all", "any", "each")
 def filter_by_completeness(
     adata: ad.AnnData,
     *,
-    min_valid_frac: float,
+    min_valid_frac: float | None = None,
+    min_valid_n: int | None = None,
     group_column: str | None = None,
     keep_strategy: Literal["all", "any", "each"] = "all",
     layer: str | None = None,
 ) -> ad.AnnData:
     """Return an ``AnnData`` with sites failing the completeness threshold dropped.
 
+    Provide either ``min_valid_frac`` (fractional, 0-1) OR ``min_valid_n``
+    (absolute count).  ``min_valid_n`` is often clearer for small-n
+    designs (e.g. "keep a site only if observed in at least 3 samples
+    of each group"), and matches the completeness-first workflow used
+    by :func:`alphaphos.stats.diff_exp_limma_observed_only`.
+
     Parameters
     ----------
     adata : AnnData
         Shape ``(n_samples, n_sites)``.
-    min_valid_frac : float in [0, 1]
-        Minimum fraction of non-NaN values REQUIRED to keep a site. Applied
-        per group (when ``group_column`` is set) or globally (``keep_strategy="all"``).
-        E.g. ``0.7`` = require observations in >=70% of samples.
+    min_valid_frac : float in [0, 1], optional
+        Minimum fraction of non-NaN values REQUIRED to keep a site.
+        Applied per group (when ``group_column`` is set) or globally
+        (``keep_strategy="all"``).  E.g. ``0.7`` = require observations
+        in >=70% of samples.  Mutually exclusive with ``min_valid_n``.
+    min_valid_n : int, optional
+        Minimum absolute count of non-NaN values REQUIRED to keep a site,
+        applied per group or globally as above.  Mutually exclusive with
+        ``min_valid_frac``.
     group_column : str, optional
         Column in ``adata.obs`` that partitions samples into groups
         (e.g. ``"condition"``). Required for ``keep_strategy in ("any", "each")``;
         MUST be ``None`` for ``keep_strategy="all"``.
     keep_strategy : {"all", "any", "each"}
         - ``"all"``: no groups. A site is kept if its overall valid
-          fraction >= ``min_valid_frac``. Default.
+          fraction / count meets the threshold. Default.
         - ``"any"``: needs ``group_column``. Keeps a site if it passes the
           threshold in at least one group.
         - ``"each"``: needs ``group_column``. Keeps a site only if it passes
-          the threshold in EVERY group.
+          the threshold in EVERY group -- the strict per-group completeness
+          recommended before differential testing.
     layer : str, optional
         Which layer to compute missingness on. ``None`` (default) = ``adata.X``.
         Only affects the completeness computation; the filter DROPS var rows
@@ -78,14 +91,22 @@ def filter_by_completeness(
     Raises
     ------
     ValueError
-        If ``min_valid_frac`` is out of range, ``keep_strategy`` is unknown,
-        or the strategy vs ``group_column`` combination is invalid.
+        If neither / both of ``min_valid_frac``, ``min_valid_n`` are
+        given; if ``min_valid_frac`` is out of range or ``min_valid_n``
+        is negative; if ``keep_strategy`` is unknown; or if the strategy
+        vs ``group_column`` combination is invalid.
     KeyError
         If ``group_column`` is set but not in ``adata.obs``, or ``layer`` is
         set but not in ``adata.layers``.
     """
-    if not 0.0 <= float(min_valid_frac) <= 1.0:
+    if (min_valid_frac is None) == (min_valid_n is None):
+        raise ValueError(
+            "provide exactly one of min_valid_frac or min_valid_n (not both, not neither)."
+        )
+    if min_valid_frac is not None and not 0.0 <= float(min_valid_frac) <= 1.0:
         raise ValueError(f"min_valid_frac must be in [0, 1], got {min_valid_frac!r}")
+    if min_valid_n is not None and int(min_valid_n) < 0:
+        raise ValueError(f"min_valid_n must be >= 0, got {min_valid_n!r}")
     if keep_strategy not in VALID_STRATEGIES:
         raise ValueError(f"keep_strategy must be one of {VALID_STRATEGIES}, got {keep_strategy!r}")
     if keep_strategy == "all" and group_column is not None:
@@ -107,10 +128,16 @@ def filter_by_completeness(
     X = np.asarray(adata.X if layer is None else adata.layers[layer], dtype=float)
     not_nan = ~np.isnan(X)  # (n_samples, n_sites) True where observed
 
+    def _passes(n_valid_per_site: np.ndarray, n_samples: int) -> np.ndarray:
+        # Use whichever threshold was supplied.
+        if min_valid_n is not None:
+            return n_valid_per_site >= int(min_valid_n)
+        return (n_valid_per_site / max(n_samples, 1)) >= float(min_valid_frac)
+
     if keep_strategy == "all":
         n_samples = X.shape[0]
-        valid_frac = not_nan.sum(axis=0) / max(n_samples, 1)
-        keep = valid_frac >= min_valid_frac
+        n_valid = not_nan.sum(axis=0)
+        keep = _passes(n_valid, n_samples)
     else:
         groups = adata.obs[group_column].astype(str).values
         unique_groups = np.unique(groups)
@@ -121,8 +148,7 @@ def filter_by_completeness(
             n_g = int(mask.sum())
             if n_g == 0:
                 continue
-            valid_frac = not_nan[mask].sum(axis=0) / n_g
-            per_group_pass[gi] = valid_frac >= min_valid_frac
+            per_group_pass[gi] = _passes(not_nan[mask].sum(axis=0), n_g)
         if keep_strategy == "any":
             keep = per_group_pass.any(axis=0)
         else:  # "each"
@@ -131,12 +157,17 @@ def filter_by_completeness(
     n_before = adata.n_vars
     result = adata[:, keep].copy()
 
+    threshold_repr = (
+        f"min_valid_n={min_valid_n}"
+        if min_valid_n is not None
+        else f"min_valid_frac={min_valid_frac:.2f}"
+    )
     logger.info(
-        "filter_by_completeness: %d -> %d sites (strategy=%s, min_valid_frac=%.2f%s)",
+        "filter_by_completeness: %d -> %d sites (strategy=%s, %s%s)",
         n_before,
         result.n_vars,
         keep_strategy,
-        min_valid_frac,
+        threshold_repr,
         f", group={group_column}" if group_column else "",
     )
     return result

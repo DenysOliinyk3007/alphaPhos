@@ -8,12 +8,15 @@ Phosphoproteomics analysis toolkit.
 
 ```bash
 pip install -e .                # core (Python-only)
-pip install -e ".[stats]"       # + inmoose for limma differential testing + ComBat batch correction
+pip install -e ".[stats]"       # + inmoose / patsy for limma differential testing + ComBat batch correction
+pip install -e ".[enrichment]"  # + gseapy / decoupler / omnipath for pathway_enrichment, pathway_gsea, kinase_activity
 pip install -e ".[dimred]"      # + umap-learn for ap.dimred.umap (t-SNE ships with sklearn)
+pip install -e ".[qc]"          # + bokeh / plotly / kaleido for ap.generate_dashboard and ap.qc.panel_*
+pip install -e ".[all]"         # everything above in one shot
 pip install -e ".[dev,docs]"    # development
 ```
 
-`inmoose` (Python limma + ComBat) is behind the `[stats]` extra; without it, `ap.diff_exp_limma` and `ap.batch_correct_combat` raise `ImportError` and everything else works.
+Optional extras are gated at call time: without the relevant extra installed, `ap.diff_exp_limma` (`[stats]`), `ap.enrichment.pathway_enrichment` / `ap.enrichment.kinase_activity` (`[enrichment]`), `ap.dimred.umap` (`[dimred]`), or `ap.generate_dashboard` (`[qc]`) raise a friendly `ImportError` pointing at the missing extra. The core install stays lean.
 
 ## Quickstart
 
