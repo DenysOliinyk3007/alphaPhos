@@ -31,6 +31,7 @@ don't silently choose a poorly-supported default.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import warnings
 from pathlib import Path
@@ -135,10 +136,8 @@ def impute_pimms(
         # sweep of 100+ fits).
         import matplotlib
 
-        try:
+        with contextlib.suppress(Exception):
             matplotlib.use("Agg", force=False)
-        except Exception:  # noqa: BLE001
-            pass
 
         import torch  # noqa: F401
         from pimmslearn.sklearn.ae_transformer import AETransformer
@@ -216,12 +215,10 @@ def impute_pimms(
     # PIMMS attaches training-loss matplotlib figures to the transformer
     # via ``plot_training_losses``.  Close them explicitly so repeat
     # calls in a benchmark loop don't exhaust Windows GDI handles.
-    try:
+    with contextlib.suppress(Exception):
         import matplotlib.pyplot as _plt
 
         _plt.close("all")
-    except Exception:  # noqa: BLE001
-        pass
     X_imputed_df = transformer.transform(X_wide)
     # Align: pimms may return columns in a different order in some paths;
     # reindex to the input columns to be safe.
