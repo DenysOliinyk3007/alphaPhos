@@ -4,9 +4,12 @@ Landing page for new users.  Read this first: it inventories the public
 API and walks a decision tree from raw MS output to publication-ready
 tables and figures.
 
-Version-tied to **alphaPhos 0.19.0** (September 2026); check
-`ap.__version__` if you're on a newer release.  Per-module deep dives
-live under [`docs/modules/`](modules/).
+Version-tied to **alphaPhos 0.19.0** (July 2026); check
+`ap.__version__` if you're on a newer release.  This landing page still
+documents the 0.19.0 API surface — the `dimred` t-SNE/UMAP additions
+(0.20.0) and `ap.recommend_pipeline` (0.21.0) are not yet folded in here;
+see their module docs and the README module table meanwhile.  Per-module
+deep dives live under [`docs/modules/`](modules/).
 
 ---
 
