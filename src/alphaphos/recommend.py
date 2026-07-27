@@ -61,14 +61,41 @@ NAN_HEAVY = 0.40
 N_CAP = 10
 CLASSI_DEFAULT = 0.75
 
+# Above this cohort size we prescribe the Wilson lower-bound filter on the
+# per-site Class-I fraction instead of the simple mean_loc_prob cutoff.
+# Empirical basis: sfPhospho/uPhosHT retention curves — Wilson clearly beats
+# naive filters at n >= 100 and is the demonstrably-correct default at n >= 300.
+WILSON_MIN_N = 100
 
-def _decide_classI(data_type: DataType, adata: ad.AnnData) -> tuple[float | None, str]:
+
+def _decide_classI(data_type: DataType, adata: ad.AnnData) -> tuple[str, float | str | None, str]:
+    """Return ``(kind, threshold, why)``.
+
+    - kind == "none"           : threshold is ``None``; no Class-I filter
+    - kind == "mean_loc_prob"  : threshold is a float (e.g. 0.75)
+    - kind == "wilson"         : threshold is a float or the string ``"auto"``
+    """
     if data_type == "proteome":
-        return None, "proteome → no PTM localization filter"
+        return "none", None, "proteome → no PTM localization filter"
     if "mean_loc_prob" not in adata.var.columns:
-        return None, "no `mean_loc_prob` column → skip PTM filter"
-    return CLASSI_DEFAULT, (
-        f"phospho/PTM → mean_loc_prob >= {CLASSI_DEFAULT} (default; use 0.90 for site-level claims)"
+        return "none", None, "no `mean_loc_prob` column → skip PTM filter"
+
+    n = adata.n_obs
+    if n >= WILSON_MIN_N:
+        # For cohorts big enough for sample-size correction to matter, prescribe
+        # the Wilson filter.  "auto" lets the pipeline elbow-detect the threshold
+        # within a cohort-size-informed range (see classI_wilson.AUTO_RANGES).
+        return (
+            "wilson",
+            "auto",
+            f'phospho/PTM at n={n} >= {WILSON_MIN_N} → strategy="wilson", '
+            'wilson_threshold="auto" (elbow on retention curve)',
+        )
+    return (
+        "mean_loc_prob",
+        CLASSI_DEFAULT,
+        f"phospho/PTM at n={n} < {WILSON_MIN_N} → mean_loc_prob >= {CLASSI_DEFAULT} "
+        "(Wilson under-supported at this cohort scale)",
     )
 
 
@@ -284,7 +311,8 @@ def _decide_imputer(
 
 def _preview(
     adata: ad.AnnData,
-    classI: float | None,
+    classI_kind: str,
+    classI_threshold: float | str | None,
     dropped: list[str],
     filter_cfg: dict,
     primary: str,
@@ -292,8 +320,22 @@ def _preview(
 ) -> dict:
     """Cheap filter dry-run: applies classI + drop + completeness, returns shape/NaN."""
     a = adata
-    if classI is not None and "mean_loc_prob" in a.var.columns:
-        a = a[:, (a.var["mean_loc_prob"] >= classI).values]
+    if classI_kind == "mean_loc_prob" and "mean_loc_prob" in a.var.columns:
+        a = a[:, (a.var["mean_loc_prob"] >= float(classI_threshold)).values]
+    elif classI_kind == "wilson" and "classI_wilson_lb" in a.var.columns:
+        from alphaphos.preprocess.classI_wilson import (
+            auto_wilson_threshold as _auto_wilson,
+        )
+
+        lb = a.var["classI_wilson_lb"].to_numpy()
+        if classI_threshold == "auto":
+            try:
+                t_val, _ = _auto_wilson(lb, a.n_obs)
+            except ValueError:
+                t_val = 0.5  # dry-run fallback; execution path raises for real
+        else:
+            t_val = float(classI_threshold)
+        a = a[:, lb >= t_val]
     if dropped:
         a = a[~a.obs.index.isin(dropped)]
     a = a.copy()
@@ -322,7 +364,8 @@ def _preview(
 
 
 def _render_code(
-    classI: float | None,
+    classI_kind: str,
+    classI_threshold: float | str | None,
     dropped: list[str],
     filter_cfg: dict,
     primary: str,
@@ -339,9 +382,22 @@ def _render_code(
         lines.append("")
         step += 1
 
-    if classI is not None:
-        lines.append(f"# {step}. Class-I localization filter")
-        lines.append(f'adata = adata[:, adata.var["mean_loc_prob"] >= {classI}].copy()')
+    if classI_kind == "mean_loc_prob":
+        lines.append(f"# {step}. Class-I localization filter (small-cohort default)")
+        lines.append(f'adata = adata[:, adata.var["mean_loc_prob"] >= {classI_threshold}].copy()')
+        lines.append("")
+        step += 1
+    elif classI_kind == "wilson":
+        threshold_repr = "'auto'" if classI_threshold == "auto" else f"{classI_threshold}"
+        lines.append(f"# {step}. Class-I Wilson-lb filter (large-cohort default)")
+        lines.append(
+            "# NOTE: assumes `adata` was produced by collapse_sites with "
+            'advanced={"localization_strategy": "wilson", '
+            f'"wilson_threshold": {threshold_repr}}}'
+        )
+        lines.append(
+            "# The filter is applied inside collapse_sites itself; no separate step needed."
+        )
         lines.append("")
         step += 1
 
@@ -382,7 +438,8 @@ def _render_advice(
     goal: Goal,
     data_type: DataType,
     adata: ad.AnnData,
-    classI: float | None,
+    classI_kind: str,
+    classI_threshold: float | str | None,
     why_classI: str,
     dropped: list[str],
     why_drop: str,
@@ -420,7 +477,14 @@ def _render_advice(
         f"  ┌ Recommended code (copy-paste) {bar[31:]}",
     ]
     code = _render_code(
-        classI, dropped, filter_cfg, primary, secondary, de_snippet, imputer_snippet
+        classI_kind,
+        classI_threshold,
+        dropped,
+        filter_cfg,
+        primary,
+        secondary,
+        de_snippet,
+        imputer_snippet,
     )
     for code_line in code.splitlines():
         lines.append(f"  │    {code_line}")
@@ -492,13 +556,21 @@ def recommend_pipeline(
         directly).
     """
     _ = subject_col  # reserved for future random-effects reasoning
-    classI, why_classI = _decide_classI(data_type, adata)
+    classI_kind, classI_threshold, why_classI = _decide_classI(data_type, adata)
     dropped, why_drop = _audit_and_drop_cells(adata, primary_factor, secondary_factor)
     a_sub = adata[~adata.obs.index.isin(dropped)] if dropped else adata
     filter_cfg, why_filter = _decide_filter(goal, a_sub, primary_factor, secondary_factor)
     _de_name, why_de, de_snippet = _decide_de(goal)
 
-    preview = _preview(adata, classI, dropped, filter_cfg, primary_factor, secondary_factor)
+    preview = _preview(
+        adata,
+        classI_kind,
+        classI_threshold,
+        dropped,
+        filter_cfg,
+        primary_factor,
+        secondary_factor,
+    )
 
     n_final = preview.get("n_samples_final", a_sub.n_obs)
     nan_final = preview.get("pct_nan_final", float(np.isnan(a_sub.X).mean()))
@@ -509,7 +581,8 @@ def recommend_pipeline(
             goal=goal,
             data_type=data_type,
             adata=adata,
-            classI=classI,
+            classI_kind=classI_kind,
+            classI_threshold=classI_threshold,
             why_classI=why_classI,
             dropped=dropped,
             why_drop=why_drop,

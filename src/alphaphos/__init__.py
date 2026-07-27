@@ -28,7 +28,7 @@ See :func:`collapse_sites` for the settings dict; see
 for domain-specific tooling.
 """
 
-__version__ = "0.21.0"
+__version__ = "0.22.0"
 
 # Public entry points, re-exported for convenience.
 # Expose the top-tier enrichment namespace so callers can write
@@ -60,6 +60,11 @@ from alphaphos.preprocess.batch_correct import (
     DEFAULT_COMBAT_SETTINGS,
     batch_correct_combat,
 )
+from alphaphos.preprocess.classI_wilson import (
+    apply_wilson_filter,
+    auto_wilson_threshold,
+    wilson_lower_bound,
+)
 from alphaphos.preprocess.collapse import (
     DEFAULT_COLLAPSE_SETTINGS,
     collapse_sites,
@@ -71,7 +76,10 @@ from alphaphos.preprocess.collapse_precursors import (
     collapse_precursors,
     precursor_to_site_view,
 )
-from alphaphos.preprocess.filter import filter_by_completeness
+from alphaphos.preprocess.filter import (
+    filter_by_completeness,
+    wilson_threshold_sensitivity,
+)
 from alphaphos.preprocess.impute import impute_hybrid, impute_knn_site_based
 from alphaphos.preprocess.impute_pimms import impute_pimms
 from alphaphos.recommend import recommend_pipeline
@@ -121,6 +129,10 @@ __all__ = [
     "impute_knn_site_based",
     "impute_pimms",
     "recommend_pipeline",
+    "wilson_lower_bound",
+    "auto_wilson_threshold",
+    "apply_wilson_filter",
+    "wilson_threshold_sensitivity",
     "batch_correct_combat",
     "DEFAULT_COMBAT_SETTINGS",
     "diff_exp_limma",

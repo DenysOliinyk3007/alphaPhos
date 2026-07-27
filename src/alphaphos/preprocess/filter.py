@@ -25,6 +25,9 @@ import logging
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
+import pandas as pd
+
+from alphaphos.constants import VAR_CLASSI_WILSON_LB
 
 if TYPE_CHECKING:
     import anndata as ad
@@ -33,6 +36,8 @@ logger = logging.getLogger(__name__)
 
 
 VALID_STRATEGIES = ("all", "any", "each")
+
+DEFAULT_SENSITIVITY_THRESHOLDS: tuple[float, ...] = (0.0, 0.30, 0.40, 0.50, 0.60, 0.70, 0.75)
 
 
 def filter_by_completeness(
@@ -171,3 +176,104 @@ def filter_by_completeness(
         f", group={group_column}" if group_column else "",
     )
     return result
+
+
+def wilson_threshold_sensitivity(
+    adata: ad.AnnData,
+    *,
+    thresholds: tuple[float, ...] | list[float] | None = None,
+    reference_threshold: float = 0.50,
+) -> pd.DataFrame:
+    """Return retention & quality per Wilson threshold — for supplement tables.
+
+    For each threshold, computes what the site count, %NaN, median per-site SD
+    (across all samples), and median detection breadth would be after applying
+    ``classI_wilson_lb >= threshold``.  Adds a ``vs_ref_delta_pct`` column
+    showing the site-count deviation from the ``reference_threshold`` row,
+    which converts the table directly into a robustness assessment for a paper.
+
+    Requires ``adata.var[VAR_CLASSI_WILSON_LB]`` to be populated (done
+    automatically by :func:`alphaphos.collapse_sites` since 0.22.0).
+
+    Parameters
+    ----------
+    adata
+        Site-level AnnData (post-collapse).
+    thresholds
+        Iterable of thresholds to sweep.  Defaults to
+        :data:`DEFAULT_SENSITIVITY_THRESHOLDS`
+        (``0.00, 0.30, 0.40, 0.50, 0.60, 0.70, 0.75``).
+    reference_threshold
+        The threshold whose site count anchors the ``vs_ref_delta_pct``
+        column.  Must be present in ``thresholds`` (or the closest value is
+        chosen).
+
+    Returns
+    -------
+    pd.DataFrame
+        One row per threshold, columns: ``threshold``, ``n_sites``,
+        ``pct_kept``, ``pct_nan``, ``median_sd``, ``median_n_det``,
+        ``vs_ref_delta_pct``.
+    """
+    if VAR_CLASSI_WILSON_LB not in adata.var.columns:
+        raise KeyError(
+            f"adata.var lacks '{VAR_CLASSI_WILSON_LB}'. "
+            "Re-collapse with alphaphos >= 0.22 to populate it automatically."
+        )
+
+    ts = tuple(thresholds) if thresholds is not None else DEFAULT_SENSITIVITY_THRESHOLDS
+    if len(ts) == 0:
+        raise ValueError("thresholds must be non-empty")
+    for t in ts:
+        if not 0.0 <= float(t) <= 1.0:
+            raise ValueError(f"threshold {t} outside [0, 1]")
+
+    lb = adata.var[VAR_CLASSI_WILSON_LB].to_numpy()
+    n_det = (
+        adata.var["n_samples_detected"].to_numpy() if "n_samples_detected" in adata.var else None
+    )
+    X = adata.X
+    total_sites = adata.n_vars
+
+    with np.errstate(all="ignore"):
+        per_site_sd = np.nanstd(X, axis=0)
+        per_site_obs = np.sum(~np.isnan(X), axis=0)
+    per_site_sd_valid = np.where(per_site_obs >= 2, per_site_sd, np.nan)
+
+    rows = []
+    for t in ts:
+        mask = lb >= float(t)
+        if mask.sum() == 0:
+            rows.append(
+                {
+                    "threshold": float(t),
+                    "n_sites": 0,
+                    "pct_kept": 0.0,
+                    "pct_nan": float("nan"),
+                    "median_sd": float("nan"),
+                    "median_n_det": float("nan"),
+                }
+            )
+            continue
+        Xk = X[:, mask]
+        rows.append(
+            {
+                "threshold": float(t),
+                "n_sites": int(mask.sum()),
+                "pct_kept": float(mask.mean()),
+                "pct_nan": float(np.isnan(Xk).mean()) if Xk.size else float("nan"),
+                "median_sd": float(np.nanmedian(per_site_sd_valid[mask])),
+                "median_n_det": float(np.median(n_det[mask]))
+                if n_det is not None
+                else float("nan"),
+            }
+        )
+    df = pd.DataFrame(rows)
+
+    # Anchor row for delta column
+    ref_idx = int((df["threshold"] - reference_threshold).abs().idxmin())
+    ref_n = df.loc[ref_idx, "n_sites"]
+    df["vs_ref_delta_pct"] = (df["n_sites"] - ref_n) / ref_n * 100.0 if ref_n else float("nan")
+    df.attrs["total_sites"] = total_sites
+    df.attrs["reference_threshold"] = float(df.loc[ref_idx, "threshold"])
+    return df

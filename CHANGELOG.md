@@ -10,6 +10,71 @@ While in `0.x`, breaking API changes may appear in any MINOR bump (`0.1 → 0.2`
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [0.22.0] - 2026-07-21
+
+### Added -- Wilson lower-bound Class-I filter for large phospho cohorts
+
+Corrects the two failure modes of naive per-site Class-I filtering at
+scale (`n_samples >= 100`):
+
+- `global_max` / `max_loc_prob >= 0.75`: too permissive; a single
+  1/200 measurement keeps the site.
+- `per_run` / `min_loc_prob >= 0.75`: too strict; a single 0.74
+  measurement kills a site with 99/100 Class-I detections.
+
+Wilson's binomial lower confidence bound on the per-site Class-I
+fraction (`k = n_classI_samples`, `n = n_samples_detected`) adjusts for
+sample size automatically — a 1/1 site gets Wilson_lb = 0.21 (rejected)
+while a 100/100 site gets Wilson_lb = 0.96 (kept).  Standard biostat
+machinery (Wilson 1927; Newcombe 1998; Brown, Cai & DasGupta 2001)
+applied to the Class-I fraction; not a novel method.
+
+- **`adata.var["classI_wilson_lb"]`** — auto-populated at
+  `collapse_sites` time via the Jeffreys interval
+  (`Beta.ppf(0.025, k+½, n-k+½)`, equivalent to Wilson within 0.01
+  for `n >= 5`).  Zero-cost per site; always present.
+- **`advanced={"localization_strategy": "wilson"}`** — new collapse
+  strategy that runs `global_max` at the precursor level and then
+  applies the Wilson site filter.  Bundles the recommended two-step
+  recipe under one knob.  Backward-compatible with the three existing
+  strategies (`per_run`, `global_max`, `condition`).
+- **`advanced={"wilson_threshold": "auto"}`** — default; picks the
+  threshold via Kneedle elbow detection (Satopää et al. 2011) on the
+  retention curve, within a cohort-size-informed range: `[0.20, 0.40]`
+  for `n ∈ [30, 100)`, `[0.30, 0.55]` for `n ∈ [100, 300)`, and
+  `[0.45, 0.65]` for `n >= 300`.  Falls back to range midpoint if the
+  curve is too flat.  Below `n = 30` the auto path raises `ValueError`.
+- **`advanced={"wilson_threshold": 0.5}`** — accepts a fixed float in
+  `[0, 1]` for user-controlled thresholding.
+- **`ap.wilson_lower_bound(k, n, alpha=0.05)`** — public helper for
+  computing the bound on arbitrary counts; vectorised.
+- **`ap.auto_wilson_threshold(wilson_lb, n_samples)`** — public helper
+  for the Kneedle elbow picker.  Returns `(threshold, reason)`.
+- **`ap.apply_wilson_filter(adata, threshold="auto")`** — standalone
+  post-collapse filter; stamps
+  `adata.uns["wilson_filter"] = {threshold, reason, ...}` for
+  provenance.
+- **`ap.wilson_threshold_sensitivity(adata, thresholds=..., reference_threshold=0.5)`**
+  — returns a DataFrame of retention, %NaN, median SD, median
+  detection breadth at swept thresholds, with a `vs_ref_delta_pct`
+  column for robustness assessment in a supplement table.
+- **`ap.recommend_pipeline`** now prescribes `strategy="wilson"` with
+  `wilson_threshold="auto"` for `phospho` / `other_ptm` datasets at
+  `n >= 100`; keeps the `mean_loc_prob >= 0.75` recipe for smaller
+  cohorts.
+
+Empirical basis: sfPhospho SF (n=304), uPhosHT full-plate (n=383),
+PhosphoScape rapamycin (n=305) retention curves — see
+`scratchpad/wilson_retention_curve.py` and
+`scratchpad/classI_wilson_filter.py`.  Frame in a methods section as
+"Wilson binomial CI on Class-I fraction (Wilson 1927; Newcombe 1998)".
+
+Backward compatible.  Existing collapse calls using the three prior
+strategies (`per_run`, `global_max`, `condition`) behave identically;
+the only change is one new `var` column (~microseconds per site).
+
 ### Fixed -- docs/version sync
 
 - `README.md` status line + "What ships in …" heading were still pinned

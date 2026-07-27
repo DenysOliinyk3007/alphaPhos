@@ -126,6 +126,7 @@ VAR_MAX_LOC_PROB = "max_loc_prob"
 VAR_MIN_LOC_PROB = "min_loc_prob"
 VAR_N_CLASSI_SAMPLES = "n_classI_samples"
 VAR_FRACTION_CLASSI = "fraction_classI"
+VAR_CLASSI_WILSON_LB = "classI_wilson_lb"
 
 
 # ---------------------------------------------------------------------------
