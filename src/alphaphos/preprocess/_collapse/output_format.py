@@ -21,14 +21,14 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from alphaphos.constants import (  # noqa: I001
-    VAR_CLASSI_WILSON_LB,
+from alphaphos.constants import (
     LAYER_INTENSITY_LOG2,
     LAYER_LOCALIZATION,
     OBS_PHOSPHO_SELECTIVITY_PCT,
     OBS_SAMPLE,
     UNS_ALPHAPHOS,
     UNS_SOURCE_ATTRS,
+    VAR_CLASSI_WILSON_LB,
     VAR_FRACTION_CLASSI,
     VAR_FULL_KEY,
     VAR_MAX_LOC_PROB,
