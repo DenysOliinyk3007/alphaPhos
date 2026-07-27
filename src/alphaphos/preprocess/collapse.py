@@ -112,7 +112,12 @@ DEFAULT_COLLAPSE_SETTINGS: dict[str, Any] = {
     "condition_threshold": 0.50,  # min fraction of Class-I reps to keep condition
     "collapse_level": "PG",  # "PG" (protein group) | "P" (protein resolved)
     "aggregation_method": "sum",  # "sum" | "median" | "mean" | "consolidate"
-    "localization_strategy": "condition",  # "condition" | "per_run" | "global_max"
+    "localization_strategy": "condition",  # "condition" | "per_run" | "global_max" | "wilson"
+    # Only consumed when localization_strategy == "wilson": either a float in
+    # [0, 1] or the string "auto" (elbow-detected from cohort size + retention
+    # curve; requires n_samples >= 30).  See
+    # :func:`alphaphos.preprocess.classI_wilson.apply_wilson_filter`.
+    "wilson_threshold": "auto",
     "noise_floor_filter": True,  # remove log2 values in {0, 1}
     "drop_all_nan": True,  # drop sites fully NaN after the mask
 }
@@ -192,6 +197,17 @@ def resolve_settings(advanced: dict[str, Any] | None) -> dict[str, Any]:
         raise ValueError(
             f"condition_threshold must be in (0, 1], got {settings['condition_threshold']}"
         )
+    wt = settings["wilson_threshold"]
+    if isinstance(wt, str):
+        if wt != "auto":
+            raise ValueError(f"wilson_threshold string must be 'auto', got {wt!r}")
+    else:
+        try:
+            wt_f = float(wt)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"wilson_threshold must be a float or 'auto', got {wt!r}") from exc
+        if not 0.0 <= wt_f <= 1.0:
+            raise ValueError(f"wilson_threshold must be in [0, 1], got {wt_f}")
 
     return settings
 
@@ -339,14 +355,17 @@ def collapse_sites(
     # -- Stage 6: apply localization masking (per-run mask, or condition-aware, or none)
     strategy = settings["localization_strategy"]
     decision_table = None
-    if strategy == "per_run":
+    # "wilson" delegates to global_max at the precursor-mask stage; the Wilson
+    # post-collapse site filter is applied after assemble_anndata (Stage 10).
+    strategy_effective = "global_max" if strategy == "wilson" else strategy
+    if strategy_effective == "per_run":
         site_quant = mask_per_run(
             site_quant,
             site_loc,
             cutoff=settings["cutoff"],
             logger=logger,
         )
-    elif strategy == "global_max":
+    elif strategy_effective == "global_max":
         site_quant, site_loc = filter_by_global_max(
             site_quant,
             site_loc,
@@ -354,7 +373,7 @@ def collapse_sites(
             logger=logger,
         )
         site_meta = site_meta.loc[site_quant.index]
-    elif strategy == "condition":
+    elif strategy_effective == "condition":
         # Condition mask works on LINEAR intensity + linear loc; the sequence
         # remains: mask -> log2 -> noise floor.
         site_quant, decision_table = mask_condition_aware(
@@ -373,8 +392,9 @@ def collapse_sites(
         logger=logger,
     )
 
-    # -- Stage 8: drop all-NaN sites (applies to per_run and condition modes).
-    if strategy != "global_max" and settings["drop_all_nan"]:
+    # -- Stage 8: drop all-NaN sites (applies to per_run and condition modes;
+    # skipped for global_max and its wilson-strategy delegate).
+    if strategy_effective != "global_max" and settings["drop_all_nan"]:
         site_quant, site_loc, site_meta = drop_all_nan_sites(
             site_quant,
             site_loc,
@@ -417,6 +437,13 @@ def collapse_sites(
         version=_alphaphos_version,
         logger=logger,
     )
+
+    # -- Stage 10: Wilson site filter (only when strategy == "wilson")
+    if strategy == "wilson":
+        from alphaphos.preprocess.classI_wilson import apply_wilson_filter
+
+        adata = apply_wilson_filter(adata, threshold=settings["wilson_threshold"])
+
     return adata
 
 

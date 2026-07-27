@@ -107,20 +107,35 @@ def large_cohort() -> ad.AnnData:
 
 class TestDecideClassI:
     def test_proteome_skips(self, small_two_cond):
-        cutoff, why = _decide_classI("proteome", small_two_cond)
-        assert cutoff is None
+        kind, thr, why = _decide_classI("proteome", small_two_cond)
+        assert kind == "none"
+        assert thr is None
         assert "proteome" in why.lower()
 
-    def test_phospho_default_075(self, small_two_cond):
-        cutoff, why = _decide_classI("phospho", small_two_cond)
-        assert cutoff == CLASSI_DEFAULT == 0.75
+    def test_small_phospho_uses_mean_loc_prob(self, small_two_cond):
+        kind, thr, why = _decide_classI("phospho", small_two_cond)
+        assert kind == "mean_loc_prob"
+        assert thr == CLASSI_DEFAULT == 0.75
         assert "mean_loc_prob" in why
 
     def test_missing_column_skips(self, small_two_cond):
         adata = _mk_adata(6, 100, small_two_cond.obs, with_loc_prob=False)
-        cutoff, why = _decide_classI("phospho", adata)
-        assert cutoff is None
+        kind, thr, why = _decide_classI("phospho", adata)
+        assert kind == "none"
+        assert thr is None
         assert "mean_loc_prob" in why
+
+    def test_large_phospho_prescribes_wilson(self):
+        # >= 100 samples → Wilson auto
+        obs = pd.DataFrame(
+            {"cond": ["A"] * 100 + ["B"] * 100},
+            index=[f"s{i}" for i in range(200)],
+        )
+        adata = _mk_adata(200, 500, obs)
+        kind, thr, why = _decide_classI("phospho", adata)
+        assert kind == "wilson"
+        assert thr == "auto"
+        assert "wilson" in why.lower() or "Wilson" in why
 
 
 class TestAuditAndDropCells:
@@ -344,3 +359,35 @@ class TestRecommendPipelinePrint:
         assert "Final matrix" in out
         assert "Missingness" in out
         assert "Interaction OK" in out
+
+    def test_large_phospho_prescribes_wilson_strategy(self, large_cohort, capsys):
+        # large_cohort has n=320 → Wilson band, phospho triggers Wilson prescription
+        recommend_pipeline(
+            large_cohort,
+            goal="primary_de",
+            data_type="phospho",
+            primary_factor="group",
+            secondary_factor="time",
+        )
+        out = self._get_output(capsys)
+        assert 'localization_strategy": "wilson"' in out
+        assert (
+            "wilson_threshold\": 'auto'" in out
+            or 'wilson_threshold": "auto"' in out
+            or "wilson_threshold" in out
+        )
+        assert "Wilson" in out or "wilson" in out
+        # And the mean_loc_prob small-cohort recipe should NOT appear
+        assert 'mean_loc_prob"] >= 0.75' not in out
+
+    def test_small_phospho_uses_mean_loc_prob_not_wilson(self, factorial_medium, capsys):
+        # factorial_medium has n=60 < WILSON_MIN_N (=100) → mean_loc_prob
+        recommend_pipeline(
+            factorial_medium,
+            goal="marginal_de",
+            data_type="phospho",
+            primary_factor="fiber_type",
+        )
+        out = self._get_output(capsys)
+        assert 'mean_loc_prob"] >= 0.75' in out
+        assert 'localization_strategy": "wilson"' not in out

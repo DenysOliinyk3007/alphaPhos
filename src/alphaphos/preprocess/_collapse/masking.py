@@ -38,7 +38,7 @@ from alphaphos.constants import OBS_CONDITION, OBS_SAMPLE, VAR_FULL_KEY
 _NULL_LOGGER = logging.getLogger("alphaphos.preprocess._collapse.masking")
 
 
-VALID_STRATEGIES = ("per_run", "global_max", "condition")
+VALID_STRATEGIES = ("per_run", "global_max", "condition", "wilson")
 
 
 def mask_per_run(

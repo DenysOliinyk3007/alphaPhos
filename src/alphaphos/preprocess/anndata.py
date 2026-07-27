@@ -142,19 +142,29 @@ def _compute_site_qc(
     - ``mean_loc_prob``, ``max_loc_prob``, ``min_loc_prob``: across samples
     - ``n_classI_samples``: count of samples with loc ≥ classI_cutoff
     - ``fraction_classI``: n_classI_samples / total_samples
+    - ``classI_wilson_lb``: Jeffreys / Wilson-equivalent 95% lower confidence
+      bound on the per-site Class-I rate — sample-size-aware correction to
+      ``n_classI_samples / n_samples_detected`` (see
+      :mod:`alphaphos.preprocess.classI_wilson`).
     """
+    from alphaphos.preprocess.classI_wilson import wilson_lower_bound
+
     # Align to the requested site index and sample columns; missing entries
     # become NaN, which the aggregations handle natively.
     loc = loc_per_run.reindex(index=site_index, columns=sample_cols)
     n_total = len(sample_cols)
+    n_samples_detected = loc.notna().sum(axis=1).astype(int)
+    n_classI_samples = (loc >= classI_cutoff).sum(axis=1).astype(int)
+    wilson_lb = wilson_lower_bound(n_classI_samples.to_numpy(), n_samples_detected.to_numpy())
     return pd.DataFrame(
         {
-            "n_samples_detected": loc.notna().sum(axis=1).astype(int),
+            "n_samples_detected": n_samples_detected,
             "mean_loc_prob": loc.mean(axis=1).astype(float),
             "max_loc_prob": loc.max(axis=1).astype(float),
             "min_loc_prob": loc.min(axis=1).astype(float),
-            "n_classI_samples": (loc >= classI_cutoff).sum(axis=1).astype(int),
-            "fraction_classI": ((loc >= classI_cutoff).sum(axis=1) / max(n_total, 1)).astype(float),
+            "n_classI_samples": n_classI_samples,
+            "fraction_classI": (n_classI_samples / max(n_total, 1)).astype(float),
+            "classI_wilson_lb": wilson_lb.astype(float),
         },
         index=site_index,
     )

@@ -21,7 +21,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from alphaphos.constants import (
+from alphaphos.constants import (  # noqa: I001
+    VAR_CLASSI_WILSON_LB,
     LAYER_INTENSITY_LOG2,
     LAYER_LOCALIZATION,
     OBS_PHOSPHO_SELECTIVITY_PCT,
@@ -161,6 +162,23 @@ def assemble_anndata(
     is_classI = loc_arr >= classI_cutoff  # NaN loc -> False
     var[VAR_N_CLASSI_SAMPLES] = is_classI.sum(axis=0).astype(int)
     var[VAR_FRACTION_CLASSI] = var[VAR_N_CLASSI_SAMPLES] / max(loc_arr.shape[0], 1)
+
+    # Per-site 95% Jeffreys/Wilson lower confidence bound on the Class-I fraction.
+    # See alphaphos.preprocess.classI_wilson — cheap, always populated, backs the
+    # ``strategy="wilson"`` and ``wilson_threshold_sensitivity`` public APIs.
+    # For Wilson we need k <= n; because ``VAR_N_CLASSI_SAMPLES`` is counted on
+    # the loc matrix and ``VAR_N_SAMPLES_DETECTED`` on the intensity matrix (which
+    # may be more aggressively filtered — noise floor, per-run mask, etc.), we
+    # intersect the two masks so k is the count of samples that are BOTH
+    # Class-I and quantified.
+    from alphaphos.preprocess.classI_wilson import wilson_lower_bound
+
+    intensity_observed = ~np.isnan(X)
+    k_wilson = (is_classI & intensity_observed).sum(axis=0).astype(int)
+    var[VAR_CLASSI_WILSON_LB] = wilson_lower_bound(
+        k_wilson,
+        var[VAR_N_SAMPLES_DETECTED].to_numpy(),
+    )
 
     adata = ad.AnnData(X=X, obs=obs, var=var)
     adata.layers[LAYER_INTENSITY_LOG2] = X.copy()
