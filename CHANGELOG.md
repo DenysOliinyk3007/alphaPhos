@@ -10,7 +10,19 @@ While in `0.x`, breaking API changes may appear in any MINOR bump (`0.1 → 0.2`
 
 ## [Unreleased]
 
-_Nothing yet._
+### Fixed -- docs/version sync
+
+- `README.md` status line + "What ships in …" heading were still pinned
+  to **v0.20.0** while the package shipped **0.21.0**; bumped to match
+  `pyproject.toml` / `__init__.py`.
+- Added a `README.md` module-table row for `ap.recommend_pipeline`
+  (0.21.0) and refreshed the `alphaphos.qc` row to list the shipped
+  QC v2 raw-PSM metrics + Plotly `panel_*` renderers.
+- `pyproject.toml` `description` no longer advertises the removed
+  `acquisition` module or a `visualization` submodule (still a stub).
+- `docs/how-to-use-alphaphos.md` header date corrected (0.19.0 shipped
+  July 2026, not September) and annotated that its body still documents
+  the 0.19.0 API surface.
 
 ## [0.21.0] - 2026-07-16
 

@@ -2,7 +2,7 @@
 
 Phosphoproteomics analysis toolkit.
 
-**Status:** pre-alpha (v0.20.0). Standard 2-condition workflows (Spectronaut / DIA-NN / FragPipe → sites → filter → impute → optional ComBat → limma → PCA / KSEA / enrichment) are covered end-to-end and validated on real data. Multi-contrast / multi-group designs (moderated F-test, paired-block, arbitrary contrasts) ship via `ap.diff_exp_anova` + `ap.diff_exp_limma_contrasts` on a clean-room Smyth 2004 stack (bit-exact vs inmoose on the 2-group case). Cross-species orthology (mouse ↔ human) is validated on full SwissProt. PCA / t-SNE / UMAP all ship in `ap.dimred` with a shared API.
+**Status:** pre-alpha (v0.21.0). Standard 2-condition workflows (Spectronaut / DIA-NN / FragPipe → sites → filter → impute → optional ComBat → limma → PCA / KSEA / enrichment) are covered end-to-end and validated on real data. Multi-contrast / multi-group designs (moderated F-test, paired-block, arbitrary contrasts) ship via `ap.diff_exp_anova` + `ap.diff_exp_limma_contrasts` on a clean-room Smyth 2004 stack (bit-exact vs inmoose on the 2-group case). Cross-species orthology (mouse ↔ human) is validated on full SwissProt. PCA / t-SNE / UMAP all ship in `ap.dimred` with a shared API. `ap.recommend_pipeline` inspects an AnnData plus a stated analytical goal and prints a copy-paste-ready filter + impute + DE recipe (advisory only — it executes nothing).
 
 ## Install
 
@@ -60,7 +60,7 @@ result = ap.diff_exp_limma(
 #   log2fc, se, t_stat, p_value, fdr, B, ave_expr
 ```
 
-## What ships in v0.20.0
+## What ships in v0.21.0
 
 | Module | Function | Notes |
 | --- | --- | --- |
@@ -86,8 +86,9 @@ result = ap.diff_exp_limma(
 | `alphaphos.enrichment.pathway_gsea` | `pathway_gsea` | Gene-level preranked GSEA (Subramanian 2005 via gseapy prerank) on the same Enrichr libraries. Complements ORA for coherent-motion pathways. Site→gene collapse via max-\|log2fc\| default or lowest-per-site-FDR. |
 | `alphaphos.orthology` | `map_to_human` | Cross-species phospho-site translation via ±7 flanking-window matching against the target proteome, with target-decoy FDR (Elias-Gygi 2007), optional ±30 broader-window verification, and paralog disambiguation. Validated on full mouse SwissProt (60.2% mapping rate; species-entrapment FDR ≤ 5×10⁻⁴). |
 | `alphaphos.signalome` | `build_signalome`, `SignalomeResult`, per-stage helpers (`cluster_sites`, `derive_protein_modules`, `build_module_assignments`, `build_module_table`, `build_kinase_network`, `build_expanded_table`) | Module detection + kinase-network extraction on kinase-prediction matrices (e.g. Yaffe PSSM scores from `score_kinases`). Ward hierarchical clustering + auto module-count selection (scale-aware `scoring_mode`), protein-level module resolution via cluster-signature grouping, module × kinase % share table, kinase-kinase correlation network (signed / positive-only / absolute policies), denormalised expanded view. Clean-room MIT re-implementation of the [PhosR](https://github.com/PYangLab/PhosR) (Kim et al. 2021 *Cell Rep Meth*) / [PhosPy](https://github.com/falconsmilie/phospy) signalome algorithm — bit-exact parity validated stage-by-stage. See [docs/modules/signalome/](docs/modules/signalome/index.md). |
+| `alphaphos.recommend` | `recommend_pipeline` | Advisory decision tree: inspects an AnnData + a stated `goal` (`primary_de` / `marginal_de` / `interaction_de` / `onoff_discovery` / `profiling` / `viz_only`) and `data_type` (`phospho` / `other_ptm` / `proteome`), then prints a Class-I cutoff, per-cell design audit, completeness-filter parameters, whether/which imputer, and the matching DE call as copy-paste code. Executes nothing beyond a cheap filter dry-run; returns `None`. |
 | `alphaphos.dose_response` | `fit_dose_response` | CurveCurator wrapper (optional `curve_curator`). |
-| `alphaphos.qc` | `generate_dashboard` | Bokeh QC HTML report (optional `bokeh`). |
+| `alphaphos.qc` | `generate_dashboard`, `compute_*` metrics, `panel_*` (v2) | Bokeh QC HTML report (`generate_dashboard`, optional `bokeh`) plus composable per-metric functions. **QC v2 (in progress):** raw-PSM Layer-1 metrics — `compute_retention_time_drift`, `compute_psm_counts_per_sample`, `compute_run_tic_per_sample`, `compute_contaminant_fraction_per_sample` — and their Plotly `panel_*_summary` / `panel_*_by_order` renderers (optional `plotly` / `kaleido`). |
 
 ## Known limitations to flag before use
 
