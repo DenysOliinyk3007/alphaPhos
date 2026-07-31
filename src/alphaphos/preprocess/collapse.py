@@ -297,9 +297,12 @@ def collapse_sites(
 
     if settings["localization_strategy"] == "condition" and condition_df is None:
         raise ValueError(
-            "localization_strategy='condition' requires condition_df. Pass a "
-            "DataFrame with columns 'sample' (matching R.FileName) and "
-            "'condition' (grouping replicates)."
+            "localization_strategy='condition' (the default) requires condition_df. "
+            "Pass a DataFrame with columns 'sample' (matching R.FileName) and "
+            "'condition' (grouping replicates). If you don't have condition labels, "
+            "use advanced={'localization_strategy': 'per_run'} (strict) or "
+            "advanced={'localization_strategy': 'global_max'} (permissive) — "
+            "these skip condition-aware masking entirely."
         )
     if condition_df is not None and not {OBS_SAMPLE, OBS_CONDITION}.issubset(condition_df.columns):
         missing = {OBS_SAMPLE, OBS_CONDITION} - set(condition_df.columns)

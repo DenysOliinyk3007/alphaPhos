@@ -4,32 +4,39 @@ Landing page for new users.  Read this first: it inventories the public
 API and walks a decision tree from raw MS output to publication-ready
 tables and figures.
 
-Version-tied to **alphaPhos 0.19.0** (July 2026); check
-`ap.__version__` if you're on a newer release.  This landing page still
-documents the 0.19.0 API surface — the `dimred` t-SNE/UMAP additions
-(0.20.0) and `ap.recommend_pipeline` (0.21.0) are not yet folded in here;
-see their module docs and the README module table meanwhile.  Per-module
-deep dives live under [`docs/modules/`](modules/).
+Version-tied to **alphaPhos 0.22.0** (July 2026); check `ap.__version__`
+on a newer release.  Per-module deep dives live under
+[`docs/modules/`](modules/); an alpha-tester onboarding note is at
+[`docs/alpha-tester-guide.md`](alpha-tester-guide.md); the "why these
+defaults?" explanation for expert users is at
+[`docs/design-principles.md`](design-principles.md).
+
+**New in 0.22 — start here:** call `ap.recommend_pipeline(adata,
+goal=..., data_type=..., primary_factor=...)` after `collapse_sites` to
+get a copy-paste recipe (filter → imputer → DE) tuned to your cohort's
+size and design.  It's advisory-only — it prints; you copy.  See §6.
 
 ---
 
 ## 1. Module inventory (all public entry points)
 
 Every name below is accessible as `ap.<name>` (top level) or
-`ap.<namespace>.<name>` (sub-package).  ~65 public names total.
+`ap.<namespace>.<name>` (sub-package).
 
 | Layer | Namespace | What's in it |
 | --- | --- | --- |
+| **Advisor** *(new in 0.21)* | `ap.` top | `recommend_pipeline` — inspects an AnnData + stated goal, prints a copy-paste recipe (filter, imputer, DE); executes nothing |
 | **IO -- phospho** | `ap.` top | `read_spectronaut`, `read_diann`, `read_fragpipe_sites` |
 | **IO -- proteome** | `ap.proteome` | `read_spectronaut_short`, `read_spectronaut_long`, `collapse_proteome`, `phospho_over_proteome` |
 | **PSM &rarr; AnnData** | `ap.` top | `collapse_sites` (site-level), `collapse_precursors` + `precursor_to_site_view` (precursor-level) |
-| **Preprocessing** | `ap.` top | `filter_by_completeness`, `impute_hybrid`, `impute_knn_site_based`, `batch_correct_combat`, `add_kinase_windows`, `load_fasta` |
-| **Statistics** | `ap.stats.*` | `diff_exp_limma` (2-group), `diff_exp_limma_contrasts` (multi-contrast), `diff_exp_anova` (multi-group F), `anova_hits`, `design_matrix`, `DesignMatrix` |
+| **Class-I filtering** *(new in 0.22)* | `ap.` top | `wilson_lower_bound`, `auto_wilson_threshold`, `apply_wilson_filter`, `wilson_threshold_sensitivity`; `collapse_sites(advanced={"localization_strategy": "wilson"})` bundles global-max + site-level Wilson filter in one step |
+| **Preprocessing** | `ap.` top | `filter_by_completeness`, `impute_hybrid`, `impute_knn_site_based`, `impute_pimms` *(new in 0.20)*, `batch_correct_combat`, `add_kinase_windows`, `load_fasta` |
+| **Statistics** | `ap.stats.*` | `diff_exp_limma` (2-group), `diff_exp_limma_contrasts` (multi-contrast), `diff_exp_anova` (multi-group F), `diff_exp_limma_observed_only`, `anova_hits`, `on_off_detection`, `design_matrix`, `DesignMatrix` |
 | **Kinase scoring** | `ap.kinase.library` | `score_kinases` (Yaffe / Johnson 2023 PSSMs via the `kinase_library` package) |
 | **KSEA (kinase activity)** | `ap.enrichment.*` | `kinase_activity` (decoupler ULM/MLM), `fetch_omnipath_ks_network`, `load_ptm_ks_network` |
 | **Site enrichment** | `ap.enrichment.*` | `ora`, `gsea`, `canonicalise_site_ids`, `emit_libraries`, `load_libraries`, `load_gmt`, `match_sites`, `attach_site_ids`, `parse_alphaphos_key` |
 | **Gene enrichment** | `ap.enrichment.*` | `pathway_enrichment` (Enrichr ORA), `pathway_gsea` (preranked GSEA) |
-| **Dimensionality reduction** | `ap.dimred.*` | `pca` (standard / NIPALS / PPCA), `compare_imputation_impact`, `sample_distance`, `hierarchical_cluster`, `loadings_for_enrichment`, `feature_variance_contribution`, `get_pca_dataframe`, `get_pca_loadings` |
+| **Dimensionality reduction** | `ap.dimred.*` | `pca` (standard / NIPALS / PPCA), `tsne` *(new in 0.20)*, `umap` *(new in 0.20; optional `[dimred]` extra)*, `compare_imputation_impact`, `sample_distance`, `hierarchical_cluster`, `loadings_for_enrichment`, `feature_variance_contribution`, `get_pca_dataframe`, `get_pca_loadings` |
 | **Signalome (module + kinase network)** | `ap.signalome.*` | `build_signalome`, `SignalomeResult`, per-stage helpers (`cluster_sites`, `derive_protein_modules`, `build_module_assignments`, `build_module_table`, `build_kinase_network`, `build_expanded_table`, `extract_site_metadata`, `extract_site_to_protein`) |
 | **Cross-species** | `ap.orthology` | `map_to_human` (validated on mouse SwissProt) |
 | **QC** | `ap.` top | `generate_dashboard` (Bokeh HTML report; optional `bokeh` dep) |
@@ -71,15 +78,35 @@ Paired phospho / proteome normalisation        ─▶ ap.proteome.phospho_over_p
 
 ### Level 3 -- Standard preprocessing (almost always in this order)
 
+For phospho with `n ≥ 30` you can often skip hand-tuning and let
+`ap.recommend_pipeline(adata, goal=..., data_type="phospho",
+primary_factor=...)` print a recipe.  It bakes in the current defaults
+for Class-I filtering, completeness, and imputer choice.
+
 ```
+0. Class-I filtering        (phospho / other PTMs only; proteome skips)
+                            small cohort (n < 100):  filter on adata.var["mean_loc_prob"] >= 0.75
+                            large cohort (n >= 100): ap.collapse_sites(
+                                                       advanced={
+                                                         "localization_strategy": "wilson",
+                                                         "wilson_threshold": "auto",   # or a fixed float
+                                                       })
+                            standalone post-collapse variant:  ap.apply_wilson_filter(adata, 0.50)
+                            supplement sensitivity:            ap.wilson_threshold_sensitivity(adata)
+
 1. Filter by completeness   ap.filter_by_completeness(
                               min_valid_frac=2/3,
                               group_column="condition",
-                              keep_strategy="each"|"any"|"global")
-2. Impute (if needed)       ap.impute_hybrid   (default; per-cell MAR-KNN + MNAR-Gaussian)
-                            ap.impute_knn_site_based (legacy parity)
+                              keep_strategy="each"|"any"|"all")
+
+2. Impute (if needed)       ap.impute_hybrid          per-site MAR-KNN + MNAR-Gaussian (heuristic)
+                            ap.impute_knn_site_based  legacy-parity KNN
+                            ap.impute_pimms           deep learning autoencoder / VAE (needs [pimms]
+                                                       extra; recommended default at n >= 50)
+
 3. Batch correct (optional) ap.batch_correct_combat   OR   pass batch= as covariate to diff-exp
-4. QC / exploratory         ap.dimred.pca + get_pca_dataframe / sample_distance
+4. QC / exploratory         ap.dimred.pca / tsne / umap  (tsne/umap new in 0.20; umap needs [dimred])
+                            ap.dimred.get_pca_dataframe / sample_distance
                             ap.dimred.compare_imputation_impact   (does imputation distort clusters?)
                             ap.generate_dashboard("qc.html")      (Bokeh HTML report)
 ```
@@ -152,7 +179,10 @@ These sit between the main functions and unblock common patterns.
 
 ## 3. Canonical end-to-end workflows
 
-Four common study designs.  Each block runs top-to-bottom.
+Four common study designs.  Each block runs top-to-bottom.  If you're not
+sure which flavour to run — collapse, then call `ap.recommend_pipeline(
+adata, goal="primary_de", data_type="phospho", primary_factor="condition",
+secondary_factor=None)` and paste the printed recipe.
 
 ### Workflow A -- 2-group phospho study (the standard case)
 
@@ -160,13 +190,17 @@ Four common study designs.  Each block runs top-to-bottom.
 import alphaphos as ap
 
 # 1. IO + collapse
+#    For n >= 100 phospho cohorts, use strategy="wilson" (bundles global_max
+#    at precursor level + Wilson lower-bound Class-I filter at site level).
+#    For smaller cohorts, use the default "condition" strategy and filter
+#    later on adata.var["mean_loc_prob"] >= 0.75.
 psm = ap.read_spectronaut("report.tsv")
-adata = ap.collapse_sites(psm, condition_df=cond_df)
+adata = ap.collapse_sites(psm, condition_df=cond_df)  # or advanced={"localization_strategy": "wilson"}
 
 # 2. Preprocess
 adata = ap.filter_by_completeness(adata, min_valid_frac=2/3,
                                     group_column="condition", keep_strategy="each")
-adata = ap.impute_hybrid(adata)
+adata = ap.impute_hybrid(adata)   # or ap.impute_pimms(adata) if n >= 50 and [pimms] installed
 
 # 3. Two-group diff-exp
 result = ap.diff_exp_limma(adata, condition_column="condition",
@@ -276,7 +310,54 @@ adata_norm = ap.proteome.phospho_over_proteome(
 
 ---
 
-## 5. Where else to look
+## 5. The advisor: `ap.recommend_pipeline`
+
+Since 0.21, the fastest way to a working pipeline is to let alphaphos
+suggest one from your AnnData's shape and metadata.
+
+```python
+psm = ap.read_spectronaut("report.tsv")
+adata = ap.collapse_sites(psm, condition_df=cond_df)
+
+ap.recommend_pipeline(
+    adata,
+    goal="primary_de",           # main effects + interaction
+    data_type="phospho",         # "phospho" | "other_ptm" | "proteome"
+    primary_factor="condition",  # column in adata.obs
+    secondary_factor=None,       # e.g. "time_point" for a factorial design
+)
+# Prints a boxed report to stdout:
+#   1) decision trace (why each step was chosen)
+#   2) copy-paste code (numbered steps, ready for a notebook cell)
+#   3) expected outcome (retention, %NaN, interaction-testability)
+# Does NOT modify adata.  You copy the code and apply it yourself.
+```
+
+Cohort-size gates baked in:
+
+| cohort n  | Class-I filter | imputer for viz-only |
+| --- | --- | --- |
+| n < 30    | `mean_loc_prob >= 0.75` | KNN (Wilson under-supported) |
+| n < 100   | `mean_loc_prob >= 0.75` | KNN |
+| n < 300   | `strategy="wilson"` + auto threshold | KNN if NaN<40%, else PIMMS-DAE |
+| n >= 300  | `strategy="wilson"` + auto threshold | PIMMS-DAE (10 s vs ~25 min for KNN) |
+
+Design goals also change the shape of the recipe:
+
+| goal | filter grouping | DE method |
+| --- | --- | --- |
+| `primary_de` (default) | interaction cells when possible | limma-observed-only + contrasts |
+| `marginal_de` | primary factor / each | limma-observed-only |
+| `interaction_de` | primary × secondary / each | limma_contrasts with interaction |
+| `onoff_discovery` | primary / any | on_off_detection + msqrob2 |
+| `profiling` | global frac 0.7 | (no DE) |
+| `viz_only` | primary / any (permissive) | (no DE); triggers imputation |
+
+Full API reference in [the recommend module docstring](../src/alphaphos/recommend.py).
+
+---
+
+## 6. Where else to look
 
 - **`README.md`** -- top-level table of contents, install instructions,
   quickstart.
