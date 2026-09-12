@@ -53,7 +53,7 @@ Roughly in decreasing order of value:
 
 These are all on the roadmap; reporting them individually just adds noise:
 
-- **`viz` submodule is a stub.** Publication-quality volcano / heatmap / PCA scatter don't ship yet. `ap.qc.generate_dashboard(adata, "qc.html")` covers the exploratory side.
+- **No `viz` submodule yet.** Publication-quality volcano / heatmap / PCA scatter don't ship yet (planned). `ap.qc.generate_dashboard(adata, "qc.html")` and the `ap.qc.panel_*` Plotly renderers cover the exploratory side.
 - **Error messages are inconsistent.** Some are polished (Wilson threshold validation); others let a Python traceback bubble up. If you hit an unclear one, telling us *which* one is helpful — the audit uses your list.
 - **KSEA and UMAP require numpy < 2.4.** Upstream numba issue. If you need them, pin numpy in your environment.
 - **`ap.dose_response.fit_dose_response` needs the optional `curve_curator` dep.** Install with `pip install "alphaphos[dose_response]"`. Not blocking for standard DIA phospho.
@@ -71,7 +71,7 @@ Things we don't want feedback on (yet):
 - **Additional imputation methods.** We benchmarked shift_rsn / KNN / hybrid / PIMMS-DAE / PIMMS-VAE across 5 datasets; PIMMS-DAE + KNN are the shipped defaults. If you have a strong preference for a specific other imputer (msqrob2's minprob, Amelia II, missForest), file an issue with your reasoning — but expect us to say "not yet, maybe post-1.0."
 - **The precursor-informed imputation line.** We tried three variants on EGF and dropped them (details in the CHANGELOG). Not planning to revisit unless someone has a concrete counter-benchmark.
 - **Full R-limma compatibility.** Our limma is a clean-room Python implementation of Smyth 2004. It matches R limma on our validation benchmark at Pearson `r = 1.0000` on logFC, but there will be small numerical differences (e.g. `t_stat` down to the 4th decimal). If you rely on bitwise identity with R, alphaPhos is not that tool.
-- **The `viz` submodule** (as noted above; we know).
+- **Publication plots / a `viz` submodule** (as noted above; we know).
 
 ---
 

@@ -352,7 +352,7 @@ def compute_contaminant_breakdown(
     Returns empty DataFrame if PSM df has no contaminant rows or required
     columns are missing.
     """
-    from alphaphos.preprocess.contaminants import (
+    from alphaphos.io.contaminants import (
         DEFAULT_CONTAMINANT_PREFIXES,
         _is_contaminant_protein,
         get_default_contaminants_fasta,

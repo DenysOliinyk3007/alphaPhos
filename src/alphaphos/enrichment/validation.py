@@ -51,12 +51,13 @@ from alphaphos.enrichment.db import (
     load_ptm_db,
     site_id,
 )
+from alphaphos.resources import GOLDSTANDARD_DIR
 
 logger = logging.getLogger(__name__)
 
 
-_REPO_ROOT = Path(__file__).resolve().parents[3]
-_GOLDSTANDARD_DIR = _REPO_ROOT / "resources" / "goldstandard"
+# Shipped inside the wheel (src/alphaphos/resources/goldstandard/).
+_GOLDSTANDARD_DIR = GOLDSTANDARD_DIR
 EV3_PATH = _GOLDSTANDARD_DIR / "goldstandard_OchoaAtlas2016_EV3_expected_regulation.csv"
 EV2_PATH = _GOLDSTANDARD_DIR / "reference_OchoaAtlas2016_EV2_KSEA_activities.csv"
 

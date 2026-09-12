@@ -32,8 +32,9 @@ Every name below is accessible as `ap.<name>` (top level) or
 | **Class-I filtering** *(new in 0.22)* | `ap.` top | `wilson_lower_bound`, `auto_wilson_threshold`, `apply_wilson_filter`, `wilson_threshold_sensitivity`; `collapse_sites(advanced={"localization_strategy": "wilson"})` bundles global-max + site-level Wilson filter in one step |
 | **Preprocessing** | `ap.` top | `filter_by_completeness`, `impute_hybrid`, `impute_knn_site_based`, `impute_pimms` *(new in 0.20)*, `batch_correct_combat`, `add_kinase_windows`, `load_fasta` |
 | **Statistics** | `ap.stats.*` | `diff_exp_limma` (2-group), `diff_exp_limma_contrasts` (multi-contrast), `diff_exp_anova` (multi-group F), `diff_exp_limma_observed_only`, `anova_hits`, `on_off_detection`, `design_matrix`, `DesignMatrix` |
-| **Kinase scoring** | `ap.kinase.library` | `score_kinases` (Yaffe / Johnson 2023 PSSMs via the `kinase_library` package) |
-| **KSEA (kinase activity)** | `ap.enrichment.*` | `kinase_activity` (decoupler ULM/MLM), `fetch_omnipath_ks_network`, `load_ptm_ks_network` |
+| **Kinase scoring** | `ap.kinase.library` | `score_kinases`, `predict_kinases` (Yaffe / Johnson 2023 PSSMs via the `kinase_library` package) |
+| **KSEA -- curated networks** | `ap.enrichment.*` | `kinase_activity` (decoupler ULM/MLM on OmniPath / PTM-DB kinase-substrate edges), `fetch_omnipath_ks_network`, `load_ptm_ks_network` |
+| **KSEA -- PSSM-predicted substrates** | `ap.kinase.*` | `kinase_enrichment_from_diffexp` (Fisher per direction), `kinase_mea` (GSEA-style, full ranking), `kinase_enrichment_binary` (custom foreground/background). Sequence-based: covers sites with no database evidence; needs `add_kinase_windows` first |
 | **Site enrichment** | `ap.enrichment.*` | `ora`, `gsea`, `canonicalise_site_ids`, `emit_libraries`, `load_libraries`, `load_gmt`, `match_sites`, `attach_site_ids`, `parse_alphaphos_key` |
 | **Gene enrichment** | `ap.enrichment.*` | `pathway_enrichment` (Enrichr ORA), `pathway_gsea` (preranked GSEA) |
 | **Dimensionality reduction** | `ap.dimred.*` | `pca` (standard / NIPALS / PPCA), `tsne` *(new in 0.20)*, `umap` *(new in 0.20; optional `[dimred]` extra)*, `compare_imputation_impact`, `sample_distance`, `hierarchical_cluster`, `loadings_for_enrichment`, `feature_variance_contribution`, `get_pca_dataframe`, `get_pca_loadings` |
@@ -129,10 +130,16 @@ for Class-I filtering, completeness, and imputer choice.
                                   condition_column, contrasts={"name": (trt, ctrl), ...})
 
 "Which KINASES are active?"
-    └── ap.enrichment.kinase_activity(
-              diff_exp_result, network="omnipath"|"ptm_db"|DataFrame,
-              method="ulm"|"mlm")
-        (needs SIGNED input -- per-contrast log2fc, NOT ANOVA output)
+    ├── Curated kinase-substrate edges (OmniPath / PTM-DB)
+    │       ap.enrichment.kinase_activity(
+    │             diff_exp_result, network="omnipath"|"ptm_db"|DataFrame,
+    │             method="ulm"|"mlm")
+    │       (needs SIGNED input -- per-contrast log2fc, NOT ANOVA output)
+    └── PSSM-predicted substrates (Yaffe Kinase Library; no database needed,
+        covers novel sites) -- run ap.add_kinase_windows first
+            ap.kinase.kinase_mea(diff_exp_result, ...)              GSEA-style, full ranking
+            ap.kinase.kinase_enrichment_from_diffexp(result, ...)   Fisher per direction
+            ap.kinase.kinase_enrichment_binary(fg_sites, bg_sites)  custom site sets
 
 "Are my hits enriched for pathways / functional sets?"
     ├── Site-set (PTM-DB)  ORA           ─▶ ap.enrichment.ora(hits, background, libraries)
@@ -353,7 +360,7 @@ Design goals also change the shape of the recipe:
 | `profiling` | global frac 0.7 | (no DE) |
 | `viz_only` | primary / any (permissive) | (no DE); triggers imputation |
 
-Full API reference in [the recommend module docstring](../src/alphaphos/recommend.py).
+Full API reference in [the recommend module docstring](https://github.com/DenysOliinyk3007/alphaPhos/blob/main/src/alphaphos/recommend.py).
 
 ---
 

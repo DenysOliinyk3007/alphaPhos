@@ -39,12 +39,8 @@ import numpy as np
 if TYPE_CHECKING:
     import anndata as ad
 
-try:
-    from sklearn.manifold import TSNE as _SklearnTSNE
-
-    _HAS_SKLEARN = True
-except ImportError:  # pragma: no cover - sklearn is a core dep
-    _HAS_SKLEARN = False
+# scikit-learn is a core dependency but costs several hundred ms to import, so it is
+# imported lazily inside _run_tsne rather than at package import.
 
 logger = logging.getLogger(__name__)
 
@@ -127,9 +123,6 @@ def tsne(
     - ``learning_rate="auto"`` follows the sklearn 1.2+ recommendation
       (``max(N/12, 50)``).
     """
-    if not _HAS_SKLEARN:  # pragma: no cover
-        raise ImportError("scikit-learn is required for alphaphos.dimred.tsne.")
-
     advanced_merged = dict(advanced or {})
     if n_components is not None:
         advanced_merged["n_components"] = n_components
@@ -217,6 +210,8 @@ def tsne(
         "random_state": int(settings["seed"]),
     }
     import inspect
+
+    from sklearn.manifold import TSNE as _SklearnTSNE  # lazy: heavy import
 
     if "max_iter" in inspect.signature(_SklearnTSNE).parameters:
         tsne_kwargs["max_iter"] = int(settings["max_iter"])

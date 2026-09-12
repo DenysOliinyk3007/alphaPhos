@@ -50,6 +50,8 @@ try:
 except ImportError:  # pragma: no cover
     ad = None  # type: ignore[assignment]
 
+from alphaphos import resources as _resources
+
 logger = logging.getLogger(__name__)
 
 
@@ -60,10 +62,11 @@ logger = logging.getLogger(__name__)
 _PHOSPHO_ACCEPTORS = ("S", "T", "Y")
 _STY_SET = frozenset(_PHOSPHO_ACCEPTORS)
 
-# Bundled FASTA paths (relative to package root).  human.fasta is the default
-# target; other bundled FASTAs are for source-species use (mouse, rat,
-# chinese_hamster, yeast, zebrafish).
-_RESOURCES_FASTA_DIR = Path(__file__).resolve().parent.parent.parent.parent / "resources" / "fastas"
+# Repo-level FASTA directory (NOT shipped in the wheel; ~84 MB).  Resolved via
+# alphaphos.resources.external(): $ALPHAPHOS_RESOURCES -> <repo>/resources ->
+# ~/.alphaphos/resources.  human.fasta is the default target; other FASTAs
+# there are for source-species use (mouse, rat, chinese_hamster, yeast, ...).
+_RESOURCES_FASTA_DIR = _resources.external("fastas")
 _BUNDLED_HUMAN_FASTA = _RESOURCES_FASTA_DIR / "human.fasta"
 
 # Default cache location for the human window index parquet.  Keyed by
@@ -190,8 +193,10 @@ def map_to_human(
         Site-level (or precursor-level) ``AnnData``.  ``.var`` must carry the
         kinase-sequence window column.
     human_fasta
-        Path to a human proteome FASTA.  Defaults to the bundled
-        ``resources/fastas/human.fasta``.
+        Path to a human proteome FASTA.  Defaults to
+        ``<resources>/fastas/human.fasta`` where ``<resources>`` is resolved
+        by :func:`alphaphos.resources.external_dir` (git checkout or
+        ``$ALPHAPHOS_RESOURCES``).
     source_fasta
         Path to the source-species FASTA (used only when
         ``advanced["verify_window_size"]`` is set -- the module needs full
@@ -242,7 +247,12 @@ def map_to_human(
     settings = resolve_orthology_settings(advanced)
     fasta_path = Path(human_fasta) if human_fasta is not None else _BUNDLED_HUMAN_FASTA
     if not fasta_path.exists():
-        raise FileNotFoundError(f"Human FASTA not found: {fasta_path}")
+        raise FileNotFoundError(
+            f"Human FASTA not found: {fasta_path}. The proteome FASTAs are not shipped "
+            "in the wheel; run from a git checkout, set $ALPHAPHOS_RESOURCES to a "
+            "directory containing fastas/human.fasta, or pass human_fasta= explicitly "
+            "(UniProt UP000005640, CC-BY 4.0)."
+        )
 
     cache_root = Path(cache_dir) if cache_dir is not None else _DEFAULT_CACHE_DIR
 

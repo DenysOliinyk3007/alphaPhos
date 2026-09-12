@@ -22,6 +22,7 @@ the sign convention.
 
 from __future__ import annotations
 
+import importlib.util
 import logging
 import re
 from typing import TYPE_CHECKING
@@ -44,22 +45,24 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# patsy + inmoose are gated behind the [stats] extra. Everything in this
-# module still imports cleanly without them; diff_exp_limma raises
-# ImportError with an install hint when called.
-try:
-    import patsy  # type: ignore[import-not-found]
-    from inmoose.limma import (  # type: ignore[import-not-found]
-        contrasts_fit,
-        eBayes,
-        lmFit,
-        makeContrasts,
-        topTable,
-    )
+# patsy + inmoose are gated behind the [stats] extra AND imported lazily
+# (inmoose alone costs ~0.4 s at import).  Everything in this module imports
+# cleanly without them; the inmoose-backed entry points call
+# _require_stats_deps() first so users get an install hint, not a traceback.
 
-    _HAS_STATS_DEPS = True
-except ImportError:  # pragma: no cover
-    _HAS_STATS_DEPS = False
+
+def _require_stats_deps(caller: str) -> None:
+    try:
+        import patsy  # noqa: F401  # type: ignore[import-not-found]
+        from inmoose import limma  # noqa: F401  # type: ignore[import-not-found]
+    except ImportError as exc:  # pragma: no cover
+        raise ImportError(
+            f"{caller} requires inmoose and patsy. Install with `pip install alphaPhos[stats]`."
+        ) from exc
+
+
+# Import-free availability flag (find_spec only); tests use it for skipif.
+_HAS_STATS_DEPS = all(importlib.util.find_spec(m) is not None for m in ("inmoose", "patsy"))
 
 
 DEFAULT_STATS_SETTINGS: dict = {
@@ -135,11 +138,7 @@ def diff_exp_limma(
     KeyError
         If ``condition_column`` / ``covariates`` / ``layer`` are absent.
     """
-    if not _HAS_STATS_DEPS:
-        raise ImportError(
-            "diff_exp_limma requires inmoose and patsy. Install with "
-            "`pip install alphaPhos[stats]`."
-        )
+    _require_stats_deps("diff_exp_limma")
 
     settings = _resolve_stats_settings(advanced)
 
@@ -188,13 +187,17 @@ def diff_exp_limma(
         design.shape,
     )
 
-    fit = lmFit(X.T, design)
-    contrast_mat = makeContrasts([contrast_string_internal], levels=list(fit.coefficients.columns))
-    fit2 = contrasts_fit(fit, contrast_mat)
+    from inmoose import limma  # lazy: [stats] extra, checked above
+
+    fit = limma.lmFit(X.T, design)
+    contrast_mat = limma.makeContrasts(
+        [contrast_string_internal], levels=list(fit.coefficients.columns)
+    )
+    fit2 = limma.contrasts_fit(fit, contrast_mat)
     fit2 = _safe_ebayes(fit2, settings)
 
     contrast_name = fit2.coefficients.columns[0]
-    tt = pd.DataFrame(topTable(fit2, coef=contrast_name, number=np.inf)).sort_index()
+    tt = pd.DataFrame(limma.topTable(fit2, coef=contrast_name, number=np.inf)).sort_index()
     tt.index = sub.var_names
 
     return _finalize_result(
@@ -428,6 +431,8 @@ def _build_design(
     if covariates:
         formula_parts.extend(covariates)
     formula = "~ " + " + ".join(formula_parts)
+    import patsy  # lazy: [stats] extra
+
     design = patsy.dmatrix(formula, data=obs_df)
     # Patsy names columns as ``condition[<level>]`` for the no-intercept case.
     level_treat = f"{condition_column}[{safe_treatment}]"
@@ -447,6 +452,8 @@ def _safe_ebayes(fit2, settings: dict):
     # then tries a DataFrame column lookup, raising ``KeyError: -2``. Real
     # biological data with heterogeneous per-site variance never produces
     # inf ``df_prior``. Translate the raw KeyError into a targeted message.
+    from inmoose.limma import eBayes  # lazy: [stats] extra
+
     try:
         return eBayes(
             fit2,
@@ -548,11 +555,7 @@ def diff_exp_limma_contrasts(
 
     if not joint:
         # Per-pair loop.  advanced kwargs pass through to diff_exp_limma.
-        if not _HAS_STATS_DEPS:
-            raise ImportError(
-                "diff_exp_limma_contrasts(joint=False) requires inmoose "
-                "and patsy.  Install with `pip install alphaPhos[stats]`."
-            )
+        _require_stats_deps("diff_exp_limma_contrasts(joint=False)")
         if block_column is not None:
             raise ValueError(
                 "block_column is only supported when joint=True.  For "

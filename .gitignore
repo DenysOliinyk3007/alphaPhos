@@ -97,10 +97,10 @@ manuscripts/*/output/
 # Spectral libraries are pointed at, not committed
 resources/spectral_libraries/*.speclib
 resources/spectral_libraries/*.tsv
-# FASTAs (human / mouse / chinese hamster proteomes) live in
-# resources/fastas/ and ARE committed -- ~37 MB total, CC-BY 4.0 from
-# UniProt, needed by the FASTA-based kinase-window annotation step and
-# by the walkthrough notebook.
+# FASTAs (13 UniProt proteomes) live in resources/fastas/ and ARE committed
+# -- ~84 MB total, CC-BY 4.0 from UniProt, needed by the FASTA-based
+# kinase-window annotation step, orthology mapping, and the walkthrough
+# notebook.  Not shipped in the wheel; located via alphaphos.resources.external().
 # PTM functional database parquet (2.8 MB, phospho-only extract of the
 # 122 MB integrated xlsx from test_data/ptmsea_plus_scaffold/).  Built
 # via `python scripts/build_ptm_db.py`.  Not committed until we host the

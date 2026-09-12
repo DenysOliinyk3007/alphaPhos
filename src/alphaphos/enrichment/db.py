@@ -2,9 +2,10 @@
 
 The parquet is built once from the integrated Excel workbook via
 ``scripts/build_ptm_db.py``; it lives at
-``resources/ptm_functional_db.parquet`` (gitignored -- future Zenodo
-release) or at a caller-provided path.  A small test fixture is
-committed at ``tests/data/ptm_db_mini.parquet`` for CI.
+``<resources>/ptm_functional_db.parquet`` (gitignored -- future Zenodo
+release; ``<resources>`` resolved by
+:func:`alphaphos.resources.external_dir`) or at a caller-provided path.  A
+small test fixture is committed at ``tests/data/ptm_db_mini.parquet`` for CI.
 
 Schema (22 columns, phospho-only for v1):
 
@@ -28,6 +29,8 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from alphaphos import resources as _resources
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -68,12 +71,13 @@ REQUIRED_COLUMNS: tuple[str, ...] = (
 )
 
 
-# Repo-relative default lookup order.  We do NOT auto-fall-back to the
-# test fixture for real users -- surprise-substituting a 1000-row test
-# DB for a 500k-row real DB would silently break their analysis.
-_REPO_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_DB_PATH = _REPO_ROOT / "resources" / "ptm_functional_db.parquet"
-TEST_FIXTURE_PATH = _REPO_ROOT / "tests" / "data" / "ptm_db_mini.parquet"
+# Default location: the external (non-packaged) resources dir -- see
+# alphaphos.resources.  We do NOT auto-fall-back to the test fixture for
+# real users -- surprise-substituting a 1000-row test DB for a 500k-row
+# real DB would silently break their analysis.
+DEFAULT_DB_PATH = _resources.external("ptm_functional_db.parquet")
+# Only meaningful from a git checkout (tests/ is not packaged).
+TEST_FIXTURE_PATH = Path(__file__).resolve().parents[3] / "tests" / "data" / "ptm_db_mini.parquet"
 
 
 def load_ptm_db(path: str | Path | None = None) -> pd.DataFrame:

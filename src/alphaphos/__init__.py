@@ -28,13 +28,12 @@ See :func:`collapse_sites` for the settings dict; see
 for domain-specific tooling.
 """
 
-__version__ = "0.22.0"
-
 # Public entry points, re-exported for convenience.
 # Expose the top-tier enrichment namespace so callers can write
 # ``ap.enrichment.kinase_activity(...)`` / ``ap.enrichment.ora(...)`` /
 # ``ap.enrichment.gsea(...)`` directly.
 from alphaphos import dimred, enrichment, orthology, proteome, qc, signalome, stats
+from alphaphos._version import __version__
 from alphaphos.io.diann import (
     DEFAULT_DIANN_IO_SETTINGS,
     resolve_diann_io_settings,

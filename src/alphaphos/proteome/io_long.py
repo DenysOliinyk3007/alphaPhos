@@ -30,7 +30,7 @@ from pathlib import Path
 import pandas as pd
 import pyarrow.parquet as pq
 
-from alphaphos.preprocess.contaminants import (
+from alphaphos.io.contaminants import (
     DEFAULT_CONTAMINANT_PREFIXES,
     filter_contaminants,
 )

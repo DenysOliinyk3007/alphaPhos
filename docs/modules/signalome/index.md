@@ -25,7 +25,7 @@ The alphaPhos port was written **clean-room from published algorithms +
 PhosR) as a numerical oracle.  PhosPy is GPL-3.0 licensed and alphaPhos
 is MIT — no PhosPy code appears in alphaPhos; every algorithm was
 re-implemented from method descriptions and validated bit-exact against
-PhosPy in [`tests/unit/test_signalome_phospy_parity.py`](../../../tests/unit/test_signalome_phospy_parity.py).
+PhosPy in [`tests/unit/test_signalome_phospy_parity.py`](https://github.com/DenysOliinyk3007/alphaPhos/blob/main/tests/unit/test_signalome_phospy_parity.py).
 
 **If you use `alphaphos.signalome` in a publication, please cite:**
 
@@ -259,7 +259,7 @@ We validate signalome outputs against PhosPy on every stage:
   ground-truth modules.
 
 Total: **57 signalome tests + full-suite regression** — see
-[CHANGELOG.md](../../../CHANGELOG.md) 0.19.0 for the release note.
+[CHANGELOG.md](https://github.com/DenysOliinyk3007/alphaPhos/blob/main/CHANGELOG.md) 0.19.0 for the release note.
 
 ## License
 
