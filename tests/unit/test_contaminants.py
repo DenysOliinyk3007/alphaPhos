@@ -1,4 +1,4 @@
-"""Tests for alphaphos.preprocess.contaminants.
+"""Tests for alphaphos.io.contaminants.
 
 Covers:
   - parse_fasta_accessions       : header parsing across the 4 MaxQuant
@@ -17,7 +17,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from alphaphos.preprocess.contaminants import (
+from alphaphos.io.contaminants import (
     DEFAULT_CONTAMINANT_PREFIXES,
     filter_contaminants,
     get_default_contaminants_fasta,
@@ -230,7 +230,7 @@ class TestFilterContaminants:
 
     def test_default_prefixes_constant(self):
         """The DEFAULT_CONTAMINANT_PREFIXES tuple is the public contract."""
-        assert DEFAULT_CONTAMINANT_PREFIXES == ("CON__", "Cont_", "contam_")
+        assert DEFAULT_CONTAMINANT_PREFIXES == ("CON__", "Cont_", "contam_", "cRAP-", "cRAP_")
 
     def test_custom_column_name(self, mini_fasta):
         df = pd.DataFrame({"my_proteins": ["P00761", "P12345"]})

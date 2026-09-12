@@ -17,7 +17,7 @@ Both `read_spectronaut` and `read_diann` return a **PSM-level `pd.DataFrame`** r
 into this canonical schema so the same downstream collapse pipeline runs on both.
 
 The single source of truth for column names is
-[`alphaphos.io.schemas`](../../../src/alphaphos/io/schemas.py).
+[`alphaphos.io.schemas`](https://github.com/DenysOliinyk3007/alphaPhos/blob/main/src/alphaphos/io/schemas.py).
 
 ### Required (Spectronaut)
 

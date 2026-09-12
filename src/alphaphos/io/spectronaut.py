@@ -56,13 +56,13 @@ from alphaphos.constants import (
     COL_EG_QVALUE,
     COL_PG_QVALUE,
 )
+from alphaphos.io.contaminants import DEFAULT_CONTAMINANT_PREFIXES, filter_contaminants
 from alphaphos.io.schemas import (
     REQUIRED_COLUMNS,
     all_needed_columns,
 )
-from alphaphos.preprocess.contaminants import filter_contaminants
 
-logger = logging.getLogger("alphaphos.io.spectronaut")
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -74,7 +74,7 @@ DEFAULT_IO_SETTINGS: dict[str, Any] = {
     "drop_decoys": True,  # drop EG.IsDecoy==True rows if col present
     "drop_contaminants": True,  # drop rows whose PG is entirely contam
     "contaminants_fasta": None,  # None -> bundled MaxQuant fasta
-    "contaminant_prefixes": ("CON__", "Cont_", "contam_"),
+    "contaminant_prefixes": DEFAULT_CONTAMINANT_PREFIXES,
     "eg_qvalue_max": None,  # drop EG.Qvalue > threshold if set
     "pg_qvalue_max": None,  # drop PG.Qvalue > threshold if set
 }
@@ -110,9 +110,13 @@ def resolve_io_settings(advanced: dict[str, Any] | None) -> dict[str, Any]:
             raise ValueError(f"{bool_key} must be bool, got {type(settings[bool_key]).__name__}")
     for prob_key in ("eg_qvalue_max", "pg_qvalue_max"):
         v = settings[prob_key]
-        if v is not None and not (isinstance(v, (int, float)) and 0 <= float(v) <= 1):
+        # bool is an int subclass -- reject it explicitly so True doesn't pass as 1.0.
+        if v is not None and (
+            isinstance(v, bool) or not (isinstance(v, (int, float)) and 0 <= float(v) <= 1)
+        ):
             raise ValueError(f"{prob_key} must be None or a float in [0, 1], got {v!r}")
-    if not isinstance(settings["contaminant_prefixes"], (tuple, list)):
+    prefixes = settings["contaminant_prefixes"]
+    if not isinstance(prefixes, (tuple, list)) or not all(isinstance(x, str) for x in prefixes):
         raise ValueError("contaminant_prefixes must be a tuple / list of strings")
 
     return settings
@@ -152,7 +156,7 @@ def _to_dotted_column(name: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _scan_available_columns(path: Path, engine: str) -> dict[str, str]:
+def _scan_available_columns(path: Path, engine: str) -> tuple[dict[str, str], int]:
     """Return ``{dotted_name: raw_column_name}`` for columns we care about.
 
     Reads ONLY the file schema (parquet) or first header line (TSV) --
@@ -162,16 +166,18 @@ def _scan_available_columns(path: Path, engine: str) -> dict[str, str]:
 
     Returns
     -------
-    dict[str, str]
-        Keys are dotted (canonical) column names. Values are the RAW column
-        names in the file, so the caller can pass them straight to
+    (mapping, n_total_cols)
+        ``mapping`` keys are dotted (canonical) column names; values are the
+        RAW column names in the file, so the caller can pass them straight to
         ``pd.read_parquet(columns=...)`` or ``pd.read_csv(usecols=...)``.
+        ``n_total_cols`` is the number of columns in the file before pruning.
     """
     if path.suffix.lower() == ".parquet":
         raw_names = pq.read_schema(str(path)).names
     else:
         # TSV / TXT: read only the header line to enumerate columns.
-        with open(path, encoding="utf-8", errors="replace") as f:
+        # "utf-8-sig" transparently strips a leading BOM (Windows exports).
+        with open(path, encoding="utf-8-sig", errors="replace") as f:
             header = f.readline().rstrip("\r\n").split("\t")
         raw_names = header
 
@@ -184,7 +190,7 @@ def _scan_available_columns(path: Path, engine: str) -> dict[str, str]:
             # dotted variants of the same column (Spectronaut sometimes ships
             # duplicate columns after a re-export). Deterministic tie-break.
             mapping.setdefault(dotted, raw)
-    return mapping
+    return mapping, len(raw_names)
 
 
 def _coerce_dtypes(df: pd.DataFrame) -> pd.DataFrame:
@@ -197,6 +203,33 @@ def _coerce_dtypes(df: pd.DataFrame) -> pd.DataFrame:
         if col in df.columns and df[col].dtype == object:
             df[col] = pd.to_numeric(df[col], errors="coerce")
     return df
+
+
+_DECOY_TRUE = frozenset({"true", "1"})
+_DECOY_FALSE = frozenset({"false", "0", ""})
+
+
+def _decoy_mask(series: pd.Series) -> np.ndarray:
+    """Return a boolean array that is True where the row is a decoy.
+
+    ``EG.IsDecoy`` is a proper bool column in most exports, but some TSV /
+    parquet exports carry it as strings (``"True"``/``"False"``) or as
+    object dtype when NaNs are mixed in. ``Series.astype(bool)`` on those
+    maps the *string* ``"False"`` (and NaN) to ``True`` and would drop every
+    row -- so parse explicitly. Missing values count as not-decoy.
+    """
+    if series.dtype == bool:
+        return series.to_numpy()
+    if pd.api.types.is_numeric_dtype(series):
+        return series.fillna(0).to_numpy() != 0
+    text = series.astype("string").str.strip().str.lower()
+    bad = text.notna() & ~text.isin(_DECOY_TRUE | _DECOY_FALSE)
+    if bad.any():
+        raise ValueError(
+            f"Unrecognized values in '{COL_EG_IS_DECOY}': "
+            f"{sorted(text[bad].unique().tolist())[:5]}. Expected True/False."
+        )
+    return text.isin(_DECOY_TRUE).fillna(False).to_numpy(dtype=bool)
 
 
 # ---------------------------------------------------------------------------
@@ -255,7 +288,7 @@ def read_psm(
         raise FileNotFoundError(f"Spectronaut report not found: {p}")
 
     # ------- column pruning: figure out what to read before reading anything -------
-    col_map = _scan_available_columns(p, engine)
+    col_map, n_total_cols = _scan_available_columns(p, engine)
     if not col_map:
         raise ValueError(
             f"No usable columns found in {p}. Is this actually a Spectronaut "
@@ -263,20 +296,15 @@ def read_psm(
         )
 
     raw_cols_to_read = list(col_map.values())
-
-    # Track how many columns we skipped for the attrs.
-    if p.suffix.lower() == ".parquet":
-        n_total_cols = len(pq.read_schema(str(p)).names)
-    else:
-        with open(p, encoding="utf-8", errors="replace") as f:
-            n_total_cols = len(f.readline().rstrip("\r\n").split("\t"))
     n_dropped_cols = n_total_cols - len(raw_cols_to_read)
 
     # ------- load, materializing only the pruned column set -------
     if p.suffix.lower() == ".parquet":
         df = pd.read_parquet(p, columns=raw_cols_to_read)
     elif p.suffix.lower() in (".tsv", ".txt"):
-        df = pd.read_csv(p, sep="\t", usecols=raw_cols_to_read, low_memory=False)
+        df = pd.read_csv(
+            p, sep="\t", usecols=raw_cols_to_read, low_memory=False, encoding="utf-8-sig"
+        )
     else:
         raise ValueError(
             f"Unsupported file extension {p.suffix!r}; expected .parquet, .tsv, or .txt"
@@ -299,7 +327,7 @@ def read_psm(
     # ------- boundary filters -------
     n_after_decoys = None
     if settings["drop_decoys"] and COL_EG_IS_DECOY in df.columns:
-        df = df.loc[~df[COL_EG_IS_DECOY].astype(bool)]
+        df = df.loc[~_decoy_mask(df[COL_EG_IS_DECOY])]
         n_after_decoys = len(df)
         logger.info("Dropped decoys: %d rows remaining.", n_after_decoys)
 
@@ -347,13 +375,6 @@ def read_psm(
     return df
 
 
-# ---------------------------------------------------------------------------
-# Backwards-compat shim: keep the old free function name available (still
-# aliased as ``alphaphos.read_spectronaut`` at the package root).
-# ---------------------------------------------------------------------------
-
-
-# Re-export types for tests
 __all__ = [
     "DEFAULT_IO_SETTINGS",
     "resolve_io_settings",

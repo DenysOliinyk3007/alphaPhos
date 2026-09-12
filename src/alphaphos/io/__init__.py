@@ -14,8 +14,17 @@ so the reader BYPASSES ``collapse_sites`` and returns a ready-to-use
 
 All readers minimize memory by pruning columns at read time
 (``pandas.read_parquet(columns=...)`` / ``read_csv(usecols=...)``).
+
+The PSM-boundary contaminant filter (``filter_contaminants``) also lives
+here because the readers apply it before anything downstream runs.
 """
 
+from alphaphos.io.contaminants import (
+    DEFAULT_CONTAMINANT_PREFIXES,
+    filter_contaminants,
+    get_default_contaminants_fasta,
+    parse_fasta_accessions,
+)
 from alphaphos.io.diann import (
     DEFAULT_DIANN_IO_SETTINGS,
     resolve_diann_io_settings,
@@ -46,4 +55,8 @@ __all__ = [
     "resolve_io_settings",
     "resolve_diann_io_settings",
     "resolve_fragpipe_io_settings",
+    "filter_contaminants",
+    "get_default_contaminants_fasta",
+    "parse_fasta_accessions",
+    "DEFAULT_CONTAMINANT_PREFIXES",
 ]

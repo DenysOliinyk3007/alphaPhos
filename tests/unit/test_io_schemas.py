@@ -45,6 +45,21 @@ class TestSchemaShape:
         assert schemas.FALLBACK_CHAINS["MS1"] == ("MS1", "auto")
         assert schemas.FALLBACK_CHAINS["auto"] == ("auto",)
 
+    def test_engine_default_levels(self):
+        # SN follows the convention (MS2); DIA-NN is deliberately MS1-first.
+        assert schemas.DEFAULT_QUANT_LEVEL == {"SN": "MS2", "Diann": "MS1"}
+        assert set(schemas.DEFAULT_QUANT_LEVEL) == set(schemas.QUANT_COLUMN_CANDIDATES)
+
+    def test_diann_ms2_is_precursor_quantity(self):
+        # "MS2" must mean MS2 on DIA-NN too (regression: the slot used to be empty,
+        # so "MS2" silently resolved to Ms1.Translated).
+        col, level = schemas.resolve_quant_column(
+            available_columns={"Precursor.Quantity", "Ms1.Translated"},
+            engine="Diann",
+            requested_level="MS2",
+        )
+        assert (col, level) == ("Precursor.Quantity", "MS2")
+
 
 class TestAllNeededColumns:
     def test_union_contains_required(self):

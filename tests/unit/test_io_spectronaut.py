@@ -14,6 +14,7 @@ import pytest
 
 from alphaphos.io.spectronaut import (
     DEFAULT_IO_SETTINGS,
+    _decoy_mask,
     _to_dotted_column,
     read_psm,
     resolve_io_settings,
@@ -62,6 +63,9 @@ class TestResolveIOSettings:
             ({"drop_decoys": 1}, ValueError, "drop_decoys must be bool"),
             ({"eg_qvalue_max": 1.5}, ValueError, "eg_qvalue_max"),
             ({"pg_qvalue_max": -0.1}, ValueError, "pg_qvalue_max"),
+            # bool is an int subclass; must not silently pass as 1.0
+            ({"eg_qvalue_max": True}, ValueError, "eg_qvalue_max"),
+            ({"contaminant_prefixes": ("CON__", 3)}, ValueError, "contaminant_prefixes"),
         ],
     )
     def test_validation_raises(self, bad_settings, exc_type, match):
@@ -78,10 +82,21 @@ class TestResolveIOSettings:
 # ---------------------------------------------------------------------------
 
 
-def _make_synthetic_tsv(tmp_path: Path, *, extra_columns: bool = True) -> Path:
+def _make_synthetic_tsv(
+    tmp_path: Path,
+    *,
+    extra_columns: bool = True,
+    bom: bool = False,
+    decoy_values: tuple[str, str, str] = ("False", "True", "False"),
+) -> Path:
     """Write a small Spectronaut-shaped TSV. Includes decoys + contaminants
     for filter tests. Optionally includes many extra unused columns so we
     can assert column pruning drops them.
+
+    ``bom=True`` prefixes the file with a UTF-8 BOM (as some Windows exports
+    do). ``decoy_values`` sets the three ``EG.IsDecoy`` cells (row order:
+    real, decoy, contaminant) so string / numeric / missing encodings can be
+    exercised.
     """
     core_cols = [
         "R.FileName",
@@ -125,13 +140,24 @@ def _make_synthetic_tsv(tmp_path: Path, *, extra_columns: bool = True) -> Path:
             "42",
             0.95,
             "_S[Phospho (STY): 95.0%]TSK_",
-            "False",
+            decoy_values[0],
             "AKT1",
             "P31749",
             0.001,
         ),
         # Decoy row (should be dropped when drop_decoys=True)
-        ("s1", "_DECOY_.2", 100.0, "1", 0.5, "_DECOY_", "True", "DecoyGene", "DecoyPG", 0.5),
+        (
+            "s1",
+            "_DECOY_.2",
+            100.0,
+            "1",
+            0.5,
+            "_DECOY_",
+            decoy_values[1],
+            "DecoyGene",
+            "DecoyPG",
+            0.5,
+        ),
         # Contaminant row (starts with CON__)
         (
             "s2",
@@ -140,7 +166,7 @@ def _make_synthetic_tsv(tmp_path: Path, *, extra_columns: bool = True) -> Path:
             "10",
             0.9,
             "_S[Phospho (STY): 90.0%]K_",
-            "False",
+            decoy_values[2],
             "TRYP",
             "CON__P00761",
             0.02,
@@ -150,7 +176,7 @@ def _make_synthetic_tsv(tmp_path: Path, *, extra_columns: bool = True) -> Path:
     padded_rows = [tuple(list(r) + ["x"] * len(junk_cols)) for r in rows]
 
     tsv_path = tmp_path / "synth.tsv"
-    with open(tsv_path, "w", encoding="utf-8", newline="") as f:
+    with open(tsv_path, "w", encoding="utf-8-sig" if bom else "utf-8", newline="") as f:
         f.write("\t".join(all_cols) + "\n")
         for r in padded_rows:
             f.write("\t".join(str(v) for v in r) + "\n")
@@ -241,6 +267,58 @@ class TestFilters:
         assert df.attrs["n_rows_loaded"] == 3
         assert "n_rows_after_decoys" in df.attrs
         assert "n_rows_after_contaminants" in df.attrs
+
+
+# ---------------------------------------------------------------------------
+# Decoy-column encodings
+# ---------------------------------------------------------------------------
+
+
+class TestDecoyMask:
+    def test_bool_dtype_passthrough(self):
+        s = pd.Series([False, True, False])
+        assert _decoy_mask(s).tolist() == [False, True, False]
+
+    def test_object_strings_with_missing(self):
+        # "False" as a *string* must not be truthy; NaN counts as not-decoy.
+        s = pd.Series(["False", None, "True", " false "], dtype=object)
+        assert _decoy_mask(s).tolist() == [False, False, True, False]
+
+    def test_numeric_zero_one(self):
+        s = pd.Series([0, 1, 0])
+        assert _decoy_mask(s).tolist() == [False, True, False]
+
+    def test_unrecognized_values_raise(self):
+        with pytest.raises(ValueError, match="Unrecognized values"):
+            _decoy_mask(pd.Series(["yes", "no"], dtype=object))
+
+    def test_reader_keeps_rows_when_decoy_column_has_missing_values(self, tmp_path):
+        # A blank cell forces object dtype: before the fix, astype(bool)
+        # turned "False" into True and dropped every row.
+        tsv = _make_synthetic_tsv(tmp_path, decoy_values=("False", "True", ""))
+        df = read_psm(tsv, advanced={"drop_contaminants": False})
+        assert len(df) == 2
+        assert "_DECOY_.2" not in df["EG.PrecursorId"].values
+
+    def test_reader_handles_numeric_decoy_column(self, tmp_path):
+        tsv = _make_synthetic_tsv(tmp_path, decoy_values=("0", "1", "0"))
+        df = read_psm(tsv, advanced={"drop_contaminants": False})
+        assert len(df) == 2
+
+
+# ---------------------------------------------------------------------------
+# Encoding quirks
+# ---------------------------------------------------------------------------
+
+
+class TestEncoding:
+    def test_utf8_bom_header_is_recognized(self, tmp_path):
+        tsv = _make_synthetic_tsv(tmp_path, bom=True)
+        df = read_psm(tsv, advanced={"drop_contaminants": False})
+        # Without BOM handling the first column would be "﻿R.FileName"
+        # and the reader would report R.FileName as missing.
+        assert "R.FileName" in df.columns
+        assert len(df) == 2
 
 
 # ---------------------------------------------------------------------------

@@ -11,9 +11,10 @@ Two design goals:
 
 1. **Trust FragPipe's site collapse.** The output is ready to consume;
    we only parse the site identifiers and construct the AnnData wrapper.
-2. **Match the AnnData contract of ``collapse_sites`` output** so downstream
-   tooling (QC dashboard, imputation, kinase annotation, diff-exp,
-   dose-response) doesn't care which engine produced the AnnData.
+2. **Match the AnnData contract of ``collapse_sites`` output as far as the
+   input allows** so downstream tooling (QC dashboard, imputation, kinase
+   annotation, diff-exp, dose-response) doesn't care which engine produced
+   the AnnData. See "Contract gaps" below for what FragPipe cannot provide.
 
 Input file layout (per FragPipe DIA docs)::
 
@@ -29,33 +30,44 @@ Where:
 - ``Best Localization`` = highest per-scan localization probability for
   this site across all scans (proxy for "Class I" filtering).
 
-The output ``AnnData`` matches :func:`alphaphos.collapse_sites`'s contract:
+The output ``AnnData`` follows :func:`alphaphos.collapse_sites`'s contract:
 
 - ``.X`` = ``(n_samples, n_sites)`` log2 intensity
 - ``.layers["intensity_log2"]`` = same as ``.X``
 - ``.var.index`` = full key ``"{ProteinID}|{Gene}|{aa}{pos}|M{mult}"``
 - ``.var`` columns: ``short_key``, ``pg_key``, ``protein_group_id``,
   ``gene``, ``site_aa``, ``site_position``, ``multiplicity``,
-  ``best_localization``, ``sequence_window``, ``kinase_sequence``
-- ``.obs.index`` = sample id (raw file basename)
+  ``n_samples_detected``, ``best_localization``, ``max_loc_prob``
+  (alias of ``best_localization``), ``sequence_window``, ``kinase_sequence``
+- ``.obs.index`` = sample id (raw file basename, ``_uncalibrated`` stripped)
 - ``.uns["alphaphos"]`` = ``version``, ``pipeline_params``, ``source_file``
+
+Contract gaps (vs. ``collapse_sites``)
+---------------------------------------
+
+FragPipe reports ONE localization probability per site (``Best
+Localization``), not one per run, so the per-run-derived columns cannot be
+computed: ``mean_loc_prob``, ``min_loc_prob``, ``n_classI_samples``,
+``fraction_classI``, ``classI_wilson_lb``, and ``layers["localization"]`` are
+absent. ``UPD_seq`` is also absent (no modified-sequence string per site).
+Consequences: :func:`alphaphos.recommend_pipeline` skips its Class-I step
+on FragPipe data (use ``min_best_localization`` here instead), and
+``localization_strategy="wilson"`` / :func:`alphaphos.apply_wilson_filter`
+are not applicable.
 """
 
 from __future__ import annotations
 
 import logging
 import re
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any
 
+import anndata as ad
 import numpy as np
 import pandas as pd
 
-try:
-    import anndata as ad
-except ImportError:  # pragma: no cover
-    ad = None  # type: ignore[assignment]
-
+from alphaphos._version import __version__ as _alphaphos_version
 from alphaphos.constants import (
     FRAGPIPE_BEST_LOCALIZATION,
     FRAGPIPE_GENE,
@@ -70,7 +82,7 @@ from alphaphos.constants import (
     VAR_FULL_KEY,
 )
 
-logger = logging.getLogger("alphaphos.io.fragpipe")
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -211,12 +223,19 @@ def sequence_window_to_kinase_sequence(sequence_window: str, target_aa: str) -> 
 def _normalize_sample_col(col: str) -> str:
     """Strip path + common FragPipe suffixes from a sample column header.
 
+    FragPipe writes the full raw-file path as the column header and is
+    almost always run on Windows, so headers may use ``\\`` separators even
+    when alphaPhos runs on macOS / Linux. ``PureWindowsPath`` splits on both
+    ``\\`` and ``/`` regardless of host OS.
+
     Examples
     --------
     >>> _normalize_sample_col("V:/foo/20250721_run_01_uncalibrated.mzML")
     '20250721_run_01'
+    >>> _normalize_sample_col(r"D:\\data\\20250721_run_01_uncalibrated.mzML")
+    '20250721_run_01'
     """
-    stem = Path(col).stem
+    stem = PureWindowsPath(col).stem
     # Strip FragPipe's ``_uncalibrated`` suffix if present.
     if stem.endswith("_uncalibrated"):
         stem = stem[: -len("_uncalibrated")]
@@ -258,7 +277,10 @@ def read_fragpipe_sites(
         * ``.var.index`` = ``"Protein|Gene|aa+pos|Mmult"``
         * ``.var`` = ``short_key``, ``pg_key``, ``protein_group_id``,
           ``gene``, ``site_aa``, ``site_position``, ``multiplicity``,
-          ``best_localization``, ``sequence_window``, ``kinase_sequence``
+          ``n_samples_detected``, ``best_localization``, ``max_loc_prob``,
+          ``sequence_window``, ``kinase_sequence``.  Per-run localization
+          columns (``mean_loc_prob``, ``classI_wilson_lb``, ...) are NOT
+          available -- see the module docstring's "Contract gaps".
         * ``.obs`` = ``condition`` (from ``condition_df`` if given)
         * ``.uns["alphaphos"]`` = ``version``, ``pipeline_params``,
           ``source_file``
@@ -268,13 +290,10 @@ def read_fragpipe_sites(
     FileNotFoundError
         If ``path`` doesn't exist or the resolved abundance file is missing.
     ValueError
-        If required columns are absent or the file has no sample columns.
+        If required columns are absent, the file has no numeric sample
+        columns, two sample headers normalize to the same id, or
+        ``Multiplicity`` has missing values.
     """
-    if ad is None:  # pragma: no cover
-        raise ImportError("anndata is required. `pip install anndata`.")
-
-    from alphaphos import __version__ as _alphaphos_version
-
     settings = resolve_fragpipe_io_settings(advanced)
     abundance_path = resolve_abundance_file(path, settings)
 
@@ -314,7 +333,14 @@ def read_fragpipe_sites(
     protein_ids = [p[0] for p in parsed]
     site_aas = [p[1] for p in parsed]
     site_positions = [p[2] for p in parsed]
-    genes = df[FRAGPIPE_GENE].astype(str).tolist()
+    # Missing gene -> "" (not the string "nan") so keys stay well-formed.
+    genes = df[FRAGPIPE_GENE].fillna("").astype(str).tolist()
+    n_mult_missing = int(df[FRAGPIPE_MULTIPLICITY].isna().sum())
+    if n_mult_missing:
+        raise ValueError(
+            f"{n_mult_missing} row(s) have a missing '{FRAGPIPE_MULTIPLICITY}' value; "
+            "cannot build site keys."
+        )
     mults = df[FRAGPIPE_MULTIPLICITY].astype(int).tolist()
 
     # Build canonical keys.
@@ -333,16 +359,48 @@ def read_fragpipe_sites(
         for prot, aa, pos, mult in zip(protein_ids, site_aas, site_positions, mults, strict=True)
     ]
 
-    # Identify sample columns (everything not in the fixed metadata set).
-    sample_cols_raw = [c for c in df.columns if c not in FRAGPIPE_META_COLUMNS]
+    # Identify sample columns: everything not in the fixed metadata set that
+    # is numeric. Other FragPipe versions may add extra text metadata columns
+    # (e.g. a protein description); those are excluded with a warning rather
+    # than crashing the float conversion.
+    candidate_cols = [c for c in df.columns if c not in FRAGPIPE_META_COLUMNS]
+    sample_cols_raw: list[str] = []
+    numeric_cols: dict[str, pd.Series] = {}
+    for c in candidate_cols:
+        coerced = pd.to_numeric(df[c], errors="coerce")
+        if df[c].notna().any() and coerced.isna().all():
+            logger.warning(
+                "Column %r is non-numeric and not a known FragPipe metadata column; "
+                "excluding it from the sample matrix.",
+                c,
+            )
+            continue
+        sample_cols_raw.append(c)
+        numeric_cols[c] = coerced
     if not sample_cols_raw:
         raise ValueError(
-            "FragPipe abundance file has no sample columns (after removing the 9 metadata columns)."
+            "FragPipe abundance file has no numeric sample columns (after removing the "
+            f"{len(FRAGPIPE_META_COLUMNS)} metadata columns)."
         )
     sample_ids = [_normalize_sample_col(c) for c in sample_cols_raw]
 
+    # Normalization must be injective, otherwise obs.index is non-unique and
+    # the condition_df join silently mis-assigns metadata.
+    if len(set(sample_ids)) != len(sample_ids):
+        collisions: dict[str, list[str]] = {}
+        for raw_col, sid in zip(sample_cols_raw, sample_ids, strict=True):
+            collisions.setdefault(sid, []).append(raw_col)
+        dupes = {sid: cols for sid, cols in collisions.items() if len(cols) > 1}
+        raise ValueError(
+            "Sample column headers collide after normalization (same file stem in "
+            f"different directories?): {dupes}"
+        )
+
     # Linear intensities -> log2. Zeros / missing -> NaN.
-    raw = df[sample_cols_raw].to_numpy(dtype=float, na_value=np.nan)
+    # copy=True: to_numpy() may hand back a read-only view; we mutate in place below.
+    raw = pd.DataFrame(numeric_cols, columns=sample_cols_raw).to_numpy(
+        dtype=float, na_value=np.nan, copy=True
+    )
     raw[raw <= 0] = np.nan
     log2_intensity = np.log2(raw)
 
@@ -358,7 +416,13 @@ def read_fragpipe_sites(
             "site_aa": site_aas,
             "site_position": site_positions,
             "multiplicity": mults,
+            # Same name as collapse_sites so downstream completeness helpers
+            # find it. Counted on the log2 matrix (zeros already -> NaN).
+            "n_samples_detected": np.sum(~np.isnan(log2_intensity), axis=1).astype(int),
             "best_localization": df[FRAGPIPE_BEST_LOCALIZATION].values,
+            # FragPipe's "Best Localization" is the max over scans -- expose
+            # it under the collapse_sites column name too.
+            "max_loc_prob": df[FRAGPIPE_BEST_LOCALIZATION].values,
             "sequence_window": df[FRAGPIPE_SEQUENCE_WINDOW].values,
         },
         index=pd.Index(full_keys, name=VAR_FULL_KEY),
@@ -377,7 +441,9 @@ def read_fragpipe_sites(
             raise KeyError("condition_df must contain a 'sample' column.")
         if OBS_CONDITION not in cdf.columns:
             raise KeyError("condition_df must contain a 'condition' column.")
-        obs = obs.join(cdf.set_index(OBS_SAMPLE), how="left")
+        # Mirror preprocess.anndata.to_anndata: a duplicated sample row in
+        # condition_df must not multiply obs rows.
+        obs = obs.join(cdf.drop_duplicates(OBS_SAMPLE).set_index(OBS_SAMPLE), how="left")
 
     adata = ad.AnnData(X=X, obs=obs, var=var)
     adata.layers[LAYER_INTENSITY_LOG2] = X.copy()
