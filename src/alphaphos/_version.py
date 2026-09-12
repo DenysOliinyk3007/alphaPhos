@@ -6,4 +6,4 @@ that stamp provenance import from here rather than from ``alphaphos`` so
 they don't depend on package ``__init__`` import order.
 """
 
-__version__ = "0.22.0"
+__version__ = "0.23.0"
