@@ -53,15 +53,16 @@ ap.collapse_sites(
 | Key | Default | What it does | Alternatives |
 | --- | --- | --- | --- |
 | `search_engine` | `"SN"` | Which PSM schema to expect. | `"Diann"`. Others raise `NotImplementedError`. |
-| `quantification_level` | `"MS2"` | Which quant column to consume. | `"MS1"`, `"auto"`. Falls back per engine if unavailable. |
-| `top_n_attribution` | `True` | Deduplicate PSMs by keeping the highest-loc-prob variant per (precursor, site). | `False` to skip (matters if the loc-prob column is missing). |
+| `quantification_level` | `None` | Which quant column to consume. `None` = the engine's default (`DEFAULT_QUANT_LEVEL`): `"MS2"` for Spectronaut, `"MS1"` (`Ms1.Translated`) for DIA-NN -- alphaPhos's deliberate, dilution-series-validated choice. | `"MS2"` (conventional fragment quant on both engines; `Precursor.Quantity` on DIA-NN), `"MS1"`, `"auto"` (engine's canonical column). Falls back along `MS2 -> MS1 -> auto` with a warning if the requested level is absent. |
+| `top_n_attribution` | `"auto"` | Spectronaut over-export dedup: Spectronaut writes one row per candidate localization of an ambiguous precursor, each with the full intensity; only the rows whose encoded positions are the top-*N* candidates are kept. `"auto"` applies it for `search_engine="SN"` only -- DIA-NN writes one peptidoform row per precursor-run, so there is nothing to dedup and the filter would only delete low-confidence peptidoforms (validated: it removed 796 real cells on the EGF HeLa DIA-NN report). | `True` / `False` to force. |
 | `cutoff` | `0.75` | Global-max loc-prob threshold. Sites whose max across runs is below this are dropped. | Any float in [0, 1]. Raise to be stricter. |
 | `classI_cutoff` | `0.75` | Per-run loc-prob threshold used by the condition strategy. | Any float in [0, 1]. Matches Spectronaut's native Class-I cutoff. |
 | `condition_threshold` | `0.50` | Per-condition majority-rule threshold. If &ge;this fraction of replicates in a condition are Class-I, keep all replicates of that condition. | Any float in [0, 1]. |
-| `collapse_level` | `"PG"` | Site-key uniqueness scope. | `"PG"` (protein group). |
-| `aggregation_method` | `"sum"` | How to combine multiple precursor rows into one site intensity per sample. | `"sum"` -- summed intensity. |
-| `localization_strategy` | `"condition"` | Which loc-prob masking rule to apply. | `"per_run"`, `"global_max"`, `"condition"`. See below. |
-| `noise_floor_filter` | `True` | Drop sites whose linear intensities collapse to a monolithic noise-floor value across all samples. | `False` to skip. |
+| `collapse_level` | `"PG"` | Site keys use the first protein-group accession (a contaminant-tagged accession wins over its untagged twin). | Only `"PG"`. The former `"P"` option was removed in 0.23 -- it never resolved proteins, it only kept the raw `;`-joined group string. |
+| `aggregation_method` | `"sum"` | How to combine multiple precursor rows into one site intensity per sample. | `"sum"` (default), `"mean"`, `"median"`, `"consolidate"` (Hogrebe ratio-imputation). |
+| `precursor_loc_gate` | `True` | Before aggregating, a precursor contributes to a site in a run only if *its own* loc-prob for that site in that run &ge; the strategy's cutoff (`classI_cutoff` for `condition`, `cutoff` otherwise). If **no** precursor of the site is Class-I in that run, all are aggregated and the site-level mask decides. Mirrors Spectronaut's PTM consolidation; on the EGF HeLa benchmark it removes a +0.06 log2 inflation of multi-precursor sites (97.5% vs 91.6% of cells within 0.1 log2 of the native report). | `False` reproduces pre-0.23 output (every precursor summed). |
+| `localization_strategy` | `"condition"` | Which loc-prob masking rule to apply. | `"per_run"`, `"global_max"`, `"condition"`, `"wilson"`. See below. |
+| `noise_floor_filter` | `True` | Set cells whose log2 value is exactly 0 or 1 (linear 1 or 2 -- Spectronaut's noise-floor convention) to NaN. | `False` to skip. |
 | `drop_all_nan` | `True` | Drop sites with no observed values in any sample after masking. | `False` to keep all sites (produces NaN rows). |
 
 Use `ap.resolve_settings(advanced)` to preview the fully-resolved settings dict.
@@ -75,7 +76,7 @@ matrix is treated as "below cutoff".
 | --- | --- | --- |
 | `"per_run"` (strictest) | Per-cell mask -- keep `(site, run)` only when its own loc-prob &ge; `cutoff`. | Reproduces Spectronaut's native Class-I. Most conservative; loses cells from replicates with borderline loc. |
 | `"global_max"` (permissive) | Per-site mask -- keep site only if its MAX loc across runs &ge; `cutoff`. Then keep every non-NaN cell of surviving sites. | Preserves intensity in low-loc runs when the site is confidently localized *somewhere*. Matches the Hogrebe SN plugin historically. |
-| `"condition"` (default) | Applied on top of `"global_max"`: per `(site, condition)`, if &ge; `condition_threshold` of replicates have per-run loc &ge; `classI_cutoff`, keep ALL replicates of that condition; else keep only the Class-I replicates. | Recovers information from borderline-loc replicates when the site is reliably localized within a biological condition. Requires `condition_df`. |
+| `"condition"` (default) | Per `(site, condition)`, if &ge; `condition_threshold` of replicates have per-run loc &ge; `classI_cutoff`, keep ALL replicates of that condition; else keep only the Class-I replicates. Sites never Class-I anywhere end up all-NaN and are removed by `drop_all_nan`, so `"global_max"` is implied. Samples missing from `condition_df` fall back to the `"per_run"` rule (with a warning) -- they never bypass masking. | Recovers information from borderline-loc replicates when the site is reliably localized within a biological condition. Requires `condition_df`. |
 
 ## Output
 
@@ -92,7 +93,8 @@ An `anndata.AnnData` with shape `(n_samples, n_sites)`:
   `phospho_selectivity_pct` (fraction of phospho-containing precursors in that sample's
   raw PSMs), plus any extra columns from `condition_df`.
 - `.uns["alphaphos"]` = `version`, resolved `pipeline_params`, per-stage `stats`, and
-  (when applicable) `classI_decision_table` and `short_key_collisions`.
+  (when applicable) `classI_decision_table` and `short_key_collisions`
+  (`{short_key: [full_key, ...]}`; everything in `.uns` round-trips through `write_h5ad`).
 - `.uns["source_attrs"]` = `data.attrs` (PSM lineage).
 
 ## Raises

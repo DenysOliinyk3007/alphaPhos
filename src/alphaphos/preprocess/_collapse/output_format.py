@@ -45,7 +45,7 @@ except ImportError:  # pragma: no cover - anndata is a hard dep
     ad = None  # type: ignore[assignment]
 
 
-_NULL_LOGGER = logging.getLogger("alphaphos.preprocess._collapse.output_format")
+_NULL_LOGGER = logging.getLogger(__name__)
 
 
 def assemble_anndata(
@@ -82,7 +82,8 @@ def assemble_anndata(
         Sample metadata. Must contain ``sample`` and ``condition`` columns;
         extra columns are joined into ``adata.obs``. Samples in the quant
         matrix that aren't in ``condition_df`` are still kept -- with NaN
-        in the joined columns.
+        in the joined columns. Sample ids are compared as strings and a
+        duplicated ``sample`` row collapses to its first occurrence.
     settings : dict
         The resolved settings dict (from :func:`resolve_settings`). Stored
         as-is at ``adata.uns['alphaphos']['pipeline_params']``.
@@ -102,7 +103,9 @@ def assemble_anndata(
         ``adata.uns['source_attrs']``.
     short_key_collisions : list, optional
         Output of :func:`resolve_short_key_collisions`. Stored at
-        ``adata.uns['alphaphos']['short_key_collisions']`` when non-empty.
+        ``adata.uns['alphaphos']['short_key_collisions']`` when non-empty, as
+        a ``{short_key: [full_key, ...]}`` dict (h5ad-serialisable; the raw
+        list of tuples is not).
     version : str
         The alphaPhos version string, stored at
         ``adata.uns['alphaphos']['version']`` for provenance.
@@ -140,7 +143,10 @@ def assemble_anndata(
         cdf = condition_df.copy()
         if OBS_SAMPLE not in cdf.columns:
             raise KeyError("condition_df must contain a 'sample' column.")
-        cdf = cdf.set_index(OBS_SAMPLE)
+        # str-cast so integer sample ids still match obs.index; dedup so a
+        # repeated sample row can't multiply obs rows.
+        cdf[OBS_SAMPLE] = cdf[OBS_SAMPLE].astype(str)
+        cdf = cdf.drop_duplicates(OBS_SAMPLE).set_index(OBS_SAMPLE)
         obs = obs.join(cdf, how="left")
     if selectivity is not None:
         # Join by sample id; missing samples get NaN.
@@ -158,7 +164,10 @@ def assemble_anndata(
         var[VAR_MEAN_LOC_PROB] = np.nanmean(loc_arr, axis=0)
         var[VAR_MAX_LOC_PROB] = np.nanmax(loc_arr, axis=0)
         var[VAR_MIN_LOC_PROB] = np.nanmin(loc_arr, axis=0)
-    classI_cutoff = float(settings.get("classI_cutoff", 0.75))
+    # collapse_precursors allows classI_cutoff=None (gate disabled); the var QC
+    # columns still need a threshold, so fall back to the Class-I convention.
+    _cutoff = settings.get("classI_cutoff")
+    classI_cutoff = 0.75 if _cutoff is None else float(_cutoff)
     is_classI = loc_arr >= classI_cutoff  # NaN loc -> False
     var[VAR_N_CLASSI_SAMPLES] = is_classI.sum(axis=0).astype(int)
     var[VAR_FRACTION_CLASSI] = var[VAR_N_CLASSI_SAMPLES] / max(loc_arr.shape[0], 1)
@@ -191,7 +200,11 @@ def assemble_anndata(
         "stats": dict(stats),
     }
     if short_key_collisions:
-        alphaphos_ns["short_key_collisions"] = short_key_collisions
+        # dict[str, list[str]] round-trips through h5ad; the (str, list)
+        # tuples from resolve_short_key_collisions do not.
+        alphaphos_ns["short_key_collisions"] = {
+            short: list(fulls) for short, fulls in short_key_collisions
+        }
     if decision_table is not None:
         alphaphos_ns["classI_decision_table"] = decision_table
     adata.uns[UNS_ALPHAPHOS] = alphaphos_ns

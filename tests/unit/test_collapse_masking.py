@@ -10,6 +10,8 @@ and the drop_all_nan_sites alignment invariant.
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -64,3 +66,31 @@ def test_drop_all_nan_sites_aligns_all_three_matrices():
     assert list(q_new.index) == ["site1", "site3"]
     assert list(loc_new.index) == ["site1", "site3"]
     assert list(meta_new.index) == ["site1", "site3"]
+
+
+def test_mask_condition_aware_unlabelled_sample_gets_per_run_rule(caplog):
+    # Sample u1 has no condition label. It must NOT bypass masking: its
+    # low-loc cell is masked by the strict per-run rule, with a warning.
+    idx = pd.Index(["site1"], name="full_key")
+    cols = ["c1", "c2", "u1"]
+    quant = pd.DataFrame([[10.0, 20.0, 30.0]], index=idx, columns=cols)
+    loc = pd.DataFrame([[0.90, 0.85, 0.10]], index=idx, columns=cols)
+    cdf = pd.DataFrame({"sample": ["c1", "c2"], "condition": ["ctrl", "ctrl"]})
+    with caplog.at_level(logging.WARNING):
+        masked, decision = mask_condition_aware(quant, loc, condition_df=cdf)
+    assert masked.loc["site1", "c1"] == 10.0
+    assert masked.loc["site1", "c2"] == 20.0
+    assert np.isnan(masked.loc["site1", "u1"])
+    assert list(decision.columns) == ["ctrl"]
+    assert any("no entry in condition_df" in r.message for r in caplog.records)
+
+
+def test_mask_condition_aware_duplicated_condition_rows_do_not_inflate_n():
+    idx = pd.Index(["site1"], name="full_key")
+    cols = ["c1", "c2"]
+    quant = pd.DataFrame([[10.0, 20.0]], index=idx, columns=cols)
+    loc = pd.DataFrame([[0.90, 0.10]], index=idx, columns=cols)
+    cdf = pd.DataFrame({"sample": ["c1", "c1", "c2"], "condition": ["ctrl"] * 3})
+    _, decision = mask_condition_aware(quant, loc, condition_df=cdf)
+    # 1 Class-I of 2 distinct samples -- not 2 of 3 from the duplicated row.
+    assert decision.loc["site1", "ctrl"] == 0.5

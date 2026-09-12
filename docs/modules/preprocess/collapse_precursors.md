@@ -87,7 +87,7 @@ ap.collapse_precursors(
 | Key | Default | What it does | Alternatives |
 | --- | --- | --- | --- |
 | `search_engine` | `"SN"` | Which PSM schema to expect. | Only Spectronaut for v1. |
-| `quantification_level` | `"MS2"` | Which quant column to consume. | `"MS1"`, `"auto"`. Falls back per engine if unavailable. |
+| `quantification_level` | `None` | Which quant column to consume. `None` = engine default (`"MS2"` Spectronaut, `"MS1"` DIA-NN). | `"MS2"`, `"MS1"`, `"auto"`. Falls back per engine if unavailable. |
 | `aggregation_method` | `"sum"` | How to combine multiple PSM rows for the same (precursor, sample) into one intensity. | `"mean"`, `"median"`. `"sum"` is the conventional choice; the other two are useful when duplicate rows represent redundant measurements rather than distinct fragments. |
 | `noise_floor_filter` | `True` | Drop log2 values in `{0, 1}` (Spectronaut noise-floor convention: linear intensity 1 or 2 = "signal detected but at the very bottom of the dynamic range"). | `False` to keep them. |
 | `drop_all_nan` | `True` | Drop precursors with no observed values in any sample after log2 / noise-floor. | `False` to keep NaN rows. |

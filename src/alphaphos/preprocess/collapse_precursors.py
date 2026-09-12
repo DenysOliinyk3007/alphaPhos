@@ -37,7 +37,6 @@ from __future__ import annotations
 
 import logging
 import re
-import warnings
 from typing import Any, Literal
 
 import numpy as np
@@ -48,7 +47,7 @@ try:
 except ImportError:  # pragma: no cover
     ad = None  # type: ignore[assignment]
 
-from alphaphos import __version__ as _ALPHAPHOS_VERSION
+from alphaphos._version import __version__ as _ALPHAPHOS_VERSION
 from alphaphos.constants import (
     COL_CANONICAL_QUANT,
     COL_EG_PRECURSOR_ID,
@@ -58,7 +57,6 @@ from alphaphos.constants import (
     COL_PG_PROTEIN_GROUPS,
     COL_R_FILENAME,
 )
-from alphaphos.io.schemas import resolve_quant_column
 from alphaphos.preprocess._collapse.output_format import assemble_anndata
 from alphaphos.preprocess._collapse.parsing import (
     extract_first_valid_position,
@@ -67,6 +65,10 @@ from alphaphos.preprocess._collapse.parsing import (
     rank_select_positions,
 )
 from alphaphos.preprocess._collapse.selectivity import compute_selectivity
+from alphaphos.preprocess._collapse.shared import (
+    enable_verbose_logging,
+    select_quantification_column,
+)
 from alphaphos.preprocess._collapse.site_pipeline import log2_transform
 
 logger = logging.getLogger(__name__)
@@ -74,7 +76,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_PRECURSOR_COLLAPSE_SETTINGS: dict[str, Any] = {
     "search_engine": "SN",
-    "quantification_level": "MS2",
+    "quantification_level": None,  # engine default: SN -> MS2, DIA-NN -> MS1
     "aggregation_method": "sum",
     "noise_floor_filter": True,
     "drop_all_nan": True,
@@ -91,7 +93,7 @@ DEFAULT_PRECURSOR_COLLAPSE_SETTINGS: dict[str, Any] = {
 }
 
 _ALLOWED_ENGINES = ("SN",)
-_ALLOWED_QUANT_LEVELS = ("MS2", "MS1", "auto")
+_ALLOWED_QUANT_LEVELS = (None, "MS2", "MS1", "auto")
 _ALLOWED_AGG_METHODS = ("sum", "mean", "median")
 
 _CHARGE_TRAILING_RE = re.compile(r"\.(\d+)$")
@@ -213,21 +215,25 @@ def collapse_precursors(
         * ``.uns["alphaphos"]`` = version + resolved settings + stats.
     """
     if verbose:
-        _install_stderr_handler()
+        enable_verbose_logging(logger)
 
     settings = resolve_precursor_settings(advanced)
 
     if COL_EG_PRECURSOR_ID not in data.columns:
         raise KeyError(f"Input DataFrame is missing required column {COL_EG_PRECURSOR_ID!r}.")
 
+    # Capture PSM lineage before ``data`` is rebound by the filters below.
+    source_attrs = dict(data.attrs) if getattr(data, "attrs", None) else None
+
     # ---- Selectivity (per-sample phospho-selectivity %) is engine-agnostic
     selectivity = compute_selectivity(data)
 
-    # ---- Pick the quant column (reuse the schema resolver) --------------
-    data, chosen_col, level_used = _select_quantification_column(
+    # ---- Pick the quant column (shared with collapse_sites) --------------
+    data, chosen_col, level_used = select_quantification_column(
         data,
         engine=settings["search_engine"],
         requested_level=settings["quantification_level"],
+        logger=logger,
     )
 
     # ---- Parse precursor identifiers -------------------------------------
@@ -386,22 +392,19 @@ def collapse_precursors(
         "classI_cutoff": settings["classI_cutoff"],
     }
 
-    # assemble_anndata requires a matching loc matrix (no None path);
-    # settings["classI_cutoff"] is not present in our precursor settings.
-    # Provide a neutral cutoff so the (now-informational) var QC columns
-    # don't fire spurious warnings.
-    settings_for_assembly = {**settings, "classI_cutoff": 0.75}
-
+    # The resolved settings are stamped verbatim into uns["pipeline_params"]
+    # (including classI_cutoff=None when the gate is disabled -- assemble_anndata
+    # falls back to 0.75 for the informational var QC columns in that case).
     adata = assemble_anndata(
         quant_log2,
         loc_per_run,
         var_meta,
         condition_df=condition_df,
-        settings=settings_for_assembly,
+        settings=settings,
         stats=stats,
         selectivity=selectivity,
         decision_table=None,
-        source_attrs=dict(data.attrs) if getattr(data, "attrs", None) else None,
+        source_attrs=source_attrs,
         short_key_collisions=None,
         version=_ALPHAPHOS_VERSION,
         logger=logger,
@@ -489,43 +492,50 @@ def precursor_to_site_view(
             "collapse_precursors(annotate_localization=True)?"
         )
     v = adata.var
-    rows: list[dict[str, Any]] = []
-    for key, row in v.iterrows():
-        prob = row["best_localization_prob"]
-        pep = row["peptide_sequence"]
-        pep_pos = row["best_localization_pos_peptide"]
-        prot_pos = row["best_localization_pos_protein"]
-        mult = row["n_phospho"]
-        passes = not pd.isna(prob) and (
-            require_localization is None or float(prob) >= float(require_localization)
-        )
-        site_key = None
-        residue = None
-        if passes and pep and not pd.isna(pep_pos) and not pd.isna(prot_pos):
-            pep = str(pep)
-            i = int(pep_pos) - 1  # 1-indexed -> 0-indexed
-            if 0 <= i < len(pep):
+    prob = pd.to_numeric(v["best_localization_prob"], errors="coerce")
+    if require_localization is None:
+        passes = prob.notna().to_numpy()
+    else:
+        passes = (prob >= float(require_localization)).fillna(False).to_numpy(dtype=bool)
+
+    # Column-wise extraction + one plain zip loop (no DataFrame.iterrows, which
+    # builds a Series per row and dominated runtime at 1e5 precursors).
+    peps = v["peptide_sequence"].tolist()
+    pep_pos = pd.to_numeric(v["best_localization_pos_peptide"], errors="coerce").to_numpy()
+    prot_pos = pd.to_numeric(v["best_localization_pos_protein"], errors="coerce").to_numpy()
+    mults = pd.to_numeric(v["n_phospho"], errors="coerce").fillna(0).to_numpy()
+    pgs = v["protein_group_id"].astype(str).tolist()
+    genes = v["gene"].astype(str).tolist()
+
+    site_keys: list[str | None] = []
+    residues: list[str | None] = []
+    positions: list[float] = []
+    for ok, pep, pp, pr, m, pg, gene in zip(
+        passes, peps, pep_pos, prot_pos, mults, pgs, genes, strict=True
+    ):
+        key: str | None = None
+        residue: str | None = None
+        pos = np.nan
+        if ok and isinstance(pep, str) and pep and not np.isnan(pp) and not np.isnan(pr):
+            i = int(pp) - 1  # 1-indexed -> 0-indexed
+            if 0 <= i < len(pep) and pep[i] in residue_alphabet:
                 residue = pep[i]
-                if residue in residue_alphabet:
-                    site_key = (
-                        f"{row['protein_group_id']}|{row['gene']}|"
-                        f"{residue}{int(prot_pos)}|M{int(mult)}"
-                    )
-                else:
-                    residue = None
-        rows.append(
-            {
-                "precursor_key": key,
-                "site_key": site_key,
-                "site_residue": residue,
-                "site_position_protein": int(prot_pos)
-                if (site_key is not None and not pd.isna(prot_pos))
-                else np.nan,
-                "best_localization_prob": prob,
-                "passes_localization": bool(passes),
-            }
-        )
-    out = pd.DataFrame(rows).set_index("precursor_key")
+                key = f"{pg}|{gene}|{residue}{int(pr)}|M{int(m)}"
+                pos = float(int(pr))
+        site_keys.append(key)
+        residues.append(residue)
+        positions.append(pos)
+
+    out = pd.DataFrame(
+        {
+            "site_key": site_keys,
+            "site_residue": residues,
+            "site_position_protein": positions,
+            "best_localization_prob": prob.to_numpy(),
+            "passes_localization": passes,
+        },
+        index=pd.Index(v.index, name="precursor_key"),
+    )
     return out
 
 
@@ -638,49 +648,6 @@ def aggregate_to_site_level(
 # ---------------------------------------------------------------------------
 # Internals
 # ---------------------------------------------------------------------------
-
-
-def _install_stderr_handler() -> None:
-    """Attach a stderr StreamHandler to this module's logger if none present."""
-    if any(isinstance(h, logging.StreamHandler) for h in logger.handlers):
-        return
-    handler = logging.StreamHandler()
-    handler.setLevel(logging.INFO)
-    handler.setFormatter(logging.Formatter("%(message)s"))
-    logger.addHandler(handler)
-    logger.setLevel(logging.INFO)
-
-
-def _select_quantification_column(
-    df: pd.DataFrame,
-    *,
-    engine: str,
-    requested_level: str,
-) -> tuple[pd.DataFrame, str, str]:
-    """Pick the quant column and copy its values into the canonical slot.
-
-    Copy of the private helper in ``collapse.py``; kept in-module so we
-    don't reach across ``_`` boundaries.  See that function's docstring
-    for the full rationale.
-    """
-    available = set(df.columns)
-    chosen_col, level_used = resolve_quant_column(
-        available, engine=engine, requested_level=requested_level
-    )
-    if level_used != requested_level:
-        msg = (
-            f"quantification_level={requested_level!r} unavailable in the input; "
-            f"falling back to level={level_used!r} via column {chosen_col!r}."
-        )
-        warnings.warn(msg, UserWarning, stacklevel=3)
-        logger.warning(msg)
-
-    if chosen_col != COL_CANONICAL_QUANT:
-        df = df.copy()
-        df[COL_CANONICAL_QUANT] = df[chosen_col]
-
-    logger.info("collapse_precursors: quant column %r (level=%s)", chosen_col, level_used)
-    return df, chosen_col, level_used
 
 
 def _parse_precursors(precursor_ids: pd.Series) -> pd.DataFrame:

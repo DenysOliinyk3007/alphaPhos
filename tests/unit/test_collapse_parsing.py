@@ -130,6 +130,11 @@ class TestParseLocalizationProbabilities:
         s = "_S[Phospho (STY): 0.0%]TK_"
         assert parse_localization_probabilities(s) == {1: 0.0}
 
+    def test_unclosed_bracket_never_raises(self):
+        # Docstring contract: unparseable input -> empty / partial dict, no exception.
+        assert parse_localization_probabilities("_S[Phospho (STY): 95%K_") == {}
+        assert parse_localization_probabilities("_S[Phospho (STY): 95.0%]T[Phospho") == {1: 0.95}
+
 
 # ---------------------------------------------------------------------------
 # rank_select_positions

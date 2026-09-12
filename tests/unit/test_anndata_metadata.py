@@ -10,6 +10,8 @@ Covers:
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -174,35 +176,39 @@ class TestComputeSiteQC:
 
 
 # ============================================================================
-# to_anndata end-to-end (Tier 1 + Tier 2 + Tier 4)
+# to_anndata end-to-end: (sites x samples) matrix with `|` keys -> AnnData
 # ============================================================================
+
+_KEYS = ["P12345|GENE1|S100|M1", "P12345|GENE1|T200|M1", "Q67890|GENE2|Y50|M2"]
 
 
 @pytest.fixture
 def mini_sites():
-    """A tiny 2-sample × 3-site collapse output for to_anndata tests."""
+    """A tiny 3-site x 2-sample log2 matrix with current alphaPhos site keys."""
     df = pd.DataFrame(
-        {
-            "PTM_Collapse_key": [
-                "P12345~GENE1_S100_M1",
-                "P12345~GENE1_T200_M1",
-                "Q67890~GENE2_Y50_M2",
-            ],
-            "kinase_sequence": [
-                "_AAVKRGT*S*ELLIQAA_",  # site1: proline+1? no (E)
-                "_AAVKRGT*T*PLLIQAA_",  # site2: proline-directed
-                "FASTA_ERROR: missing",  # site3: error sentinel
-            ],
-            "sample_A": [10.0, 12.0, 9.5],
-            "sample_B": [11.0, 12.5, 10.0],
-        }
+        {"sample_A": [10.0, 12.0, 9.5], "sample_B": [11.0, 12.5, np.nan]},
+        index=_KEYS,
     )
     df.attrs["alphaphos_pipeline"] = {
         "aggregation_method": "sum",
         "localization_strategy": "condition",
-        "fasta_path": "/path/to/proteome.fasta",
     }
+    df.attrs["source_path"] = "external.tsv"
     return df
+
+
+@pytest.fixture
+def mini_var_meta():
+    return pd.DataFrame(
+        {
+            "kinase_sequence": [
+                "_AAVKRGT*S*ELLIQAA_",  # site1: +1 = E -> not proline-directed
+                "_AAVKRGT*T*PLLIQAA_",  # site2: +1 = P -> proline-directed
+                "FASTA_ERROR: missing",  # site3: error sentinel -> None flags
+            ]
+        },
+        index=_KEYS,
+    )
 
 
 @pytest.fixture
@@ -213,81 +219,119 @@ def mini_loc():
             [0.5, 0.4],  # site2: neither
             [0.95, np.nan],  # site3: mixed, with NaN
         ],
-        index=[
-            "P12345~GENE1_S100_M1",
-            "P12345~GENE1_T200_M1",
-            "Q67890~GENE2_Y50_M2",
-        ],
+        index=_KEYS,
         columns=["sample_A", "sample_B"],
     )
 
 
-class TestToAnnDataMetadata:
-    def test_motif_flags_in_var(self, mini_sites):
+class TestToAnnData:
+    def test_shape_layers_and_index_names(self, mini_sites):
         adata = to_anndata(mini_sites)
-        assert "p_minus_1" in adata.var.columns
-        assert "p_plus_1" in adata.var.columns
-        assert "is_proline_directed" in adata.var.columns
-        # site1: S, +1 = E -> not proline-directed
-        # site2: T, +1 = P -> proline-directed
-        # site3: error sentinel -> None
-        v = adata.var
-        assert v.loc["P12345~GENE1_S100_M1", "is_proline_directed"] is False
-        assert v.loc["P12345~GENE1_T200_M1", "is_proline_directed"] is True
-        assert v.loc["Q67890~GENE2_Y50_M2", "is_proline_directed"] is None
+        assert adata.shape == (2, 3)
+        assert list(adata.obs_names) == ["sample_A", "sample_B"]
+        assert list(adata.var_names) == _KEYS
+        assert adata.var_names.name == "full_key"
+        assert adata.obs_names.name == "sample"
+        np.testing.assert_array_equal(adata.X, adata.layers["intensity_log2"])
+        assert np.isnan(adata.X[1, 2])  # transposed correctly
 
-    def test_site_qc_in_var(self, mini_sites, mini_loc):
+    def test_key_components_parsed_into_var(self, mini_sites):
+        v = to_anndata(mini_sites).var
+        row = v.loc["Q67890|GENE2|Y50|M2"]
+        assert row["protein_group_id"] == "Q67890"
+        assert row["gene"] == "GENE2"
+        assert row["site_aa"] == "Y"
+        assert row["site_position"] == 50
+        assert row["multiplicity"] == 2
+        assert row["short_key"] == "GENE2|Y50|M2"
+        assert row["pg_key"] == "Q67890|Y50|M2"
+
+    def test_unparseable_key_warns_and_yields_nan(self, caplog):
+        df = pd.DataFrame({"s": [1.0, 2.0]}, index=["P1|G1|S10|M1", "legacy~G_S1_M1"])
+        with caplog.at_level(logging.WARNING, logger="alphaphos.preprocess.anndata"):
+            adata = to_anndata(df)
+        assert pd.isna(adata.var.loc["legacy~G_S1_M1", "protein_group_id"])
+        assert adata.var.loc["P1|G1|S10|M1", "protein_group_id"] == "P1"
+        assert any("do not match" in r.message for r in caplog.records)
+
+    def test_motif_flags_from_var_meta(self, mini_sites, mini_var_meta):
+        v = to_anndata(mini_sites, var_meta=mini_var_meta).var
+        assert v.loc[_KEYS[0], "kinase_sequence"] == "_AAVKRGT*S*ELLIQAA_"
+        assert v.loc[_KEYS[0], "is_proline_directed"] is False
+        assert v.loc[_KEYS[1], "is_proline_directed"] is True
+        assert v.loc[_KEYS[2], "is_proline_directed"] is None
+
+    def test_motif_flags_absent_without_kinase_sequence(self, mini_sites):
+        v = to_anndata(mini_sites).var
+        assert "p_minus_1" not in v.columns
+        assert "is_proline_directed" not in v.columns
+
+    def test_var_meta_clash_raises(self, mini_sites):
+        with pytest.raises(ValueError, match="clash"):
+            to_anndata(mini_sites, var_meta=pd.DataFrame({"gene": ["x"] * 3}, index=_KEYS))
+
+    def test_site_qc_and_localization_layer(self, mini_sites, mini_loc):
         adata = to_anndata(mini_sites, loc_per_run=mini_loc, classI_cutoff=0.75)
         v = adata.var
-        # site1: both samples ≥ 0.75
-        assert v.loc["P12345~GENE1_S100_M1", "n_classI_samples"] == 2
-        assert v.loc["P12345~GENE1_S100_M1", "fraction_classI"] == 1.0
-        # site2: neither
-        assert v.loc["P12345~GENE1_T200_M1", "n_classI_samples"] == 0
-        # site3: one valid, one NaN
-        assert v.loc["Q67890~GENE2_Y50_M2", "n_samples_detected"] == 1
-        assert v.loc["Q67890~GENE2_Y50_M2", "n_classI_samples"] == 1
+        assert v.loc[_KEYS[0], "n_classI_samples"] == 2
+        assert v.loc[_KEYS[0], "fraction_classI"] == 1.0
+        assert v.loc[_KEYS[1], "n_classI_samples"] == 0
+        assert v.loc[_KEYS[2], "n_samples_detected"] == 1
+        assert "classI_wilson_lb" in v.columns
+        assert adata.layers["localization"].shape == adata.X.shape
+        assert np.isnan(adata.layers["localization"][1, 2])
 
     def test_site_qc_absent_without_loc(self, mini_sites):
         adata = to_anndata(mini_sites)
-        # No loc_per_run -> QC columns NOT added
         assert "n_classI_samples" not in adata.var.columns
-        assert "mean_loc_prob" not in adata.var.columns
+        assert "localization" not in adata.layers
+
+    def test_condition_df_joined_with_dedup_and_str_cast(self, mini_sites):
+        cdf = pd.DataFrame(
+            {
+                "sample": ["sample_A", "sample_A", "sample_B"],
+                "condition": ["ctrl", "ctrl", "trt"],
+                "batch": [1, 1, 2],
+            }
+        )
+        adata = to_anndata(mini_sites, condition_df=cdf)
+        assert adata.n_obs == 2
+        assert list(adata.obs["condition"]) == ["ctrl", "trt"]
+        assert "batch" in adata.obs.columns
+
+    def test_condition_df_missing_columns_raises(self, mini_sites):
+        with pytest.raises(ValueError, match="condition"):
+            to_anndata(mini_sites, condition_df=pd.DataFrame({"sample": ["sample_A"]}))
 
     def test_provenance_in_uns(self, mini_sites):
-        adata = to_anndata(mini_sites)
-        u = adata.uns["alphaphos"]
-        assert u["version"] == ALPHAPHOS_VERSION
-        assert u["n_sites"] == 3
-        assert u["n_samples"] == 2
-        # Pipeline params lifted from sites.attrs
-        assert u["pipeline_params"]["aggregation_method"] == "sum"
-        assert u["pipeline_params"]["localization_strategy"] == "condition"
-        assert u["pipeline_params"]["fasta_path"] == "/path/to/proteome.fasta"
-        # ISO timestamp string
-        assert isinstance(u["processing_timestamp"], str)
-        assert "T" in u["processing_timestamp"]
+        u = to_anndata(mini_sites).uns
+        a = u["alphaphos"]
+        assert a["version"] == ALPHAPHOS_VERSION
+        assert a["n_sites"] == 3
+        assert a["n_samples"] == 2
+        assert a["pipeline_params"]["aggregation_method"] == "sum"
+        assert "T" in a["processing_timestamp"]
+        # non-pipeline attrs land in source_attrs
+        assert u["source_attrs"] == {"source_path": "external.tsv"}
 
-    def test_provenance_handles_missing_pipeline_attrs(self):
-        """When sites.attrs is empty, uns['alphaphos'] still works."""
-        df = pd.DataFrame(
-            {
-                "PTM_Collapse_key": ["P12345~G_S100_M1"],
-                "sample_A": [10.0],
-            }
-        )
-        adata = to_anndata(df)
-        u = adata.uns["alphaphos"]
-        assert u["pipeline_params"] == {}
-        assert u["version"] == ALPHAPHOS_VERSION
+    def test_explicit_pipeline_params_and_psm_attrs_win(self, mini_sites):
+        u = to_anndata(mini_sites, pipeline_params={"x": 1}, psm_attrs={"n_rows_loaded": 5}).uns
+        assert u["alphaphos"]["pipeline_params"] == {"x": 1}
+        assert u["source_attrs"] == {"n_rows_loaded": 5}
 
-    def test_motif_flags_absent_without_kinase_sequence(self):
-        df = pd.DataFrame(
-            {
-                "PTM_Collapse_key": ["P12345~G_S100_M1"],
-                "sample_A": [10.0],
-            }
-        )
-        adata = to_anndata(df)
-        assert "p_minus_1" not in adata.var.columns
-        assert "is_proline_directed" not in adata.var.columns
+    def test_provenance_handles_missing_attrs(self):
+        adata = to_anndata(pd.DataFrame({"s": [1.0]}, index=["P1|G|S1|M1"]))
+        assert adata.uns["alphaphos"]["pipeline_params"] == {}
+        assert "source_attrs" not in adata.uns
+
+    @pytest.mark.parametrize(
+        ("sites", "match"),
+        [
+            (pd.DataFrame({"s": [1.0], "gene": ["G"]}, index=["P1|G|S1|M1"]), "numeric"),
+            (pd.DataFrame({"s": [1.0, 2.0]}, index=["P1|G|S1|M1", "P1|G|S1|M1"]), "unique"),
+            (pd.DataFrame({"s": []}), "non-empty"),
+        ],
+    )
+    def test_rejects_bad_input(self, sites, match):
+        with pytest.raises(ValueError, match=match):
+            to_anndata(sites)

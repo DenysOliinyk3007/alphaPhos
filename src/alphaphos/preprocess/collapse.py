@@ -50,7 +50,7 @@ Public API
 from __future__ import annotations
 
 import logging
-import warnings
+import numbers
 from typing import Any
 
 import pandas as pd
@@ -60,14 +60,12 @@ try:
 except ImportError:  # pragma: no cover
     ad = None  # type: ignore[assignment]
 
-from alphaphos import __version__ as _alphaphos_version
+from alphaphos._version import __version__ as _alphaphos_version
 from alphaphos.constants import (
-    COL_CANONICAL_QUANT,
     COL_EG_PTM_LOC_PROBS,
     OBS_CONDITION,
     OBS_SAMPLE,
 )
-from alphaphos.io.schemas import resolve_quant_column
 from alphaphos.preprocess._collapse.masking import (
     VALID_STRATEGIES,
     drop_all_nan_sites,
@@ -77,6 +75,10 @@ from alphaphos.preprocess._collapse.masking import (
 )
 from alphaphos.preprocess._collapse.output_format import assemble_anndata
 from alphaphos.preprocess._collapse.selectivity import compute_selectivity
+from alphaphos.preprocess._collapse.shared import (
+    enable_verbose_logging,
+    select_quantification_column,
+)
 from alphaphos.preprocess._collapse.site_pipeline import (
     aggregate_precursors_to_sites,
     build_precursor_pivots,
@@ -88,7 +90,7 @@ from alphaphos.preprocess._collapse.site_pipeline import (
 )
 from alphaphos.preprocess.attribution import filter_to_top_n_positions
 
-logger = logging.getLogger("alphaphos.preprocess.collapse")
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -97,21 +99,37 @@ logger = logging.getLogger("alphaphos.preprocess.collapse")
 
 
 DEFAULT_COLLAPSE_SETTINGS: dict[str, Any] = {
-    "search_engine": "SN",  # "SN" | "Diann" | "Fragpipe" | "Peaks" (only SN implemented)
+    "search_engine": "SN",  # "SN" | "Diann" implemented; "Fragpipe" | "Peaks" raise
     # "MS2" | "MS1" | "auto".  Default "MS2" prefers ``FG.MS2Quantity``
     # (Spectronaut MS2 Fragment Ion Report).  When that column is absent
     # (as in a standard Spectronaut "Normal" report), the reader logs a
     # UserWarning and falls back to ``EG.TotalQuantity (Settings)`` -- the
     # precursor-level total intensity that ships with the Normal report.
-    # See ``alphaphos.io.spectronaut`` for the exact fallback chain per
-    # search engine.  Pass ``"auto"`` explicitly to skip the warning.
-    "quantification_level": "MS2",
-    "top_n_attribution": True,  # Spectronaut over-export dedup (safe default; on)
+    # None -> the engine's default level (schemas.DEFAULT_QUANT_LEVEL):
+    # "MS2" for Spectronaut, "MS1" (Ms1.Translated) for DIA-NN -- alphaPhos's
+    # deliberate DIA-NN choice.  "MS2" on DIA-NN gives the conventional
+    # Precursor.Quantity.  See ``alphaphos.io.schemas`` for the fallback
+    # chain per engine; pass ``"auto"`` explicitly to skip the warning.
+    "quantification_level": None,
+    # Spectronaut over-export dedup: True | False | "auto".  Spectronaut writes
+    # one row per candidate localization of an ambiguous precursor, each
+    # carrying the full intensity, so the extras must be removed.  DIA-NN
+    # writes ONE peptidoform row per precursor-run -- nothing to dedup, and the
+    # filter would only delete low-confidence peptidoforms the Class-I mask
+    # handles anyway.  "auto" applies it for search_engine "SN" only.
+    "top_n_attribution": "auto",
     "cutoff": 0.75,  # loc cutoff for per_run / global_max
     "classI_cutoff": 0.75,  # loc cutoff for the condition-aware mask
     "condition_threshold": 0.50,  # min fraction of Class-I reps to keep condition
-    "collapse_level": "PG",  # "PG" (protein group) | "P" (protein resolved)
+    "collapse_level": "PG",  # only "PG": site keys use the first protein-group accession
     "aggregation_method": "sum",  # "sum" | "median" | "mean" | "consolidate"
+    # Per-(precursor, run) Class-I gate BEFORE aggregation: a precursor adds
+    # to a site's intensity in a run only if its own loc prob there reaches
+    # the strategy's cutoff -- unless no precursor of the site is Class-I in
+    # that run (then all are aggregated and the site-level mask decides).
+    # Mirrors Spectronaut's PTM consolidation; validated on the EGF HeLa
+    # series (docs/benchmark/spectronaut_native_benchmark.md §9).
+    "precursor_loc_gate": True,
     "localization_strategy": "condition",  # "condition" | "per_run" | "global_max" | "wilson"
     # Only consumed when localization_strategy == "wilson": either a float in
     # [0, 1] or the string "auto" (elbow-detected from cohort size + retention
@@ -123,12 +141,27 @@ DEFAULT_COLLAPSE_SETTINGS: dict[str, Any] = {
 }
 
 _ALLOWED_ENGINES = ("SN", "Diann", "Fragpipe", "Peaks")
-_ALLOWED_QUANT_LEVELS = ("MS2", "MS1", "auto")
+_ALLOWED_QUANT_LEVELS = (None, "MS2", "MS1", "auto")
 
 
 # ---------------------------------------------------------------------------
 # Settings resolution
 # ---------------------------------------------------------------------------
+
+
+def _check_unit_interval(name: str, value: Any, *, exclusive_low: bool = False) -> None:
+    """Fail-fast check that ``value`` is a real number in [0, 1] (or (0, 1]).
+
+    Rejects ``bool`` (an ``int`` subclass, so ``True`` would otherwise pass as
+    1.0) and strings (``float("0.5")`` would silently accept ``"0.5"``).
+    """
+    interval = "(0, 1]" if exclusive_low else "[0, 1]"
+    if isinstance(value, bool) or not isinstance(value, numbers.Real):
+        raise ValueError(f"{name} must be a number in {interval}, got {value!r}")
+    v = float(value)
+    in_range = (0.0 < v <= 1.0) if exclusive_low else (0.0 <= v <= 1.0)
+    if not in_range:
+        raise ValueError(f"{name} must be in {interval}, got {value!r}")
 
 
 def resolve_settings(advanced: dict[str, Any] | None) -> dict[str, Any]:
@@ -174,40 +207,43 @@ def resolve_settings(advanced: dict[str, Any] | None) -> dict[str, Any]:
             f"quantification_level must be one of {_ALLOWED_QUANT_LEVELS}, "
             f"got {settings['quantification_level']!r}"
         )
-    if not isinstance(settings["top_n_attribution"], bool):
-        raise ValueError(
-            f"top_n_attribution must be bool, got {type(settings['top_n_attribution']).__name__}"
-        )
+    top_n = settings["top_n_attribution"]
+    if not (isinstance(top_n, bool) or top_n == "auto"):
+        raise ValueError(f"top_n_attribution must be bool or 'auto', got {top_n!r}")
+    for bool_key in (
+        "precursor_loc_gate",
+        "noise_floor_filter",
+        "drop_all_nan",
+    ):
+        if not isinstance(settings[bool_key], bool):
+            raise ValueError(f"{bool_key} must be bool, got {type(settings[bool_key]).__name__}")
     if settings["localization_strategy"] not in VALID_STRATEGIES:
         raise ValueError(
             f"localization_strategy must be one of {VALID_STRATEGIES}, "
             f"got {settings['localization_strategy']!r}"
         )
-    if settings["collapse_level"] not in ("PG", "P"):
-        raise ValueError(f"collapse_level must be 'PG' or 'P', got {settings['collapse_level']!r}")
+    if settings["collapse_level"] != "PG":
+        raise ValueError(
+            "collapse_level must be 'PG'. The former 'P' option never resolved proteins (it "
+            "only kept the raw semicolon-joined group string) and has been removed; got "
+            f"{settings['collapse_level']!r}"
+        )
     if settings["aggregation_method"] not in ("sum", "median", "mean", "consolidate"):
         raise ValueError(
             f"aggregation_method must be one of ('sum', 'median', 'mean', 'consolidate'), "
             f"got {settings['aggregation_method']!r}"
         )
-    for prob_key in ("cutoff", "classI_cutoff"):
-        if not 0 <= float(settings[prob_key]) <= 1:
-            raise ValueError(f"{prob_key} must be in [0, 1], got {settings[prob_key]}")
-    if not 0 < float(settings["condition_threshold"]) <= 1:
-        raise ValueError(
-            f"condition_threshold must be in (0, 1], got {settings['condition_threshold']}"
-        )
+    _check_unit_interval("cutoff", settings["cutoff"])
+    _check_unit_interval("classI_cutoff", settings["classI_cutoff"])
+    _check_unit_interval("condition_threshold", settings["condition_threshold"], exclusive_low=True)
     wt = settings["wilson_threshold"]
     if isinstance(wt, str):
         if wt != "auto":
             raise ValueError(f"wilson_threshold string must be 'auto', got {wt!r}")
+    elif isinstance(wt, bool) or not isinstance(wt, numbers.Real):
+        raise ValueError(f"wilson_threshold must be a float or 'auto', got {wt!r}")
     else:
-        try:
-            wt_f = float(wt)
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"wilson_threshold must be a float or 'auto', got {wt!r}") from exc
-        if not 0.0 <= wt_f <= 1.0:
-            raise ValueError(f"wilson_threshold must be in [0, 1], got {wt_f}")
+        _check_unit_interval("wilson_threshold", wt)
 
     return settings
 
@@ -235,9 +271,11 @@ def collapse_sites(
     ----------
     data : DataFrame
         PSM-level input. For Spectronaut, this is the output of
-        :func:`alphaphos.io.read_spectronaut`. Required columns depend on
-        the ``search_engine`` (currently only ``"SN"`` is implemented;
-        others raise ``NotImplementedError``).
+        :func:`alphaphos.io.read_spectronaut`; for DIA-NN, the output of
+        :func:`alphaphos.io.read_diann` (with
+        ``advanced={"search_engine": "Diann"}``). Required columns depend on
+        the ``search_engine``; engines other than ``"SN"`` / ``"Diann"``
+        raise ``NotImplementedError``.
 
         Any ``data.attrs`` dict is preserved in
         ``adata.uns["source_attrs"]``.
@@ -251,9 +289,10 @@ def collapse_sites(
         Overrides for :data:`DEFAULT_COLLAPSE_SETTINGS`. See module
         docstring for examples. Unknown keys raise.
     verbose : bool
-        If True, INFO-level logs are printed to stderr. False (default) is
-        library-quiet; all logs still go to the ``alphaphos.preprocess.collapse``
-        logger for external configuration.
+        If True, attach a stderr handler to the ``alphaphos.preprocess.collapse``
+        logger and emit INFO-level stage logs. False (default) leaves the
+        logger untouched -- library-quiet unless you configure it yourself
+        (a level you set, e.g. DEBUG, is never overridden).
 
     Returns
     -------
@@ -281,12 +320,18 @@ def collapse_sites(
     ValueError
         If ``advanced`` contains unknown keys or invalid values.
     NotImplementedError
-        If ``search_engine`` is set to any value other than ``"SN"``.
+        If ``search_engine`` is set to any value other than ``"SN"`` or ``"Diann"``.
     KeyError
         If required PSM columns are missing.
     """
     settings = resolve_settings(advanced)
-    _configure_logger(verbose)
+    if verbose:
+        enable_verbose_logging(logger)
+
+    # Capture PSM lineage now: ``data`` is rebound below (quant-column copy,
+    # top-N filter) and relying on pandas to propagate .attrs through those
+    # operations is fragile.
+    source_attrs = dict(data.attrs) if getattr(data, "attrs", None) else None
 
     if settings["search_engine"] not in ("SN", "Diann"):
         raise NotImplementedError(
@@ -314,17 +359,24 @@ def collapse_sites(
     selectivity = compute_selectivity(data)
 
     # -- Pre-stage A: pick the quant column (fallback chain per schemas.py; warn on fallback)
-    data, chosen_quant_col, quant_level_used = _select_quantification_column(
+    data, chosen_quant_col, quant_level_used = select_quantification_column(
         data,
         engine=settings["search_engine"],
         requested_level=settings["quantification_level"],
+        logger=logger,
     )
+    stats["quantification_level_requested"] = settings["quantification_level"]
     stats["quantification_column_used"] = chosen_quant_col
     stats["quantification_level_used"] = quant_level_used
 
-    # -- Pre-stage B: top-N attribution dedup (Spectronaut over-export fix; on by default)
-    if settings["top_n_attribution"]:
+    # -- Pre-stage B: top-N attribution dedup (Spectronaut over-export fix).
+    # "auto" -> Spectronaut only; DIA-NN emits one peptidoform row per
+    # precursor-run so there is nothing to dedup (see DEFAULT_COLLAPSE_SETTINGS).
+    top_n = settings["top_n_attribution"]
+    apply_top_n = (settings["search_engine"] == "SN") if top_n == "auto" else bool(top_n)
+    if apply_top_n:
         data = _apply_top_n_attribution(data)
+    stats["top_n_attribution_applied"] = apply_top_n
     stats["n_psms_after_top_n"] = len(data)
 
     # -- Stage 1-2: parse + explode
@@ -343,24 +395,32 @@ def collapse_sites(
         logger=logger,
     )
 
+    strategy = settings["localization_strategy"]
+    # "wilson" delegates to global_max at the precursor-mask stage; the Wilson
+    # post-collapse site filter is applied after assemble_anndata (Stage 10).
+    strategy_effective = "global_max" if strategy == "wilson" else strategy
+
     # -- Stage 5: aggregate precursors to sites
-    # Note: this uses the aggregation method for the QUANT matrix. The LOC
-    # matrix is always max-aggregated by site (per-run cell = strongest evidence).
+    # The QUANT matrix uses the aggregation method; the LOC matrix is always
+    # max-aggregated by site (per-run cell = strongest evidence).  With
+    # precursor_loc_gate the per-precursor Class-I gate uses the same cutoff
+    # the strategy applies at site level afterwards.
+    gate_cutoff = (
+        settings["classI_cutoff"] if strategy_effective == "condition" else settings["cutoff"]
+    )
     site_quant, site_loc, site_meta = aggregate_precursors_to_sites(
         quant_precursor,
         loc_precursor,
         meta_precursor,
         aggregation_method=settings["aggregation_method"],
+        precursor_loc_gate=gate_cutoff if settings["precursor_loc_gate"] else None,
         logger=logger,
     )
     stats["n_sites_pre_mask"] = len(site_quant)
+    stats["n_precursor_cells_gated"] = int(site_quant.attrs.get("n_precursor_cells_gated", 0))
 
     # -- Stage 6: apply localization masking (per-run mask, or condition-aware, or none)
-    strategy = settings["localization_strategy"]
     decision_table = None
-    # "wilson" delegates to global_max at the precursor-mask stage; the Wilson
-    # post-collapse site filter is applied after assemble_anndata (Stage 10).
-    strategy_effective = "global_max" if strategy == "wilson" else strategy
     if strategy_effective == "per_run":
         site_quant = mask_per_run(
             site_quant,
@@ -421,9 +481,6 @@ def collapse_sites(
             "PTM_0_aa": "site_aa",
         }
     )
-    # Restore ``_`` in gene names (they were temporarily replaced with ``#`` in prepare_psms).
-    if "gene" in site_meta.columns:
-        site_meta["gene"] = site_meta["gene"].astype(str).str.replace("#", "_", regex=False)
 
     # -- Stage 9: build AnnData
     adata = assemble_anndata(
@@ -435,7 +492,7 @@ def collapse_sites(
         stats=stats,
         selectivity=selectivity,
         decision_table=decision_table,
-        source_attrs=dict(data.attrs) if hasattr(data, "attrs") and data.attrs else None,
+        source_attrs=source_attrs,
         short_key_collisions=collisions,
         version=_alphaphos_version,
         logger=logger,
@@ -451,76 +508,12 @@ def collapse_sites(
 
 
 # ---------------------------------------------------------------------------
-# Internal
-# ---------------------------------------------------------------------------
-
-
-def _configure_logger(verbose: bool) -> None:
-    """Attach an INFO-level stderr handler when ``verbose=True``.
-
-    Library-quiet by default. All logs still propagate through the
-    ``alphaphos.preprocess.collapse`` logger for external configuration.
-    """
-    if not verbose:
-        logger.setLevel(logging.WARNING)
-        return
-    if any(isinstance(h, logging.StreamHandler) for h in logger.handlers):
-        # Already configured for this session.
-        logger.setLevel(logging.INFO)
-        return
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter("[%(levelname)s] %(name)s: %(message)s"))
-    logger.addHandler(handler)
-    logger.setLevel(logging.INFO)
-
-
-# ---------------------------------------------------------------------------
-# Pre-collapse stages: quant-column selection + top-N attribution
+# Pre-collapse stage: top-N attribution
 #
-# These run BEFORE ``prepare_psms`` because they choose / prune what
-# ``prepare_psms`` consumes. Kept in this module (rather than under
-# ``_collapse``) because they compose engine settings with schema knowledge
-# and are logically part of the entry-point wiring.
+# Runs BEFORE ``prepare_psms`` because it prunes what ``prepare_psms``
+# consumes.  (Quant-column selection, the other pre-stage, is shared with
+# collapse_precursors -- see ``_collapse.shared``.)
 # ---------------------------------------------------------------------------
-
-
-def _select_quantification_column(
-    df: pd.DataFrame,
-    *,
-    engine: str,
-    requested_level: str,
-) -> tuple[pd.DataFrame, str, str]:
-    """Pick the quant column and copy its values into the canonical slot.
-
-    Walks the ``MS2 -> MS1 -> auto`` fallback chain via
-    :func:`alphaphos.io.schemas.resolve_quant_column`. If a fallback was
-    needed, emits a ``UserWarning`` AND logs a warning.
-
-    Returns
-    -------
-    (df, chosen_col, level_used)
-        Modified DataFrame (only touched if the source column was NOT
-        already the canonical slot), the actual source column name, and
-        the level the source column belongs to.
-    """
-    available = set(df.columns)
-    chosen_col, level_used = resolve_quant_column(
-        available, engine=engine, requested_level=requested_level
-    )
-    if level_used != requested_level:
-        msg = (
-            f"quantification_level={requested_level!r} unavailable in the input; "
-            f"falling back to level={level_used!r} via column {chosen_col!r}."
-        )
-        warnings.warn(msg, UserWarning, stacklevel=3)
-        logger.warning(msg)
-
-    if chosen_col != COL_CANONICAL_QUANT:
-        df = df.copy()
-        df[COL_CANONICAL_QUANT] = df[chosen_col]
-
-    logger.info("Using quantification column: %r (level=%s)", chosen_col, level_used)
-    return df, chosen_col, level_used
 
 
 def _apply_top_n_attribution(df: pd.DataFrame) -> pd.DataFrame:

@@ -14,7 +14,7 @@
 | --- | --- | --- |
 | `quant_level` (in `read_psm`) | `'auto'` | Spectronaut's `EG.TotalQuantity (Settings)` reflects the export-time MS-level setting. Auto-detect from the columns present; MS1 vs MS2 mismatch with the SN report manifests as a +4.7 log2 systematic offset (§3.1). |
 | `top_n_attribution` (in `read_psm`) | `True` | Safety filter that dedups Spectronaut over-export of same-site/different-precursor rows. Did not affect this dataset's quants (`aphos_old` = `aphos_new_MS2` = `aphos_only_MS2` bit-for-bit), but is required to prevent precursor double-counting on reports with over-export. |
-| `drop_contaminants` (in `read_psm`) | `True` | Drops PSM rows where every protein in the group matches a common-contaminant (MaxQuant `contaminants.fasta`, bundled at [src/alphaphos/resources/contaminants.fasta](../../src/alphaphos/resources/contaminants.fasta), 246 entries: keratins, BSA, trypsin, etc.). On the EGF dataset: 1,126 / 240,099 PSM rows (0.47%), 63 / 34,248 sites (0.18%), 5 spurious "significant" keratin hits in limma. Doesn't change SN classI agreement (r 0.99 either way) but cleans up the downstream hit list. See §3.6. |
+| `drop_contaminants` (in `read_psm`) | `True` | Drops PSM rows where every protein in the group matches a common-contaminant (MaxQuant `contaminants.fasta`, bundled at [src/alphaphos/resources/contaminants.fasta](https://github.com/DenysOliinyk3007/alphaPhos/blob/main/src/alphaphos/resources/contaminants.fasta), 246 entries: keratins, BSA, trypsin, etc.). On the EGF dataset: 1,126 / 240,099 PSM rows (0.47%), 63 / 34,248 sites (0.18%), 5 spurious "significant" keratin hits in limma. Doesn't change SN classI agreement (r 0.99 either way) but cleans up the downstream hit list. See §3.6. |
 | `cutoff` (collapse-time loc cutoff) | `0.75` | Matches Spectronaut's Class I threshold. With `localization_strategy='condition'` this value is ignored upstream; the `classI_cutoff` below drives the mask. |
 | **`aggregation_method`** | **`'sum'`** | **Biggest finding.** `'median'` (the legacy Dublin default) introduces a systematic intensity-dependent log2 offset vs SN (−1.84 at high quants, +0.10 at low). Switching to `'sum'` collapses it to ~0 (mean diff +0.06, 92% of cells within 0.1 log2 of SN). `'consolidate'` (full Hogrebe port) does *not* match SN better than `'sum'`, and drops more sites. See §3.3. |
 | **`localization_strategy`** | **`'condition'`** | Two-layer filter (collapse runs `global_max` upstream, then per-condition Class-I majority mask) mirrors SN's two-layer filter (peptide-level + binary per-cell). Jaccard 0.98 against `sn_classI`. `'per_run'` is what Reviewer 2 asks for if you want byte-equality with SN; `'global_max'` is the legacy permissive mode. See §3.4. |
@@ -376,7 +376,7 @@ from alphaphos.io import read_psm
 from alphaphos.preprocess import collapse_sites, apply_condition_aware_classI_mask
 import pandas as pd
 
-df = read_psm("new_report.parquet")                              # quant_level='auto', top_n on
+df = read_psm("new_report.parquet")  # quant_level='auto', top_n on
 condition_df = pd.DataFrame({"sample": [...], "condition": [...]})
 sites, loc_per_run = collapse_sites(df, condition_df=condition_df)
 # sites is the SN-faithful default output (sum agg, condition-aware mask, 0.75 cutoff)
@@ -391,3 +391,135 @@ The scoring helpers (`alpha_to_matchkey_frame`, `score_vs_classI`) live in §3 a
 - **Foundational design + Spectronaut manual cross-walk:** [../design/spectronaut_collapse_synthesis.md](../design/spectronaut_collapse_synthesis.md)
 - **The change implementing these defaults:** `src/alphaphos/preprocess/collapse.py`, `collapse_sites()` and `PeptideCollapse.{collapse_to_peptides, collapse_to_sites, process_complete_pipeline}` — `aggregation_method` default flipped `'median'` → `'sum'`; `localization_strategy` default flipped `'per_run'` → `'condition'`.
 - **Open questions answered:** §7 of the synthesis doc asked "where does the lab's preferred default sit?" — this benchmark answers it. For studies where SN parity matters (most new analyses), `condition_aware + sum` is the validated default. Legacy `global_max + consolidate` is reachable explicitly for backward-compat regression tests against Dublin-era outputs.
+
+---
+
+## 9. Re-validation 2026-09-12 — EGF HeLa 1 µg, Spectronaut 21.1, full export matrix
+
+**Data:** `Documents/Data/egf_hela_nanophos_spectronaut/` — 6 runs (3 withEGF / 3 woEGF), 622,199 PSM rows. Long exports: `long_ms2`, `long_ms1`, `long_ms1_and_ms2` (TSV + parquet each). Native site reports: `short_cutoff_0` (66,395 phospho sites) and `short_cutoff_0p75` (34,626; binary per-cell Class I — the reference).
+**Harness:** [validate_collapse_egf_hela.py](./validate_collapse_egf_hela.py) (`--full` for the whole matrix). **Guard:** `tests/integration/test_collapse_vs_spectronaut_native.py`.
+
+### 9.1 Verified correct
+
+| Check | Result |
+| --- | --- |
+| Site position arithmetic vs Spectronaut's own `EG.ProteinPTMLocations` | **101,636 / 101,636 phospho precursors agree (100.000%)** |
+| alphaPhos sites outside Spectronaut's cutoff-0 universe | **0** |
+| Localization probability per cell vs `PTM.SiteProbability` | identical (±1e-3) in **99.75%** of shared cells, r = 0.995 |
+| Site set vs `short_cutoff_0p75` (`per_run` strategy) | 34,279 vs 34,626 sites, **Jaccard 0.981** |
+| MS1+MS2 export collapsed at `MS2` / `auto` vs MS2-only export | **byte-identical** |
+| TSV vs parquet of the same export | identical up to Spectronaut's own export differences (§9.4) |
+| Determinism, `write_h5ad`, runtime | deterministic; h5ad round-trips; 5 s per collapse (622k rows) |
+
+The 491 sites present in `short_cutoff_0p75` but never produced by alphaPhos are fully accounted for: 229 are non-leading protein-group members (Spectronaut emits one row per member; alphaPhos one per group), 79 belong to contaminant proteins dropped at read time, 176 are second mappings of repeat peptides (§9.3), 7 are multiplicity relabels (§9.3).
+
+### 9.2 The residual offset explained — `precursor_loc_gate`
+
+With the pre-0.23 default (sum every precursor covering a site) the per-cell agreement was r = 0.990, mean +0.063 log2, 91.6% within 0.1 — but stratified by precursor count the offset lived entirely in multi-precursor sites (1 precursor: +0.001; 2: +0.119; ≥3: +0.135), and 22% of observed site-run cells (33,768 / 154,635) mixed Class-I and non-Class-I precursors. Spectronaut sums only precursors that are themselves Class-I in that run.
+
+| Variant | mean Δlog2 | SD | % within 0.1 | per-cell r | log2FC r (withEGF−woEGF) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| sum all precursors (pre-0.23) | +0.063 | 0.374 | 91.6 | 0.990 | 0.931 (per_run) / 0.922 (condition) |
+| gate: only Class-I precursors (strict SN semantics) | +0.005 | 0.156 | 97.5 | 0.998 | 0.993 |
+| **gate if available: Class-I precursors when any exists, else all** (`precursor_loc_gate=True`) | **+0.005** | **0.156** | **97.5** | **0.998** | 0.993 (per_run) / **0.981 (condition)** |
+
+The strict gate collapses the `condition` strategy onto `per_run` (it removes exactly the cells the condition rule recovers); the "if available" variant keeps that recovery (4,179 recovered cells) while matching Spectronaut wherever Spectronaut has a value. It is the new default.
+
+### 9.3 Known, intended semantic differences
+
+- **Multiplicity.** alphaPhos: number of phospho groups on the precursor. Spectronaut 0.75 report: number of *localized* (≥ cutoff) groups on the peptide — so a doubly-phosphorylated peptide with one ambiguous site is filed under `M1`. Explains 237 of the 553 cells alphaPhos keeps where Spectronaut says `Filtered`. Kept as is (consistent with Spectronaut's own cutoff-0 report).
+- **Repeat peptides** mapping to two positions in the same protein (`EG.ProteinPTMLocations = (S915)(T1131)`; 175 precursors, 0.17%): Spectronaut reports a site at each mapping (211 extra sites), alphaPhos at the first listed position only.
+- `aggregation_method`: `sum` r = 0.990 (pre-gate), `consolidate` 0.981 with 26,483 sites, `median` 0.919 with −0.53 log2 — unchanged conclusion from §3.3.
+- `top_n_attribution=False` on this export: r drops to 0.92 with +0.42 log2 (2,560 extra cells) — unlike the 2026-05 export, top-N matters here; keep it on.
+
+### 9.4 Surprises in the exports (not in alphaPhos)
+
+- **`long_ms1` is MS2-quantified.** Its `EG.TotalQuantity (Settings)` equals `FG.MS2Quantity` of the dual export in 99.9% of rows (ratio to `FG.MS1Quantity` ≈ 0.026); collapsing it reproduces the MS2 result exactly. The export needs to be redone with MS1 quantity settings before it can serve as an MS1 test case.
+- **Parquet ≠ TSV for the same analysis.** The parquet export drops 16 PSM rows, quantities differ by ~0.1% (median relative; up to 1.4% — not float rounding), and 288 shared paralog peptides are assigned to a *different* protein group (e.g. `_KEES[Phospho]EES[Phospho]DDDMGFGLFD_.2` → RPLP1 `P05386`@98 in TSV, RPLP2 `P05387`@99 in parquet). 14 sites therefore swap values by >1 log2 between the two exports. alphaPhos is faithful to whichever file it is given; use one export format per project.
+- Forcing `quantification_level="MS1"` on the dual export gives +5.2 log2 vs the MS2 site report (as in §3.1).
+- The `"Potential duplicated run files"` warning fired for two unrelated runs (r = 0.92) — the first 100 sorted precursor ids are shared by deep DIA runs of the same sample type. Fixed: the fingerprint now includes quantities.
+
+## 10. DIA-NN arm — same six raw files, DIA-NN 2.2.0 (2026-09-12)
+
+`Documents/Data/egf_hela_nanophos_diann/`: library-free search of the same six EGF HeLa runs
+(`--var-mod UniMod:21,79.966331,STY`, MBR, `--cont-quant-exclude cRAP-`). DIA-NN 2.x ships
+three site-level artefacts we can validate against: `report.site_report.parquet` (one row per
+run × precursor × candidate residue with `Occupied`, `Probability`, `Fragment.Sum`),
+`report.phosphosites_90.tsv` / `_99.tsv` (native site matrices), and the per-row
+`Site.Occupancy.Probabilities` string in the main report. Harness:
+`docs/benchmark/validate_collapse_egf_hela_diann.py`; guard:
+`tests/integration/test_collapse_vs_diann_native.py` (skips without the data).
+
+### 10.1 What DIA-NN's native matrices actually are
+
+Reverse-engineered from the site table (needed to know what a "match" means): each cell of
+`phosphosites_90.tsv` is the **maximum** over qualifying precursors (site `Probability` ≥ 0.9,
+q-value filters) of `Fragment.Sum × Normalisation.Factor` — a normalised top-3-fragment
+quantity, not `Precursor.Quantity` (94.1% of single-precursor cells within 1%; 95.2% of all
+cells reproduced by the Top-1 rule). No multiplicity dimension. DIA-NN's own documentation
+calls these matrices "intended only for quick preliminary analyses". Consequently the
+per-cell quantity is *not* comparable to a precursor-quantity sum (r ≈ 0.85), and the
+meaningful comparisons are (a) the site **set** and (b) an independent **oracle** — a gated
+sum of `Precursor.Quantity` over `Occupied` precursors with `Probability ≥ cutoff`, built
+directly from the site table.
+
+### 10.2 Results (per_run, `quantification_level="auto"` → `Precursor.Quantity`)
+
+| Check | Result |
+| --- | --- |
+| Positions ⊆ DIA-NN `Occupied` sites (leading protein), 33,557 precursors | **100.0%** (was 99.991% before the fix in 10.3) |
+| Multi-mapping precursors (DIA-NN lists more residues than the peptide carries) | 68; alphaPhos reports the first phospho's mapping only (same policy as §9.3) |
+| cutoff 0.90 vs oracle gated sum | r **0.9993**, mean −0.006 log2, SD 0.11, **99.3% within 0.1**, log2FC r 0.990; 0 cells alphaPhos-only, 164 oracle-only |
+| cutoff 0.99 vs oracle gated sum | r 0.9996, −0.004 log2, 99.4% within 0.1, log2FC r 0.992 |
+| Site set vs `phosphosites_90` (multiplicity summed) | Jaccard 0.934 (16,815 vs 17,218 sites) |
+| Site set vs `phosphosites_99` | Jaccard 0.918 |
+
+The oracle-only cells are sites whose only qualifying precursor was gated by alphaPhos's
+`precursor_loc_gate` in that run and is otherwise below cutoff — i.e. DIA-NN's site table
+records the residue as occupied at ≥ 0.9 for a *different* residue-set decomposition.
+The ~7% Jaccard gap to DIA-NN's matrices (378 alphaPhos-only / 781 DIA-NN-only sites at
+0.9) is **not** explained by filter differences — tested by adding DIA-NN's global 1% filters
+(`Global.Q.Value`, `Global.Peptidoform.Q.Value` ≤ 0.01: Jaccard 0.927), removing alphaPhos's
+`Quantity.Quality` / `PG.MaxLFQ.Quality` filters (0.916), both (0.921), and switching the
+precursor gate off (unchanged). The default `read_diann` settings are the closest (0.934).
+The residue is inside DIA-NN's matrix builder (Top-1 rule, its own site-confidence handling);
+since the main report is already at run-specific precursor *and* peptidoform FDR ≤ 1%
+(0.0% of phospho rows exceed either), the site-table oracle above is the meaningful
+reference, not the matrices. Position disagreement is 0 in all cases.
+
+### 10.3 Bugs found and fixed
+
+- **Shared peptides got the wrong protein's position.** `Protein.Sites` lists one bracket
+  group per member of the protein group in *alphabetical* order (`[Q16828:S331];[Q16829:S369];[Q99956:S328]`)
+  while `Protein.Group` lists the leading protein first (`Q99956;Q16828;Q16829`). `read_diann`
+  took the first bracket group, so `SNIS[p]PNFNFMGQLLDFER` was keyed `Q99956|S331` instead of
+  `Q99956|S328`. Now the leading accession's group is used (3 precursors affected here; the
+  fraction scales with paralog content).
+- **cRAP contaminants passed through.** DIA-NN's `--cont-quant-exclude cRAP-` only excludes
+  the tagged proteins from *protein* quantification; 456 tagged phospho precursor rows (620
+  after MBR) remained in the report. `read_diann` now applies the same contaminant filter as
+  `read_spectronaut`, and `cRAP-` / `cRAP_` joined `DEFAULT_CONTAMINANT_PREFIXES`.
+- **`top_n_attribution` was harmful on DIA-NN.** The Spectronaut over-export dedup assumes
+  multiple rows per precursor-run; DIA-NN writes exactly one peptidoform row, so the filter
+  deleted 12.6% of rows (low-confidence peptidoforms) and 796 real site–run cells (oracle r
+  0.9984 → 0.9993 with it off). New default `"auto"` = Spectronaut only.
+
+### 10.4 Cross-engine (DIA-NN vs Spectronaut, same raw files, per-sample median-centred)
+
+Site-set Jaccard 0.46 (19,406 vs 31,589 sites; Spectronaut's library-based search finds far
+more), per-cell r 0.84 with SD 1.57 log2 — the engines' intensity scales are not
+interchangeable. Condition log2FC (withEGF − woEGF) correlates r 0.59 over all 16,109
+shared sites, **0.74 on 7,529 complete cases**. The known biology reproduces: EGFR
+autophosphorylation `P00533|Y1172` +6.8 (SN) / +6.2 (DIA-NN) log2, `Y1197` +4.1 / +4.4.
+This is the expected engine-to-engine agreement for DIA phospho (see the literature
+review §3) and is not an alphaPhos property; alphaPhos is faithful to each report.
+
+### 10.5 Notes on this DIA-NN run (not in alphaPhos)
+
+- `report.log.txt` line 35: `WARNING: incorrect settings, the in silico-predicted library
+  must be generated in a separate pipeline step and then used to process the raw data, now
+  without activating FASTA digest` — DIA-NN recommends a two-step library-free workflow; this
+  run was one-step (set up outside alphaPhos). The numbers above validate collapse mechanics
+  on this report, not the search itself; re-searching two-step may change the site set.
+- `Protein.Sites` is per protein-group member; `Genes` is `;`-joined in group order.
+  `read_diann` keys sites by the leading accession and first gene, as for Spectronaut.

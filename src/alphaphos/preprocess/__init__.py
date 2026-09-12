@@ -1,5 +1,10 @@
 """Peptide collapse, normalization, filtering, imputation, class I/II/III handling."""
 
+from alphaphos.io.contaminants import (
+    filter_contaminants,
+    get_default_contaminants_fasta,
+    parse_fasta_accessions,
+)
 from alphaphos.preprocess.anndata import to_anndata
 from alphaphos.preprocess.attribution import (
     filter_to_top_n_positions,
@@ -7,10 +12,7 @@ from alphaphos.preprocess.attribution import (
     parse_precid_phospho_positions,
     top_n_positions,
 )
-from alphaphos.preprocess.classify import (
-    META_COLS,
-    apply_condition_aware_classI_mask,
-)
+from alphaphos.preprocess.classify import apply_condition_aware_classI_mask
 from alphaphos.preprocess.collapse import (
     DEFAULT_COLLAPSE_SETTINGS,
     collapse_sites,
@@ -22,11 +24,6 @@ from alphaphos.preprocess.collapse_precursors import (
     collapse_precursors,
     precursor_to_site_view,
     resolve_precursor_settings,
-)
-from alphaphos.preprocess.contaminants import (
-    filter_contaminants,
-    get_default_contaminants_fasta,
-    parse_fasta_accessions,
 )
 from alphaphos.preprocess.filter import filter_by_completeness
 from alphaphos.preprocess.impute import (
@@ -57,15 +54,16 @@ __all__ = [
     "resolve_precursor_settings",
     "precursor_to_site_view",
     "aggregate_to_site_level",
-    # Condition-aware Class I masking (legacy shape; used internally by collapse
-    # for now, exposed as a public helper for callers with externally-collapsed data).
+    # Condition-aware Class I masking -- DEPRECATED shim over
+    # _collapse.masking.mask_condition_aware; use collapse_sites instead.
     "apply_condition_aware_classI_mask",
-    "META_COLS",
     # Site-completeness filter (drop sites failing valid-fraction threshold)
     "filter_by_completeness",
     # Imputation (phospho-aware)
     "impute_knn_site_based",  # legacy-parity KNN; prefer impute_hybrid for new work
     "impute_hybrid",  # MAR (site-KNN) + MNAR (downshifted Gaussian) per cell
-    # AnnData construction escape hatch -- use collapse_sites in normal workflows.
+    # AnnData construction escape hatch for externally collapsed (sites x samples)
+    # matrices with alphaPhos `Protein|Gene|Site|Mult` keys -- use collapse_sites
+    # in normal workflows.
     "to_anndata",
 ]

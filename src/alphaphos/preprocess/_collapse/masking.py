@@ -12,14 +12,16 @@ Three strategies for deciding whether a per-(site, run) cell is "trusted":
   localized somewhere in the dataset. Matches the Hogrebe SN plugin
   historically.
 
-* ``condition`` -- the default. Applied on top of ``global_max``, this is a
-  per-condition majority rule: for each (site, condition), if the fraction
-  of replicates whose per-run loc >= ``classI_cutoff`` reaches at least
-  ``condition_threshold``, keep ALL replicates of that condition; else
-  keep only the Class-I replicates. Recovers information from replicates
-  with borderline loc when the site is reliably localized within the
-  same biological condition. Implemented in
-  :mod:`alphaphos.preprocess.classify`.
+* ``condition`` -- the default. A per-condition majority rule: for each
+  (site, condition), if the fraction of replicates whose per-run loc >=
+  ``classI_cutoff`` reaches at least ``condition_threshold``, keep ALL
+  replicates of that condition; else keep only the Class-I replicates.
+  Recovers information from replicates with borderline loc when the site
+  is reliably localized within the same biological condition. Sites that
+  are never Class-I anywhere end up all-NaN and are removed by the
+  ``drop_all_nan`` step, so the net effect includes ``global_max``.
+  Samples that have no entry in ``condition_df`` fall back to the strict
+  ``per_run`` rule (with a warning) -- they never bypass masking.
 
 All three strategies operate on the LINEAR quant matrix BEFORE log2 (log2
 happens after). NaN in the loc matrix is treated as "below cutoff" (i.e.
@@ -35,7 +37,7 @@ import pandas as pd
 
 from alphaphos.constants import OBS_CONDITION, OBS_SAMPLE, VAR_FULL_KEY
 
-_NULL_LOGGER = logging.getLogger("alphaphos.preprocess._collapse.masking")
+_NULL_LOGGER = logging.getLogger(__name__)
 
 
 VALID_STRATEGIES = ("per_run", "global_max", "condition", "wilson")
@@ -169,13 +171,29 @@ def mask_condition_aware(
     if not 0 <= classI_cutoff <= 1:
         raise ValueError(f"classI_cutoff must be in [0, 1], got {classI_cutoff}")
 
-    s2c = condition_df.set_index(OBS_SAMPLE)[OBS_CONDITION].astype(str)
+    cdf = condition_df.drop_duplicates(OBS_SAMPLE)
+    s2c = pd.Series(cdf[OBS_CONDITION].astype(str).to_numpy(), index=cdf[OBS_SAMPLE].astype(str))
 
     quant = site_quant.astype(float).copy()
     loc = site_loc.reindex(index=quant.index, columns=quant.columns)
 
     is_classI = loc.ge(classI_cutoff).fillna(False)
     keep_mask = pd.DataFrame(True, index=quant.index, columns=quant.columns)
+
+    # Samples with no condition label cannot use the majority rule.  They
+    # must not bypass masking either (that would let every low-loc cell of
+    # an unlabelled run through), so they get the strict per-run rule.
+    unlabelled = [c for c in quant.columns if str(c) not in s2c.index]
+    if unlabelled:
+        logger.warning(
+            "%d sample(s) in the quant matrix have no entry in condition_df; applying the "
+            "strict per-run Class-I mask (loc >= %.2f) to them instead of the condition "
+            "rule: %s",
+            len(unlabelled),
+            classI_cutoff,
+            unlabelled[:10],
+        )
+        keep_mask.loc[:, unlabelled] = is_classI.loc[:, unlabelled]
 
     decision_rows: dict[str, pd.Series] = {}
     for cond in s2c.unique():

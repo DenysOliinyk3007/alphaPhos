@@ -81,7 +81,7 @@ from alphaphos.preprocess._collapse.parsing import (
     parse_localization_probabilities,
 )
 
-_NULL_LOGGER = logging.getLogger("alphaphos.preprocess._collapse.site_pipeline")
+_NULL_LOGGER = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -125,31 +125,15 @@ def prepare_psms(psm_df: pd.DataFrame, *, logger: logging.Logger = _NULL_LOGGER)
                                 only present when EG.PTMLocalizationProbabilities
                                 exists in the input.
 
-    Notes
-    -----
-    * Underscores in gene names get replaced with ``#`` here (they're a
-      historical alphaPhos convention that never survives to the output;
-      restored to ``_`` at finalize time). This is a workaround for the
-      old key delimiter ``_``; with the new ``|`` delimiter it's largely
-      cosmetic but kept for parity with legacy pipelines.
+    Gene names are used verbatim: the ``|`` key delimiter is safe against
+    underscores, so no character substitution is needed (an earlier
+    ``_`` -> ``#`` workaround leaked ``#`` into ``var.index``).
     """
     df = psm_df.copy()
     logger.info("Prepare PSMs: %d rows in", len(df))
 
-    # Sanity: check duplicate raw files (same sample name, same first-100 precursors).
+    # Sanity: warn on runs that look like the same raw file imported twice.
     _log_duplicate_raw_files(df, logger)
-
-    # Underscore-in-gene-name mitigation. Preserves legacy behavior; the
-    # replacement is inverted at finalize time so users see ``_`` again.
-    if COL_PG_GENES in df.columns:
-        underscore_count = df[COL_PG_GENES].astype(str).str.contains("_", na=False).sum()
-        if underscore_count > 0:
-            df[COL_PG_GENES] = df[COL_PG_GENES].astype(str).str.replace("_", "#", regex=False)
-            logger.warning(
-                "%d gene names contained underscores and have been temporarily "
-                "replaced with '#' (restored at output).",
-                underscore_count,
-            )
 
     # Parse EG.PrecursorId into the modification columns.
     mods = df[COL_EG_PRECURSOR_ID].apply(extract_sequence_modifications)
@@ -223,14 +207,13 @@ def explode_to_sites(
     # downstream key building.
     df[PTM_POS_VAL] = df[PTM_POS_VAL].astype(int)
 
-    df[PTM_UPD_SEQ] = df.apply(
-        lambda x: build_modified_sequence(x[PTM_BASE_SEQ], x[PTM_POS_VAL]),
-        axis=1,
-    )
-    df[PTM_AA] = df.apply(
-        lambda x: get_phospho_amino_acid(x[PTM_BASE_SEQ], x[PTM_POS_VAL]),
-        axis=1,
-    )
+    # Plain zip over the two columns: ~10x faster than DataFrame.apply(axis=1),
+    # which matters here because this table is the largest in the pipeline
+    # (one row per (precursor, site, run) -- millions at cohort scale).
+    seqs = df[PTM_BASE_SEQ].tolist()
+    positions = df[PTM_POS_VAL].tolist()
+    df[PTM_UPD_SEQ] = [build_modified_sequence(s, p) for s, p in zip(seqs, positions, strict=True)]
+    df[PTM_AA] = [get_phospho_amino_acid(s, p) for s, p in zip(seqs, positions, strict=True)]
 
     # Per-site localization: look up in the parsed dict; fall back to the
     # joint EG.PTMAssayProbability when per-position parsing wasn't possible
@@ -360,8 +343,9 @@ def compute_site_metadata(
 
     3. Clamps multiplicity (``PTM_0_num``) to ``3`` (the M1/M2/M3+ convention).
     4. Splits ``PG.ProteinGroups`` and ``PG.Genes`` at ``";"`` and keeps the
-       first entry when ``collapse_level == "PG"``. When ``"P"``, keeps the
-       full group string (protein-resolved output explodes later).
+       first entry (a contaminant-tagged accession wins over its untagged
+       twin so the tag stays visible in the key).  ``collapse_level`` must be
+       ``"PG"``; protein-resolved output is not implemented.
     5. Builds three keys per row::
 
            full_key   = "{ProteinGroup}|{Gene}|{aa}{position}|M{mult}"
@@ -384,8 +368,11 @@ def compute_site_metadata(
     """
     meta = meta_wide.copy()
 
-    if collapse_level not in ("PG", "P"):
-        raise ValueError(f"collapse_level must be 'PG' or 'P', got {collapse_level!r}")
+    if collapse_level != "PG":
+        raise ValueError(
+            f"collapse_level must be 'PG' (protein-resolved output is not implemented), "
+            f"got {collapse_level!r}"
+        )
 
     # Parse PEP.PeptidePosition -> peptide_start (Int)
     meta["peptide_start"] = meta[COL_PEP_PEPTIDE_POSITION].apply(extract_first_valid_position)
@@ -424,7 +411,7 @@ def compute_site_metadata(
     # contaminant tag in the site key rather than let Spectronaut's
     # ordering hide it.  A boolean ``is_contaminant_match`` column
     # (in the metadata + var frame) records the flag explicitly.
-    from alphaphos.preprocess.contaminants import DEFAULT_CONTAMINANT_PREFIXES
+    from alphaphos.io.contaminants import DEFAULT_CONTAMINANT_PREFIXES
 
     def _pick_first_prefer_contam(pg_string: str) -> str:
         parts = [p.strip() for p in str(pg_string).split(";") if p.strip()]
@@ -440,14 +427,10 @@ def compute_site_metadata(
         parts = [p.strip() for p in str(pg_string).split(";") if p.strip()]
         return any(p.startswith(prefix) for p in parts for prefix in DEFAULT_CONTAMINANT_PREFIXES)
 
-    if collapse_level == "PG":
-        meta["protein_group_id"] = (
-            meta[COL_PG_PROTEIN_GROUPS].astype(str).map(_pick_first_prefer_contam)
-        )
-        meta["gene"] = meta[COL_PG_GENES].astype(str).str.split(";").str[0]
-    else:  # "P" -- keep full string, downstream explodes it later
-        meta["protein_group_id"] = meta[COL_PG_PROTEIN_GROUPS].astype(str)
-        meta["gene"] = meta[COL_PG_GENES].astype(str)
+    meta["protein_group_id"] = (
+        meta[COL_PG_PROTEIN_GROUPS].astype(str).map(_pick_first_prefer_contam)
+    )
+    meta["gene"] = meta[COL_PG_GENES].astype(str).str.split(";").str[0]
 
     meta["is_contaminant_match"] = meta[COL_PG_PROTEIN_GROUPS].astype(str).map(_has_contam_match)
 
@@ -498,6 +481,7 @@ def aggregate_precursors_to_sites(
     site_meta: pd.DataFrame,
     *,
     aggregation_method: str,
+    precursor_loc_gate: float | None = None,
     logger: logging.Logger = _NULL_LOGGER,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Group precursor-level rows by ``full_key`` and aggregate.
@@ -520,6 +504,19 @@ def aggregate_precursors_to_sites(
         variable.
     aggregation_method : str
         One of ``"sum"``, ``"median"``, ``"mean"``, ``"consolidate"``.
+    precursor_loc_gate : float, optional
+        Per-(precursor, run) Class-I gate applied BEFORE aggregation.  When
+        set, a precursor contributes to a site's intensity in a run only if
+        its OWN localization probability for that site in that run is
+        ``>= precursor_loc_gate`` -- unless no precursor of the site reaches
+        the gate in that run, in which case all precursors are aggregated and
+        the site-level mask decides later (this preserves the ``condition``
+        strategy's recovery of low-loc runs).  Mirrors Spectronaut's Class-I
+        PTM consolidation: on the EGF HeLa benchmark it removes the +0.06
+        log2 inflation of multi-precursor sites (97.5% vs 91.6% of cells
+        within 0.1 log2 of the native site report).  ``None`` disables the
+        gate (every precursor is aggregated).  The number of excluded
+        precursor-run cells is stored in ``site_quant.attrs["n_precursor_cells_gated"]``.
 
     Returns
     -------
@@ -527,10 +524,13 @@ def aggregate_precursors_to_sites(
         ``(n_sites x n_samples)`` linear intensities, indexed by ``full_key``.
     site_loc : DataFrame
         ``(n_sites x n_samples)`` localization probabilities, indexed by
-        ``full_key``. Column order matches ``site_quant``.
+        ``full_key``. Row and column order match ``site_quant``.
     site_meta_dedup : DataFrame
         One row per ``full_key`` (first occurrence wins for tie-breakable
-        metadata like ``PG.ProteinGroups``, ``PG.Genes``, ``UPD_seq``).
+        metadata like ``PG.ProteinGroups``, ``PG.Genes``, ``UPD_seq``), in
+        ``site_quant`` row order -- all three outputs are index-aligned so
+        downstream stages may skip alignment steps without breaking
+        ``assemble_anndata``'s identity check.
     """
     # Align: attach full_key to the precursor pivots via join on the shared
     # (PTM_group, PTM_0_pos_val) index.
@@ -542,13 +542,40 @@ def aggregate_precursors_to_sites(
     sample_cols = [c for c in quant_wide.columns]
 
     quant_indexed = quant_with_keys.set_index(VAR_FULL_KEY)[sample_cols]
-    site_quant = aggregate_by_key(quant_indexed, aggregation_method, sample_cols)
-
     loc_indexed = loc_with_keys.set_index(VAR_FULL_KEY)[sample_cols]
-    site_loc = loc_indexed.groupby(level=0).max()
 
-    # Deduplicate metadata to one row per full_key.
-    site_meta_dedup = site_meta.reset_index().drop_duplicates(VAR_FULL_KEY).set_index(VAR_FULL_KEY)
+    n_gated = 0
+    if precursor_loc_gate is not None:
+        # A precursor whose phospho is NOT confidently localized to this site
+        # in this run (e.g. an ambiguous precursor scored 30% here) must not
+        # add its full intensity to the site when a confidently localized
+        # precursor exists.  NaN loc compares False -> treated as not Class-I.
+        is_classI = loc_indexed.ge(precursor_loc_gate)
+        any_classI = is_classI.groupby(level=0).transform("any")
+        keep = is_classI | ~any_classI
+        n_gated = int((quant_indexed.notna() & ~keep).sum().sum())
+        quant_indexed = quant_indexed.where(keep)
+        logger.info(
+            "Precursor Class-I gate (loc >= %.2f): %d precursor-run cells excluded from "
+            "aggregation because a Class-I precursor exists for the same site and run.",
+            precursor_loc_gate,
+            n_gated,
+        )
+
+    site_quant = aggregate_by_key(quant_indexed, aggregation_method, sample_cols)
+    site_quant.attrs["n_precursor_cells_gated"] = n_gated
+
+    site_loc = loc_indexed.groupby(level=0).max().reindex(site_quant.index)
+
+    # Deduplicate metadata to one row per full_key, in site_quant row order.
+    # (groupby sorts keys; drop_duplicates keeps first-occurrence order -- the
+    # two differ, and assemble_anndata requires identical index order.)
+    site_meta_dedup = (
+        site_meta.reset_index()
+        .drop_duplicates(VAR_FULL_KEY)
+        .set_index(VAR_FULL_KEY)
+        .reindex(site_quant.index)
+    )
 
     logger.info(
         "Aggregated (%s) to %d sites x %d samples.",
@@ -615,17 +642,37 @@ def log2_transform(
 
 
 def _log_duplicate_raw_files(df: pd.DataFrame, logger: logging.Logger) -> None:
-    """Warn if two ``R.FileName`` values share their first-100 precursors."""
+    """Warn if two ``R.FileName`` values look like the same raw file imported twice.
+
+    Fingerprint = the first 200 precursor ids in sorted order TOGETHER WITH
+    their quantities.  Precursor ids alone are not discriminative on deep DIA
+    data (any two runs of the same sample type share the alphabetically-first
+    ids -- that produced false-positive warnings on the EGF HeLa series);
+    identical raw files re-imported under two names also share the
+    intensities, which is what we actually want to detect.
+    """
+    has_quant = COL_CANONICAL_QUANT in df.columns
     file_hashes: dict[str, list[str]] = {}
-    for fname in df[COL_R_FILENAME].unique():
-        subset = df.loc[df[COL_R_FILENAME] == fname, COL_EG_PRECURSOR_ID]
-        sorted_precursors = sorted(subset.dropna().astype(str).tolist())[:100]
-        h = hashlib.md5("||".join(sorted_precursors).encode()).hexdigest()
+    # One groupby pass instead of a full boolean scan per run file (O(runs x rows)).
+    cols = [COL_EG_PRECURSOR_ID] + ([COL_CANONICAL_QUANT] if has_quant else [])
+    for fname, subset in df.groupby(COL_R_FILENAME, sort=False)[cols]:
+        sub = subset.dropna(subset=[COL_EG_PRECURSOR_ID]).sort_values(COL_EG_PRECURSOR_ID).head(200)
+        if has_quant:
+            tokens = [
+                f"{pid}={float(q):.6g}"
+                for pid, q in zip(
+                    sub[COL_EG_PRECURSOR_ID].astype(str), sub[COL_CANONICAL_QUANT], strict=True
+                )
+            ]
+        else:
+            tokens = sub[COL_EG_PRECURSOR_ID].astype(str).tolist()
+        h = hashlib.md5("||".join(tokens).encode()).hexdigest()
         file_hashes.setdefault(h, []).append(fname)
     for fnames in file_hashes.values():
         if len(fnames) > 1:
             logger.warning(
-                "Potential duplicated run files: %s share the first-100 precursor pattern.",
+                "Potential duplicated run files: %s share identical precursor ids AND "
+                "quantities for their first 200 precursors.",
                 fnames,
             )
 

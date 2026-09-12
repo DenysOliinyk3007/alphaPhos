@@ -1,44 +1,62 @@
-"""Convert alphaPhos collapse output to AnnData (scverse / alphapepttools).
+"""Build an ``AnnData`` from a (sites × samples) matrix that was NOT produced
+by ``collapse_sites`` -- the escape hatch for externally collapsed data.
 
-AnnData conventions:
-  - rows of .X / .obs are SAMPLES (observations)
-  - columns of .X / .var are SITES (variables/features)
-  - .layers hold parallel matrices of the same shape as .X
-  - .obsm / .varm hold sample- and site-level matrix annotations
-  - .uns holds free-form metadata (pipeline parameters, FDR, etc.)
+:func:`alphaphos.collapse_sites` and :func:`alphaphos.collapse_precursors`
+already return a fully packaged ``AnnData``.  Use :func:`to_anndata` when the
+site matrix comes from somewhere else (a legacy pipeline, Spectronaut's own
+PTM site report, an R export) and its row index follows the alphaPhos site-key
+convention ``Protein|Gene|<S|T|Y><position>|M<multiplicity>``.  The result has
+the same ``.var`` / ``.obs`` / ``.layers`` / ``.uns`` layout the rest of
+alphaPhos expects, so filtering, imputation, DE and enrichment run unchanged.
 
-Our ``collapse_sites`` output is the opposite layout (sites × samples), so this
-converter transposes the numeric block while preserving per-site metadata
-(``META_COLS``) as ``.var`` and any sample-level metadata as ``.obs``.
+Populated slots
+---------------
 
-In addition to the raw collapse output, ``to_anndata`` enriches ``.var`` with
-phospho-unique annotations computed from the available inputs:
+- ``.X`` and ``.layers[main_layer]`` -- the transposed matrix (samples × sites).
+- ``.var`` -- key components (``protein_group_id``, ``gene``, ``site_aa``,
+  ``site_position``, ``multiplicity``, ``short_key``, ``pg_key``), every
+  column of ``var_meta``, and
 
-- **Motif flags** (when a ``kinase_sequence`` column is present): the immediate
-  flanking residues (``p_minus_1``, ``p_plus_1``) and quick-motif booleans
-  (``is_proline_directed``, ``is_basophilic``, ``is_acidic_motif``).
-- **Site QC** (when ``loc_per_run`` is provided): ``mean_loc_prob``,
-  ``max_loc_prob``, ``min_loc_prob``, ``n_samples_detected``,
-  ``n_classI_samples``, ``fraction_classI``.
+  * **motif flags** when ``var_meta`` carries a ``kinase_sequence`` column
+    (``p_minus_1``, ``p_plus_1``, ``is_proline_directed``, ``is_basophilic``,
+    ``is_acidic_motif``; see :func:`_derive_motif_flags`);
+  * **site QC** when ``loc_per_run`` is given (``n_samples_detected``,
+    ``mean/max/min_loc_prob``, ``n_classI_samples``, ``fraction_classI``,
+    ``classI_wilson_lb``) plus ``.layers["localization"]``.
 
-And ``.uns['alphaphos']`` carries pipeline provenance: alphaPhos version,
-pipeline parameters (lifted from ``sites.attrs['alphaphos_pipeline']``),
-processing timestamp, source paths.
+- ``.obs`` -- ``condition_df`` joined by sample id.
+- ``.uns["alphaphos"]`` -- version, ``pipeline_params``, processing timestamp,
+  optional ``classI_decision_table``; ``.uns["source_attrs"]`` from ``psm_attrs``.
 """
 
 from __future__ import annotations
 
 import datetime as _dt
+import logging
 import re
+from typing import Any
 
 import pandas as pd
 
-from alphaphos import __version__ as _alphaphos_version
-from alphaphos.preprocess.classify import META_COLS
+from alphaphos._version import __version__ as _alphaphos_version
+from alphaphos.constants import (
+    LAYER_INTENSITY_LOG2,
+    LAYER_LOCALIZATION,
+    OBS_CONDITION,
+    OBS_SAMPLE,
+    UNS_ALPHAPHOS,
+    UNS_SOURCE_ATTRS,
+    VAR_FULL_KEY,
+)
 
+logger = logging.getLogger(__name__)
+
+# Current alphaPhos site key: ``Protein|Gene|<AA><pos>|M<mult>``.  ``|`` never
+# occurs inside any field (see ``_collapse/keys.py``); the gene field may be
+# empty.
 _KEY_RE = re.compile(
-    r"^(?P<protein_group>[^~]+)~(?P<gene>[^_]*)_"
-    r"(?P<aa>[A-Z])(?P<position>\d+)_M(?P<multiplicity>\d+)$"
+    r"^(?P<protein_group>[^|]+)\|(?P<gene>[^|]*)\|"
+    r"(?P<aa>[A-Z])(?P<position>\d+)\|M(?P<multiplicity>\d+)$"
 )
 
 # A kinase_sequence string looks like ``_AAVKRGT*S*ELLIQAA_`` (outer ``_`` is
@@ -51,12 +69,20 @@ _ACIDIC = ("D", "E")
 # Basophilic residues for the AGC-kinase motif check (PKA/PKC/AKT).
 _BASOPHILIC = ("R", "K")
 
+_MOTIF_COLUMNS = (
+    "p_minus_1",
+    "p_plus_1",
+    "is_proline_directed",
+    "is_basophilic",
+    "is_acidic_motif",
+)
+
 
 def _derive_motif_flags(kinase_sequence: str | None) -> dict[str, object]:
     """Parse a kinase_sequence string into motif-position columns.
 
     The kinase_sequence format (produced by
-    ``PeptideCollapse._create_kinase_sequence``) is::
+    :func:`alphaphos.add_kinase_windows`) is::
 
         ``_<left_flank>*<modified_aa>*<right_flank>_``
 
@@ -73,16 +99,10 @@ def _derive_motif_flags(kinase_sequence: str | None) -> dict[str, object]:
     Returns ``{flag: None}`` for invalid/error/missing inputs so the columns
     still align across the var index.
     """
-    empty = {
-        "p_minus_1": None,
-        "p_plus_1": None,
-        "is_proline_directed": None,
-        "is_basophilic": None,
-        "is_acidic_motif": None,
-    }
+    empty: dict[str, object] = dict.fromkeys(_MOTIF_COLUMNS)
     if not isinstance(kinase_sequence, str) or not kinase_sequence:
         return empty
-    # PeptideCollapse error-string sentinels — keep flags empty for those rows
+    # Error-string sentinels from annotation -- keep flags empty for those rows
     if kinase_sequence.startswith(
         ("FASTA_ERROR:", "POSITION_ERROR:", "SEQUENCE_MISMATCH:", "PARSING_ERROR:")
     ):
@@ -170,196 +190,211 @@ def _compute_site_qc(
     )
 
 
+def _parse_site_keys(site_index: pd.Index) -> pd.DataFrame:
+    """Split ``Protein|Gene|<AA><pos>|M<mult>`` keys into var columns.
+
+    Keys that don't match the convention get NaN in every derived column
+    (and a single summary warning) rather than raising -- the matrix is still
+    usable, only key-derived annotations are missing for those rows.
+    """
+    parsed = site_index.to_series().str.extract(_KEY_RE)
+    n_bad = int(parsed["protein_group"].isna().sum())
+    if n_bad:
+        logger.warning(
+            "%d / %d site keys do not match 'Protein|Gene|<AA><pos>|M<mult>' "
+            "(e.g. %r); their key-derived var columns are NaN.",
+            n_bad,
+            len(site_index),
+            site_index[parsed["protein_group"].isna().to_numpy()][0],
+        )
+    short_keys: list[str | None] = []
+    pg_keys: list[str | None] = []
+    for pg, gene, aa, pos, mult in zip(
+        parsed["protein_group"],
+        parsed["gene"],
+        parsed["aa"],
+        parsed["position"],
+        parsed["multiplicity"],
+        strict=True,
+    ):
+        if pd.isna(pg):
+            short_keys.append(None)
+            pg_keys.append(None)
+            continue
+        short_keys.append(f"{gene}|{aa}{pos}|M{mult}")
+        pg_keys.append(f"{pg}|{aa}{pos}|M{mult}")
+    return pd.DataFrame(
+        {
+            "short_key": short_keys,
+            "pg_key": pg_keys,
+            "protein_group_id": parsed["protein_group"].to_numpy(),
+            "gene": parsed["gene"].to_numpy(),
+            "site_aa": parsed["aa"].to_numpy(),
+            "site_position": pd.to_numeric(parsed["position"], errors="coerce").to_numpy(),
+            "multiplicity": pd.to_numeric(parsed["multiplicity"], errors="coerce").to_numpy(),
+        },
+        index=site_index,
+    )
+
+
 def to_anndata(
     sites: pd.DataFrame,
     *,
+    var_meta: pd.DataFrame | None = None,
     loc_per_run: pd.DataFrame | None = None,
     condition_df: pd.DataFrame | None = None,
     decision_table: pd.DataFrame | None = None,
-    main_layer: str = "intensity_log2",
+    main_layer: str = LAYER_INTENSITY_LOG2,
     classI_cutoff: float = 0.75,
-    psm_attrs: dict | None = None,
+    pipeline_params: dict[str, Any] | None = None,
+    psm_attrs: dict[str, Any] | None = None,
 ):
-    """Convert ``collapse_sites`` output to an AnnData object.
-
-    Shape: ``adata.X`` is ``(n_samples × n_sites)`` (samples as observations,
-    sites as variables) — the scverse and alphapepttools convention.
+    """Package an externally collapsed (sites × samples) matrix as an ``AnnData``.
 
     Parameters
     ----------
     sites
-        Wide DataFrame from ``collapse_sites``. Rows are sites
-        (``PTM_Collapse_key``), columns are sample names + ``META_COLS``.
+        Numeric DataFrame, rows = sites, columns = samples.  The index must be
+        unique alphaPhos site keys ``Protein|Gene|<S|T|Y><pos>|M<mult>``
+        (log2 intensities are expected -- pass ``main_layer`` accordingly if
+        not).  Non-numeric columns raise; put per-site annotations in
+        ``var_meta`` instead.
+    var_meta
+        Optional per-site annotations indexed like ``sites`` (e.g. a
+        ``kinase_sequence`` column from :func:`alphaphos.add_kinase_windows`).
+        Every column is forwarded to ``adata.var``; ``kinase_sequence``
+        additionally triggers the motif flags.
     loc_per_run
-        Optional ``(sites × samples)`` DataFrame of per-(site, run)
-        localization probabilities (from ``pc.site_localization_per_run`` or
-        the second return of ``collapse_sites``). If provided, stored as
-        ``adata.layers["localization"]`` AND used to compute per-site QC
-        columns in ``adata.var``.
+        Optional ``(sites × samples)`` localization-probability matrix.  Stored
+        as ``adata.layers["localization"]`` and used for the site-QC columns.
     condition_df
-        Optional DataFrame mapping sample names to condition labels (and any
-        extra columns). Must contain ``"sample"`` and ``"condition"`` columns;
-        extra columns are joined into ``adata.obs`` as-is.
+        Optional sample metadata with ``sample`` + ``condition`` columns
+        (extras are joined into ``adata.obs``).  Duplicated sample rows are
+        collapsed to the first occurrence.
     decision_table
-        Optional ``(sites × conditions)`` DataFrame from the condition-aware
-        mask. If provided, stored as ``adata.uns["classI_decision_table"]``.
+        Optional ``(sites × conditions)`` Class-I fraction table; stored at
+        ``adata.uns["alphaphos"]["classI_decision_table"]``.
     main_layer
-        Name for the principal data layer (also stored under ``adata.X``).
-        Default ``"intensity_log2"`` reflects the log2 transform applied by
-        PeptideCollapse.
+        Name of the principal layer (also mirrored in ``adata.X``).
     classI_cutoff
-        Threshold for the ``n_classI_samples`` / ``fraction_classI`` QC
-        columns. Default 0.75 matches Spectronaut's Class I convention.
+        Threshold for the ``n_classI_samples`` / ``fraction_classI`` columns.
+    pipeline_params
+        Free-form provenance dict for ``adata.uns["alphaphos"]["pipeline_params"]``.
+        Defaults to ``sites.attrs["alphaphos_pipeline"]`` when present.
     psm_attrs
-        Optional dict of PSM-level row counts and metadata from
-        ``read_psm()``'s ``df.attrs`` (e.g. ``n_rows_loaded``,
-        ``n_rows_after_top_n``, ``n_rows_after_contaminant_filter``).
-        When provided, lands in ``adata.uns["source_attrs"]`` and powers
-        the QC dashboard's pipeline-waterfall plot. Without this, only
-        post-collapse stages will appear in the waterfall.
+        PSM-level lineage (``read_spectronaut(...).attrs``) for
+        ``adata.uns["source_attrs"]``.  Falls back to the non-pipeline keys of
+        ``sites.attrs``.
 
     Returns
     -------
     anndata.AnnData
-        Ready for downstream alphapepttools / scanpy / scverse workflows.
-        ``obs.index`` is sample names, ``var.index`` is ``PTM_Collapse_key``.
+        ``obs.index`` = sample ids, ``var.index`` = site keys (named
+        ``full_key``), same layout as :func:`alphaphos.collapse_sites` output.
 
-    Notes
-    -----
-    Parses the ``PTM_Collapse_key`` (format
-    ``{ProteinGroup}~{Gene}_{S|T|Y}{position}_M{multiplicity}``) and exposes
-    its components as first-class columns in ``adata.var``:
-    ``protein_group_id``, ``gene_first``, ``site_aa``, ``site_position``,
-    ``multiplicity``. Original ``META_COLS`` columns are also preserved.
-
-    Phospho-specific annotations added when their inputs are available:
-
-    - ``kinase_sequence`` column → motif flags ``p_minus_1``, ``p_plus_1``,
-      ``is_proline_directed``, ``is_basophilic``, ``is_acidic_motif``.
-    - ``loc_per_run`` parameter → site-QC columns ``n_samples_detected``,
-      ``mean_loc_prob``, ``max_loc_prob``, ``min_loc_prob``,
-      ``n_classI_samples``, ``fraction_classI``.
-
-    Pipeline provenance is written to ``adata.uns['alphaphos']``:
-    package version, pipeline parameters (lifted from
-    ``sites.attrs['alphaphos_pipeline']``), processing timestamp, and any
-    other ``sites.attrs`` keys.
+    Raises
+    ------
+    ValueError
+        If ``sites`` is empty, has non-numeric columns, or a non-unique index;
+        if ``condition_df`` lacks ``sample`` / ``condition``; if a
+        ``var_meta`` column clashes with a key-derived column.
 
     Examples
     --------
-    >>> from alphaphos.io import read_spectronaut
-    >>> from alphaphos.preprocess import collapse_sites, to_anndata
-    >>> df = read_spectronaut("report.parquet")
-    >>> sites, loc, decision = collapse_sites(
-    ...     df, condition_df=condition_df, return_decision_table=True,
-    ...     fasta_path="proteome.fasta",  # auto-enables kinase windows
+    >>> sites = pd.DataFrame(
+    ...     {"s1": [20.1, 18.3], "s2": [20.4, np.nan]},
+    ...     index=["P31749|AKT1|S473|M1", "P31749|AKT1|T308|M1"],
     ... )
-    >>> adata = to_anndata(
-    ...     sites, loc_per_run=loc,
-    ...     condition_df=condition_df, decision_table=decision,
-    ... )
+    >>> adata = to_anndata(sites, condition_df=cond_df)   # doctest: +SKIP
     """
-    try:
-        import anndata as ad
-    except ImportError as exc:
-        raise ImportError(
-            "anndata is required. Install via `pip install anndata` or it "
-            "is already a core dependency of alphaPhos."
-        ) from exc
+    import anndata as ad
 
-    sample_cols = [c for c in sites.columns if c not in META_COLS]
-    if "PTM_Collapse_key" not in sites.columns:
+    if not isinstance(sites, pd.DataFrame) or sites.empty:
+        raise ValueError("sites must be a non-empty (sites x samples) DataFrame.")
+    non_numeric = [c for c in sites.columns if not pd.api.types.is_numeric_dtype(sites[c])]
+    if non_numeric:
         raise ValueError(
-            "sites must contain 'PTM_Collapse_key' column — pass the output "
-            "of collapse_sites() directly."
+            f"sites must contain only numeric sample columns; non-numeric: {non_numeric[:5]}. "
+            "Pass per-site annotations via var_meta= instead."
         )
+    if not sites.index.is_unique:
+        raise ValueError("sites.index (site keys) must be unique.")
 
-    # site_index: per-site identifier (PTM_Collapse_key)
-    site_index = sites["PTM_Collapse_key"].astype(str).values
+    site_index = pd.Index(sites.index.astype(str), name=VAR_FULL_KEY)
+    sample_cols = [str(c) for c in sites.columns]
+    X = sites.to_numpy(dtype=float).T  # (n_samples, n_sites)
 
-    # X: samples × sites (transpose the numeric block)
-    X = sites[sample_cols].astype(float).T.values  # (n_samples, n_sites)
-
-    # obs: per-sample metadata (sample name as index)
-    obs = pd.DataFrame(index=pd.Index(sample_cols, name="sample"))
+    # ---- obs -------------------------------------------------------------
+    obs = pd.DataFrame(index=pd.Index(sample_cols, name=OBS_SAMPLE))
     if condition_df is not None:
-        required = {"sample", "condition"}
+        required = {OBS_SAMPLE, OBS_CONDITION}
         missing = required - set(condition_df.columns)
         if missing:
             raise ValueError(
                 f"condition_df must contain columns {sorted(required)}; missing: {sorted(missing)}"
             )
-        obs = obs.join(
-            condition_df.drop_duplicates("sample").set_index("sample"),
-            how="left",
-        )
+        cdf = condition_df.copy()
+        cdf[OBS_SAMPLE] = cdf[OBS_SAMPLE].astype(str)
+        obs = obs.join(cdf.drop_duplicates(OBS_SAMPLE).set_index(OBS_SAMPLE), how="left")
 
-    # var: per-site metadata
-    meta_present = [c for c in META_COLS if c in sites.columns and c != "PTM_Collapse_key"]
-    var = sites[meta_present].copy() if meta_present else pd.DataFrame()
-    var.index = pd.Index(site_index, name="PTM_Collapse_key")
+    # ---- var -------------------------------------------------------------
+    var = _parse_site_keys(site_index)
 
-    # Parse PTM_Collapse_key components into first-class var columns
-    parsed = sites["PTM_Collapse_key"].astype(str).str.extract(_KEY_RE)
-    var["protein_group_id"] = parsed["protein_group"].values
-    var["gene_first"] = parsed["gene"].values
-    var["site_aa"] = parsed["aa"].values
-    var["site_position"] = pd.to_numeric(parsed["position"], errors="coerce").values
-    var["multiplicity"] = pd.to_numeric(parsed["multiplicity"], errors="coerce").values
+    if var_meta is not None:
+        vm = var_meta.copy()
+        vm.index = vm.index.astype(str)
+        clash = [c for c in vm.columns if c in var.columns]
+        if clash:
+            raise ValueError(
+                f"var_meta column(s) {clash} clash with key-derived var columns; rename them."
+            )
+        extra = vm.reindex(site_index)
+        for col in extra.columns:
+            var[col] = extra[col].to_numpy()
 
-    # Motif flags from kinase_sequence (Tier 1)
     if "kinase_sequence" in var.columns:
-        flags = var["kinase_sequence"].map(_derive_motif_flags).tolist()
-        flags_df = pd.DataFrame(flags, index=var.index)
-        for col in (
-            "p_minus_1",
-            "p_plus_1",
-            "is_proline_directed",
-            "is_basophilic",
-            "is_acidic_motif",
-        ):
-            var[col] = flags_df[col].values
+        flags = pd.DataFrame(
+            [_derive_motif_flags(s) for s in var["kinase_sequence"]], index=site_index
+        )
+        for col in _MOTIF_COLUMNS:
+            var[col] = flags[col].to_numpy()
 
-    # Site QC from loc_per_run (Tier 2)
+    loc_aligned: pd.DataFrame | None = None
     if loc_per_run is not None:
-        qc = _compute_site_qc(loc_per_run, var.index, sample_cols, classI_cutoff=classI_cutoff)
+        loc = loc_per_run.copy()
+        loc.index = loc.index.astype(str)
+        loc.columns = loc.columns.astype(str)
+        loc_aligned = loc.reindex(index=site_index, columns=sample_cols)
+        qc = _compute_site_qc(loc_aligned, site_index, sample_cols, classI_cutoff=classI_cutoff)
         for col in qc.columns:
-            var[col] = qc[col].values
+            var[col] = qc[col].to_numpy()
 
+    # ---- assemble --------------------------------------------------------
     adata = ad.AnnData(X=X, obs=obs, var=var)
     adata.layers[main_layer] = X.copy()
+    if loc_aligned is not None:
+        adata.layers[LAYER_LOCALIZATION] = loc_aligned.to_numpy(dtype=float).T
 
-    # Localization layer (if provided): align to samples × sites
-    if loc_per_run is not None:
-        loc_aligned = loc_per_run.reindex(index=site_index, columns=sample_cols)
-        adata.layers["localization"] = loc_aligned.astype(float).T.values
-
-    # Decision table (uns; preserved with both row and column labels)
-    if decision_table is not None:
-        adata.uns["classI_decision_table"] = decision_table
-
-    # Pipeline provenance (Tier 4)
-    pipeline_params = (
-        dict(sites.attrs["alphaphos_pipeline"])
-        if "alphaphos_pipeline" in getattr(sites, "attrs", {})
-        else {}
-    )
-    adata.uns["alphaphos"] = {
+    sites_attrs = dict(getattr(sites, "attrs", {}) or {})
+    if pipeline_params is None:
+        pipeline_params = dict(sites_attrs.get("alphaphos_pipeline", {}) or {})
+    ns: dict[str, Any] = {
         "version": _alphaphos_version,
         "main_layer": main_layer,
         "n_sites": int(adata.n_vars),
         "n_samples": int(adata.n_obs),
-        "pipeline_params": pipeline_params,
+        "pipeline_params": dict(pipeline_params),
         "processing_timestamp": _dt.datetime.now(_dt.timezone.utc).isoformat(),
     }
-    # source_attrs: prefer an explicit psm_attrs dict (passed in by the
-    # user from read_psm's df.attrs), fall back to whatever non-pipeline
-    # keys are on sites.attrs.
+    if decision_table is not None:
+        ns["classI_decision_table"] = decision_table
+    adata.uns[UNS_ALPHAPHOS] = ns
+
     if psm_attrs is not None:
-        adata.uns["source_attrs"] = dict(psm_attrs)
-    elif hasattr(sites, "attrs") and sites.attrs:
-        adata.uns["source_attrs"] = {
-            k: v for k, v in sites.attrs.items() if k != "alphaphos_pipeline"
-        }
+        adata.uns[UNS_SOURCE_ATTRS] = dict(psm_attrs)
+    else:
+        source = {k: v for k, v in sites_attrs.items() if k != "alphaphos_pipeline"}
+        if source:
+            adata.uns[UNS_SOURCE_ATTRS] = source
 
     return adata
