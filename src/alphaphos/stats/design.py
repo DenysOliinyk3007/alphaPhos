@@ -187,7 +187,7 @@ def design_matrix(
 
     # Sanitize levels for identifier-safety (inmoose.makeContrasts eval()s
     # the contrast strings, so column names must be valid Python idents).
-    level_sanitization = _sanitize_and_map(level_order)
+    level_sanitization = sanitize_and_map_levels(level_order)
 
     # Validate covariates + block against the reserved-names set + presence.
     covariates_tuple = tuple(covariates) if covariates else ()
@@ -226,13 +226,13 @@ def design_matrix(
     # Covariates
     for cov in covariates_tuple:
         col = obs[cov]
-        if col.dtype.kind in ("i", "u", "f"):  # numeric
+        if covariate_is_continuous(col, name=cov):
             columns[cov] = col.astype(np.float64).to_numpy()
         else:
             # Categorical -> dummy-code, drop the first level as reference.
             cov_str = col.astype(str)
             cov_levels = sorted(cov_str.unique())
-            cov_sanit = _sanitize_and_map(cov_levels)
+            cov_sanit = sanitize_and_map_levels(cov_levels)
             for lv in cov_levels[1:]:  # drop reference (first level)
                 safe = cov_sanit[lv]
                 columns[f"{cov}[{safe}]"] = (cov_str == lv).astype(np.float64)
@@ -249,7 +249,7 @@ def design_matrix(
                 block_column,
             )
         else:
-            blk_sanit = _sanitize_and_map(blk_levels)
+            blk_sanit = sanitize_and_map_levels(blk_levels)
             for lv in blk_levels[1:]:
                 safe = blk_sanit[lv]
                 columns[f"{block_column}[{safe}]"] = (blk_str == lv).astype(np.float64)
@@ -298,11 +298,37 @@ def design_matrix(
 _ID_SAFE_RE = re.compile(r"[^A-Za-z0-9_]")
 
 
-def _sanitize_and_map(labels: list[str]) -> dict[str, str]:
-    """Map arbitrary level strings to valid Python identifiers.
+def covariate_is_continuous(col: pd.Series, *, name: str) -> bool:
+    """Decide how an ``obs`` covariate column enters the design matrix.
+
+    * float dtype  -> continuous (one column, linear effect)
+    * str / object / categorical -> categorical (dummy-coded)
+    * **integer or bool dtype -> ``ValueError``**.  A batch/plate/run column
+      coded ``1, 2, 3`` would otherwise be fit as a *linear trend* -- a silent
+      model misspecification (the pre-0.24 behaviour).  The caller must say
+      what they mean: ``.astype(str)`` for a factor, ``.astype(float)`` for a
+      genuinely continuous covariate.
+    """
+    kind = col.dtype.kind
+    if kind == "f":
+        return True
+    if kind in ("i", "u", "b"):
+        raise ValueError(
+            f"covariate {name!r} has {col.dtype} dtype, which is ambiguous: a batch / "
+            "plate / run id coded as integers would be fit as a LINEAR TREND, not as "
+            "groups. Cast it explicitly -- adata.obs[col].astype(str) for a categorical "
+            "factor (dummy-coded), or .astype(float) for a continuous covariate."
+        )
+    return False
+
+
+def sanitize_and_map_levels(labels: list[str]) -> dict[str, str]:
+    """Map arbitrary level strings to valid Python identifiers (bijective).
 
     Levels like ``"EGF+"``, ``"D1120_Healthy_Scar"``, ``"KO/WT"`` all become
     identifier-safe.  Collisions are resolved by suffixing ``_2``, ``_3``, ...
+    Shared by :mod:`alphaphos.stats.design` and the inmoose path in
+    :mod:`alphaphos.stats.diff_exp` so both encode levels identically.
     """
     seen: dict[str, str] = {}
     used: set[str] = set()
