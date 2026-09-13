@@ -14,6 +14,7 @@ Also runs an optional integration test against the real reference file at
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -112,12 +113,32 @@ class TestResolveSettings:
 # ---------------------------------------------------------------------------
 
 
-def _make_synthetic_abundance(tmp_path: Path) -> Path:
-    """Write a small FragPipe-shaped abundance file for reader tests."""
+_DEFAULT_SAMPLE_HEADERS = (
+    "V:/foo/sample_01_uncalibrated.mzML",
+    "V:/foo/sample_02_uncalibrated.mzML",
+    "V:/foo/sample_03_uncalibrated.mzML",
+)
+
+
+def _make_synthetic_abundance(
+    tmp_path: Path,
+    *,
+    sample_headers: tuple[str, str, str] = _DEFAULT_SAMPLE_HEADERS,
+    extra_columns: dict[str, list] | None = None,
+    genes: list | None = None,
+    multiplicity: list | None = None,
+) -> Path:
+    """Write a small FragPipe-shaped abundance file for reader tests.
+
+    ``sample_headers`` overrides the three sample column names;
+    ``extra_columns`` inserts additional (non-standard) metadata columns
+    before the sample block; ``genes`` / ``multiplicity`` override those
+    metadata columns (e.g. to inject NaN).
+    """
     df = pd.DataFrame(
         {
             "Index": ["P10644_S77", "Q08378_S140", "P00000_S99"],
-            "Gene": ["PRKAR1A", "GOLGA3", "GENE3"],
+            "Gene": genes if genes is not None else ["PRKAR1A", "GOLGA3", "GENE3"],
             "ProteinID": ["P10644", "Q08378", "P00000"],
             "Peptide": [
                 "TDsREDEIsPPPPNPVVK",
@@ -129,13 +150,14 @@ def _make_synthetic_abundance(tmp_path: Path) -> Path:
                 "TQLCSTDsPLPLEKE",
                 "ABCDEFGsIJKLMNO",
             ],
-            "Multiplicity": [2, 1, 1],
+            "Multiplicity": multiplicity if multiplicity is not None else [2, 1, 1],
             "Best Localization": [0.90, 0.78, 0.40],  # third row below default 0.75 cutoff
             "Best Scan for Localization": ["scan_a", "scan_b", "scan_c"],
             "Best Precursor for Quant": ["prec_a", "prec_b", "prec_c"],
-            "V:/foo/sample_01_uncalibrated.mzML": [1000.0, 2000.0, np.nan],
-            "V:/foo/sample_02_uncalibrated.mzML": [1100.0, 2100.0, 0.0],
-            "V:/foo/sample_03_uncalibrated.mzML": [1050.0, 2050.0, 500.0],
+            **(extra_columns or {}),
+            sample_headers[0]: [1000.0, 2000.0, np.nan],
+            sample_headers[1]: [1100.0, 2100.0, 0.0],
+            sample_headers[2]: [1050.0, 2050.0, 500.0],
         }
     )
     p = tmp_path / "abundance_single-site_MS2quant_None.tsv"
@@ -256,6 +278,92 @@ class TestReadFragpipeSites:
         p = _make_synthetic_abundance(tmp_path)
         adata = read_fragpipe_sites(p)
         assert "intensity_log2" in adata.layers
+
+    def test_completeness_and_loc_columns_match_collapse_names(self, tmp_path):
+        p = _make_synthetic_abundance(tmp_path)
+        adata = read_fragpipe_sites(p, advanced={"min_best_localization": None})
+        # n_samples_detected counts non-NaN, non-zero intensities per site.
+        gene3 = adata.var.index[adata.var["gene"] == "GENE3"][0]
+        assert adata.var.loc[gene3, "n_samples_detected"] == 1  # NaN, 0.0, 500.0
+        assert (adata.var["n_samples_detected"].iloc[:2] == 3).all()
+        # max_loc_prob is the collapse_sites-named alias of best_localization.
+        assert (adata.var["max_loc_prob"] == adata.var["best_localization"]).all()
+
+
+# ---------------------------------------------------------------------------
+# Robustness: real-world header / metadata quirks
+# ---------------------------------------------------------------------------
+
+
+class TestRobustness:
+    def test_windows_backslash_headers_normalized(self, tmp_path):
+        # FragPipe runs on Windows; headers carry backslash paths even when
+        # alphaPhos runs on macOS / Linux.
+        p = _make_synthetic_abundance(
+            tmp_path,
+            sample_headers=(
+                r"D:\data\sample_01_uncalibrated.mzML",
+                r"D:\data\sample_02_uncalibrated.mzML",
+                r"D:\data\sample_03.raw",
+            ),
+        )
+        adata = read_fragpipe_sites(p)
+        assert list(adata.obs_names) == ["sample_01", "sample_02", "sample_03"]
+
+    def test_non_numeric_extra_column_excluded_with_warning(self, tmp_path, caplog):
+        p = _make_synthetic_abundance(
+            tmp_path, extra_columns={"ProteinDescription": ["desc a", "desc b", "desc c"]}
+        )
+        with caplog.at_level(logging.WARNING, logger="alphaphos.io.fragpipe"):
+            adata = read_fragpipe_sites(p)
+        assert adata.n_obs == 3
+        assert "ProteinDescription" not in adata.obs_names
+        assert any("ProteinDescription" in r.message for r in caplog.records)
+
+    def test_only_non_numeric_extra_columns_raises(self, tmp_path):
+        # Build a file whose only non-meta column is text -> no samples.
+        df = pd.read_csv(_make_synthetic_abundance(tmp_path), sep="\t")
+        df = df.drop(columns=list(_DEFAULT_SAMPLE_HEADERS))
+        df["ProteinDescription"] = ["a", "b", "c"]
+        p = tmp_path / "abundance_single-site_MS2quant_None.tsv"
+        df.to_csv(p, sep="\t", index=False)
+        with pytest.raises(ValueError, match="no numeric sample columns"):
+            read_fragpipe_sites(p)
+
+    def test_colliding_sample_headers_raise(self, tmp_path):
+        p = _make_synthetic_abundance(
+            tmp_path,
+            sample_headers=(
+                "V:/batch_a/sample_01.mzML",
+                "V:/batch_b/sample_01.mzML",  # same stem, different directory
+                "V:/batch_a/sample_02.mzML",
+            ),
+        )
+        with pytest.raises(ValueError, match="collide"):
+            read_fragpipe_sites(p)
+
+    def test_duplicate_condition_rows_do_not_multiply_obs(self, tmp_path):
+        p = _make_synthetic_abundance(tmp_path)
+        cdf = pd.DataFrame(
+            {
+                "sample": ["sample_01", "sample_01", "sample_02", "sample_03"],
+                "condition": ["ctrl", "ctrl", "trt", "trt"],
+            }
+        )
+        adata = read_fragpipe_sites(p, condition_df=cdf)
+        assert adata.n_obs == 3
+        assert adata.obs.loc["sample_01", "condition"] == "ctrl"
+
+    def test_missing_gene_becomes_empty_not_nan_string(self, tmp_path):
+        p = _make_synthetic_abundance(tmp_path, genes=["PRKAR1A", np.nan, "GENE3"])
+        adata = read_fragpipe_sites(p)
+        assert "Q08378||S140|M1" in adata.var.index
+        assert not adata.var.index.str.contains("nan").any()
+
+    def test_missing_multiplicity_raises(self, tmp_path):
+        p = _make_synthetic_abundance(tmp_path, multiplicity=[2, np.nan, 1])
+        with pytest.raises(ValueError, match="Multiplicity"):
+            read_fragpipe_sites(p)
 
 
 # ---------------------------------------------------------------------------

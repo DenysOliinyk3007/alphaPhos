@@ -104,8 +104,20 @@ class TestImputePimms:
         with pytest.raises(NotImplementedError, match="CF"):
             impute_pimms(adata, model="CF")
 
-    def test_copy_by_default(self):
+    def test_in_place_by_default_copy_opt_in(self):
+        # Same contract as impute_hybrid / impute_knn_site_based.
         adata = _make_adata(n_samples=30, seed=7)
-        n_before = int(np.isnan(adata.X).sum())
-        _ = impute_pimms(adata, model="VAE", epochs_max=3)
-        assert int(np.isnan(adata.X).sum()) == n_before  # original unchanged
+        out = impute_pimms(adata, model="VAE", epochs_max=3)
+        assert out is adata
+        assert int(np.isnan(adata.X).sum()) == 0
+
+        adata2 = _make_adata(n_samples=30, seed=7)
+        n_before = int(np.isnan(adata2.X).sum())
+        out2 = impute_pimms(adata2, model="VAE", epochs_max=3, copy=True)
+        assert out2 is not adata2
+        assert int(np.isnan(adata2.X).sum()) == n_before  # original unchanged
+
+    def test_missing_layer_raises(self):
+        adata = _make_adata(n_samples=30, seed=8)
+        with pytest.raises(KeyError, match="not in adata.layers"):
+            impute_pimms(adata, model="VAE", epochs_max=3, layer="does_not_exist")

@@ -469,7 +469,7 @@ def compute_contaminant_fraction_per_sample(
         post-normalisation schema (dots -> underscores).
     contaminant_prefixes
         Prefixes marking a contaminant.  ``None`` (default) uses
-        :data:`alphaphos.preprocess.contaminants.DEFAULT_CONTAMINANT_PREFIXES`.
+        :data:`alphaphos.io.contaminants.DEFAULT_CONTAMINANT_PREFIXES`.
     contaminants_fasta
         FASTA to source curated contaminant accessions.  ``None``
         (default) uses the bundled MaxQuant contaminants FASTA.  Pass
@@ -505,7 +505,7 @@ def compute_contaminant_fraction_per_sample(
     trap.  On whole-cell proteome runs, baseline can be 1-5% even
     for a clean prep.
     """
-    from alphaphos.preprocess.contaminants import (
+    from alphaphos.io.contaminants import (
         DEFAULT_CONTAMINANT_PREFIXES,
         _is_contaminant_protein,
         get_default_contaminants_fasta,

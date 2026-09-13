@@ -1,0 +1,9 @@
+# Mirrors the CI lint job (.github/workflows/ci.yml): ruff check + ruff format.
+# Install once with `pre-commit install`; runs on every commit.
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.7
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format

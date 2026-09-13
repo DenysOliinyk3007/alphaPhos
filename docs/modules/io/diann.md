@@ -3,7 +3,7 @@
 Read a DIA-NN main report and adapt it to the Spectronaut-canonical PSM schema.
 
 `read_diann(path, *, advanced=None)` accepts a DIA-NN `.parquet` or `.tsv` main report,
-prunes columns at load time, applies a six-step QC filter, restricts to phospho-only rows,
+prunes columns at load time, applies the QC filter chain, restricts to phospho-only rows,
 and rewires DIA-NN columns onto the Spectronaut PSM contract so the same
 [`collapse_sites`](../preprocess/collapse.md) pipeline runs on both engines.
 
@@ -46,6 +46,9 @@ A DIA-NN main report:
 | `quantity_quality_min` | `0.5` | Drop rows where `Quantity.Quality < quantity_quality_min`. |
 | `pg_maxlfq_quality_min` | `0.7` | Drop rows where `PG.MaxLFQ.Quality < pg_maxlfq_quality_min`. |
 | `require_locprobs` | `True` | Drop rows missing `Site.Occupancy.Probabilities`. |
+| `drop_contaminants` | `True` | Drop rows whose whole protein group is a contaminant (prefix match -- incl. the cRAP `cRAP-`/`cRAP_` tags DIA-NN's `--cont-quant-exclude` uses -- or accession in the bundled MaxQuant contaminant FASTA). DIA-NN's own flag only excludes contaminants from *protein* quantification; their precursor rows stay in the report. |
+| `contaminants_fasta` | `None` | Alternative contaminant FASTA (`None` = bundled MaxQuant list). |
+| `contaminant_prefixes` | `DEFAULT_CONTAMINANT_PREFIXES` | Accession prefixes treated as contaminants. |
 
 Use `ap.resolve_diann_io_settings(advanced)` to preview the resolved settings.
 
@@ -58,7 +61,7 @@ DataFrame is emitted:
 | --- | --- | --- |
 | `R.FileName` | `Run` | Verbatim. |
 | `EG.PrecursorId` | `Modified.Sequence` + `Precursor.Charge` | Joined with `_.<charge>`. |
-| `PEP.PeptidePosition` | derived | 1-based peptide start position parsed from `Protein.Sites` + `Modified.Sequence`. |
+| `PEP.PeptidePosition` | derived | 1-based peptide start position = absolute position of the first phospho (from the `Protein.Sites` entry of the **leading** `Protein.Group` accession -- DIA-NN lists the entries alphabetically, not in group order) minus its intra-peptide position + 1. Verified against DIA-NN's `site_report` for 100% of precursors on the EGF HeLa series. |
 | `EG.PTMAssayProbability` | `PTM.Site.Confidence` | Verbatim (per-site score). |
 | `EG.PTMLocalizationProbabilities` | `Site.Occupancy.Probabilities` | Verbatim. |
 | `PG.Genes` | `Genes.split(';')[0]` | First gene of the protein group. |
@@ -69,9 +72,14 @@ PTM bracket markers (methylation, acetylation, etc.) are stripped and ignored.
 
 **Quant columns**: DIA-NN's native quant columns (`Precursor.Quantity`,
 `Precursor.Normalised`, `Ms1.Translated`, `Ms1.Area`) are preserved in the returned
-DataFrame; collapse picks one based on `advanced["quantification_level"]`. Note: DIA-NN
-has no MS2-level precursor quant, so `quantification_level="MS2"` falls back to MS1 with
-a warning.
+DataFrame; collapse picks one based on `advanced["quantification_level"]`. Note:
+`Precursor.Quantity` is DIA-NN's fragment-derived (MS2) quant -- the one DIA-NN's own site
+tables and the Hogrebe convention use -- and `Ms1.Translated` / `Ms1.Area` are MS1-derived.
+alphaPhos **deliberately defaults to the MS1 quant on DIA-NN** (validated on the nanoPhos
+HeLa dilution series): with `quantification_level=None` (the default) collapse uses
+`Ms1.Translated` on DIA-NN and MS2 on Spectronaut (`DEFAULT_QUANT_LEVEL`). Pass
+`quantification_level="MS2"` for the conventional `Precursor.Quantity` (this is what the
+DIA-NN validation in benchmark §10 used); `"auto"` is equivalent for DIA-NN.
 
 ## Output
 
@@ -81,8 +89,8 @@ A `pd.DataFrame`:
   columns.
 - Ready to feed into `ap.collapse_sites` with `advanced={"search_engine": "Diann"}`.
 - `df.attrs` populated with lineage: `source_path`, `engine="Diann"`, `n_rows_loaded`,
-  `n_rows_after_qc`, `n_rows_phospho`, `n_rows_localizable`, `n_rows_unmappable`,
-  `n_rows_returned`.
+  `n_rows_has_gene`, `n_rows_after_qc`, `n_rows_phospho`, `n_rows_localizable`,
+  `n_rows_unmappable`, `n_rows_returned`, `columns_read`, `columns_dropped`.
 
 ## Raises
 
@@ -121,5 +129,8 @@ adata = ap.collapse_sites(psm, condition_df=conditions,
 
 - **Requires DIA-NN &ge; 1.9** for the `Protein.Sites` and `Site.Occupancy.Probabilities`
   columns. Older DIA-NN builds fail with a `ValueError`.
-- MS2 quant is not available in DIA-NN reports; `quantification_level="MS2"` in collapse
-  falls back to MS1 with a warning.
+- alphaPhos defaults to MS1 quant (`Ms1.Translated`) on DIA-NN by design; pass
+  `quantification_level="MS2"` for the conventional `Precursor.Quantity` (see "Quant
+  columns" above).
+- If `Site.Occupancy.Probabilities` is absent (older DIA-NN), the reader logs a warning
+  and continues without per-site localization strings.

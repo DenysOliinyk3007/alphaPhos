@@ -60,6 +60,23 @@ def _check_complete_features(X: np.ndarray) -> None:
         )
 
 
+def _write_back(adata: ad.AnnData, layer: str | None, values: np.ndarray) -> None:
+    """Store ``values`` in ``layer`` (or ``.X`` when ``layer is None``).
+
+    The collapse contract keeps ``adata.X == layers["intensity_log2"]``; when
+    the canonical layer is imputed we mirror into ``.X`` so consumers that
+    read ``.X`` (``filter_by_completeness``, ``wilson_threshold_sensitivity``,
+    scanpy) see the same values as consumers that read the layer
+    (``diff_exp_limma``, ``dimred``).  Other layers are left independent.
+    """
+    if layer is None:
+        adata.X = values
+        return
+    adata.layers[layer] = values
+    if layer == LAYER_INTENSITY_LOG2:
+        adata.X = values.copy()
+
+
 def _site_knn_impute(
     X: np.ndarray,
     n_neighbors: int,
@@ -109,8 +126,9 @@ def impute_knn_site_based(
         Which layer to impute. Default ``"intensity_log2"`` -- the canonical
         log2 slot produced by ``collapse_sites``, and the slot every
         downstream step (``diff_exp_limma``, viz, QC) reads by default.
-        Pass ``None`` to target ``adata.X`` instead (they start equal after
-        ``collapse_sites`` but diverge once any layer is mutated).
+        Imputing the canonical layer also updates ``adata.X`` so the
+        collapse contract ``.X == layers["intensity_log2"]`` holds.  Pass
+        ``None`` to target ``adata.X`` only.
     copy
         If ``True``, mutate a fresh copy of ``adata`` and return it.
         If ``False`` (default), mutate ``adata`` in place.  Either way
@@ -138,10 +156,7 @@ def impute_knn_site_based(
 
     imputed = _site_knn_impute(X, n_neighbors=k, weights=weights)
 
-    if layer is None:
-        adata.X = imputed
-    else:
-        adata.layers[layer] = imputed
+    _write_back(adata, layer, imputed)
     return adata
 
 
@@ -162,12 +177,13 @@ def impute_hybrid(
 
     Each missing cell ``(site, sample)`` is classified independently:
 
-    - **MNAR** (Missing Not At Random): the site has no observed values
-      anywhere, OR the mean of its observed values is below the
-      ``mnar_threshold_percentile`` of the dataset's overall intensity
-      distribution. The cell is imputed by drawing from a downshifted
-      Gaussian ``N(μ_sample − offset·σ_sample, factor·σ_sample)`` — the
-      Perseus convention.
+    - **MNAR** (Missing Not At Random): the mean of the site's observed
+      values is below the ``mnar_threshold_percentile`` of the dataset's
+      overall intensity distribution. The cell is imputed by drawing from a
+      downshifted Gaussian ``N(μ_sample − offset·σ_sample, factor·σ_sample)``
+      — the Perseus convention.  (Sites with *no* observed value at all
+      are rejected up front -- run :func:`alphaphos.filter_by_completeness`
+      first -- because neither imputer has evidence for them.)
     - **MAR** (Missing At Random): otherwise. The cell is imputed via
       site-based KNN (see :func:`impute_knn_site_based`).
 
@@ -198,8 +214,9 @@ def impute_hybrid(
         Which layer to impute. Default ``"intensity_log2"`` -- the canonical
         log2 slot produced by ``collapse_sites``, and the slot every
         downstream step (``diff_exp_limma``, viz, QC) reads by default.
-        Pass ``None`` to target ``adata.X`` instead (they start equal after
-        ``collapse_sites`` but diverge once any layer is mutated).
+        Imputing the canonical layer also updates ``adata.X`` so the
+        collapse contract ``.X == layers["intensity_log2"]`` holds.  Pass
+        ``None`` to target ``adata.X`` only.
     return_audit
         If True, also return a per-cell DataFrame logging which strategy
         was applied (only for missing cells).
@@ -230,10 +247,7 @@ def impute_hybrid(
     missing_mask = np.isnan(X)
     if not missing_mask.any():
         # Nothing to do
-        if layer is None:
-            adata.X = X
-        else:
-            adata.layers[layer] = X
+        _write_back(adata, layer, X)
         if return_audit:
             return adata, pd.DataFrame(columns=["sample_idx", "site_idx", "strategy"])
         return adata
@@ -250,11 +264,14 @@ def impute_hybrid(
 
     # ---- 2. Pre-compute per-sample Gaussian draws for MNAR cells ---------
     rng = np.random.default_rng(gaussian_seed)
-    gauss_filled = np.zeros_like(X)
+    # NaN-initialised (NOT zeros): a sample with <2 observed values gets no
+    # per-sample draw here and must fall through to the global Gaussian
+    # below -- a zero would be written into the log2 matrix as a real value.
+    gauss_filled = np.full_like(X, np.nan)
     for j in range(n_samples):
         sample_observed = X[j, ~np.isnan(X[j, :])]
         if len(sample_observed) < 2:
-            # Can't compute stdev from <2 points; leave NaN, warn later
+            # Can't compute stdev from <2 points; leave NaN for the fallback.
             continue
         mu = float(sample_observed.mean())
         sigma = float(sample_observed.std(ddof=1))
@@ -304,10 +321,7 @@ def impute_hybrid(
         threshold,
     )
 
-    if layer is None:
-        adata.X = out
-    else:
-        adata.layers[layer] = out
+    _write_back(adata, layer, out)
 
     if return_audit:
         rows = []

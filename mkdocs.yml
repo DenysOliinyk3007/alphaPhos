@@ -1,6 +1,6 @@
 site_name: alphaPhos
 site_description: Phosphoproteomics analysis toolkit
-repo_url: https://github.com/oliinyk/alphaPhos
+repo_url: https://github.com/DenysOliinyk3007/alphaPhos
 edit_uri: edit/main/docs/
 
 theme:
@@ -35,7 +35,7 @@ plugins:
           options:
             show_source: true
             show_root_heading: true
-            docstring_style: google
+            docstring_style: numpy
 
 markdown_extensions:
   - admonition
@@ -50,8 +50,14 @@ markdown_extensions:
   - toc:
       permalink: true
 
+# Every entry below must exist under docs/ -- `mkdocs build --strict` is the check.
 nav:
   - Home: index.md
+  - Getting started:
+    - Quickstart: quickstart.md
+    - How to use alphaPhos: how-to-use-alphaphos.md
+    - Design principles: design-principles.md
+    - Alpha-tester guide: alpha-tester-guide.md
   - Modules:
     - IO (import):
       - Overview: modules/io/index.md
@@ -72,17 +78,11 @@ nav:
       - alphaphos.enrichment.ksea: modules/enrichment/ksea.md
       - alphaphos.enrichment.pathway: modules/enrichment/pathway.md
       - alphaphos.enrichment.pathway_gsea: modules/enrichment/pathway_gsea.md
+    - Signalome:
+      - alphaphos.signalome: modules/signalome/index.md
     - Orthology:
       - alphaphos.orthology: modules/orthology.md
-  - Design:
-    - PhosphoExperiment schema: design/phosphoexperiment.md
-  - API:
-    - alphaphos.io: api/io.md
-    - alphaphos.preprocess: api/preprocess.md
-    - alphaphos.ptm: api/ptm.md
-    - alphaphos.stats: api/stats.md
-    - alphaphos.ksea: api/ksea.md
-    - alphaphos.enrichment: api/enrichment.md
-    - alphaphos.acquisition: api/acquisition.md
-    - alphaphos.viz: api/viz.md
-    - alphaphos.qc: api/qc.md
+  - Design notes:
+    - Spectronaut collapse synthesis: design/spectronaut_collapse_synthesis.md
+    - "Collapse: literature review & defensibility": design/collapse_literature_review.md
+    - Benchmark vs. Spectronaut native: benchmark/spectronaut_native_benchmark.md

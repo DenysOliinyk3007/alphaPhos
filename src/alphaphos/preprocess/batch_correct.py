@@ -26,6 +26,7 @@ Both branches are available here because both layers are kept.
 
 from __future__ import annotations
 
+import importlib.util
 import logging
 from typing import TYPE_CHECKING
 
@@ -47,16 +48,31 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-try:
-    import inmoose  # type: ignore[import-not-found]
-    import patsy  # type: ignore[import-not-found]
-    from inmoose.pycombat import pycombat_norm  # type: ignore[import-not-found]
+# inmoose + patsy are gated behind the [stats] extra AND imported lazily
+# (inmoose costs ~0.4 s at import); batch_correct_combat checks first.
 
-    _HAS_COMBAT_DEPS = True
-    _INMOOSE_VERSION = inmoose.__version__
-except ImportError:  # pragma: no cover
-    _HAS_COMBAT_DEPS = False
-    _INMOOSE_VERSION = None
+
+def _require_combat_deps() -> None:
+    try:
+        import inmoose  # noqa: F401  # type: ignore[import-not-found]
+        import patsy  # noqa: F401  # type: ignore[import-not-found]
+    except ImportError as exc:  # pragma: no cover
+        raise ImportError(
+            "batch_correct_combat requires inmoose and patsy. Install with "
+            "`pip install alphaPhos[stats]`."
+        ) from exc
+
+
+def _inmoose_version() -> str | None:
+    try:
+        import inmoose  # type: ignore[import-not-found]
+    except ImportError:  # pragma: no cover
+        return None
+    return inmoose.__version__
+
+
+# Import-free availability flag (find_spec only); tests use it for skipif.
+_HAS_COMBAT_DEPS = all(importlib.util.find_spec(m) is not None for m in ("inmoose", "patsy"))
 
 
 DEFAULT_COMBAT_SETTINGS: dict = {
@@ -94,7 +110,9 @@ def batch_correct_combat(
         listed here.
     layer : str, optional
         Which ``adata.layers`` slot to correct. Default
-        ``"intensity_log2"``. Pass ``None`` to target ``adata.X``.
+        ``"intensity_log2"``; correcting the canonical layer also updates
+        ``adata.X`` (collapse contract ``.X == layers["intensity_log2"]``).
+        Pass ``None`` to target ``adata.X`` only.
     keep_precombat : bool, default True
         If True, copy the pre-correction values to
         ``layers["intensity_log2_precombat"]`` (regardless of ``layer=``)
@@ -142,11 +160,7 @@ def batch_correct_combat(
     KeyError
         For missing ``batch_column`` / ``covariates`` / ``layer``.
     """
-    if not _HAS_COMBAT_DEPS:
-        raise ImportError(
-            "batch_correct_combat requires inmoose and patsy. Install with "
-            "`pip install alphaPhos[stats]`."
-        )
+    _require_combat_deps()
 
     settings = _resolve_combat_settings(advanced)
     _validate_inputs(
@@ -170,6 +184,8 @@ def batch_correct_combat(
 
     covar_mod = _build_covar_mod(adata, covariates=covariates)
 
+    from inmoose.pycombat import pycombat_norm  # lazy: [stats] extra, checked above
+
     # pycombat wants features x samples; AnnData is samples x features.
     counts = source_matrix.T
     corrected = pycombat_norm(
@@ -189,6 +205,10 @@ def batch_correct_combat(
         adata.X = corrected
     else:
         adata.layers[layer] = corrected
+        if layer == LAYER_INTENSITY_LOG2:
+            # Keep the collapse contract .X == layers["intensity_log2"] (same
+            # rule as the imputers) so .X readers see corrected values too.
+            adata.X = corrected.copy()
 
     _stamp_provenance(
         adata,
@@ -349,6 +369,8 @@ def _build_covar_mod(adata: ad.AnnData, *, covariates: list[str] | None):
     # patsy's default design INCLUDES an intercept; pycombat expects a
     # full-rank matrix (a no-intercept design with one categorical becomes
     # singular in pycombat's internal linear model).
+    import patsy  # lazy: [stats] extra
+
     design = patsy.dmatrix(formula, data=obs_df)
     return np.asarray(design)
 
@@ -369,7 +391,7 @@ def _stamp_provenance(
     adata.uns[UNS_ALPHAPHOS][UNS_BATCH_CORRECTION] = {
         "method": "combat",
         "backend": "inmoose.pycombat.pycombat_norm",
-        "inmoose_version": _INMOOSE_VERSION,
+        "inmoose_version": _inmoose_version(),
         "batch_column": batch_column,
         "covariates": list(covariates or []),
         "layer": layer,

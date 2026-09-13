@@ -5,8 +5,10 @@ engine X export, and what do they mean?". Both the IO readers (which need
 to know what to load) and the collapse pipeline (which needs to know
 what to consume) reference these dictionaries.
 
-Currently only Spectronaut (``"SN"``) is filled in. When adding DIA-NN /
-FragPipe / PEAKS, follow the same shape: three sub-dicts per engine
+Spectronaut (``"SN"``) and DIA-NN (``"Diann"``) are filled in. FragPipe is
+not listed here because its reader emits a site-level ``AnnData`` directly
+and bypasses the collapse pipeline. When adding another PSM-level engine
+(e.g. PEAKS), follow the same shape: three sub-dicts per engine
 (REQUIRED / OPTIONAL / QUANT_CANDIDATES), one FALLBACK_CHAINS entry per
 requested quantification level.
 
@@ -132,11 +134,12 @@ QUANT_COLUMN_CANDIDATES: dict[str, dict[str, tuple[str, ...]]] = {
             "EG.RawIntensityMS2",
         ),
     },
-    # DIA-NN does not split MS1/MS2 quant the same way Spectronaut does.
-    # Precursor.Quantity is DIA-NN's DIA quant (MS2-based by default; can be
-    # MS1-based depending on the search configuration -- indistinguishable at
-    # the column-name level). MS2 is intentionally EMPTY so the MS2->MS1->auto
-    # fallback chain slides to MS1 when the user asks for MS2 on DIA-NN.
+    # Precursor.Quantity is DIA-NN's fragment-derived (MS2) quant -- the one
+    # DIA-NN's own site tables and the Hogrebe convention use; Ms1.Translated /
+    # Ms1.Area are MS1-derived.  Which one is the DEFAULT is engine-specific
+    # (see DEFAULT_QUANT_LEVEL): alphaPhos deliberately prefers MS1 on DIA-NN
+    # (validated on the nanoPhos HeLa dilution series).  Requesting "MS2"
+    # explicitly gives the conventional Precursor.Quantity on both engines.
     "Diann": {
         "auto": (
             DIANN_PRECURSOR_QUANTITY,
@@ -146,7 +149,10 @@ QUANT_COLUMN_CANDIDATES: dict[str, dict[str, tuple[str, ...]]] = {
             DIANN_MS1_TRANSLATED,
             DIANN_MS1_AREA,
         ),
-        "MS2": (),
+        "MS2": (
+            DIANN_PRECURSOR_QUANTITY,
+            DIANN_PRECURSOR_NORMALISED,
+        ),
     },
 }
 
@@ -166,6 +172,15 @@ FALLBACK_CHAINS: dict[str, tuple[str, ...]] = {
     "MS2": ("MS2", "MS1", "auto"),
     "MS1": ("MS1", "auto"),
     "auto": ("auto",),
+}
+
+# Level used when the caller leaves ``quantification_level=None``.  Spectronaut:
+# MS2 (fragment) quant, the convention.  DIA-NN: MS1 (``Ms1.Translated``) --
+# alphaPhos's deliberate choice, validated on the nanoPhos HeLa dilution
+# series; pass ``"MS2"`` for DIA-NN's conventional ``Precursor.Quantity``.
+DEFAULT_QUANT_LEVEL: dict[str, str] = {
+    "SN": "MS2",
+    "Diann": "MS1",
 }
 
 

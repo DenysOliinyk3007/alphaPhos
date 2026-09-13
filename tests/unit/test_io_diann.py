@@ -17,6 +17,7 @@ integration; otherwise it's skipped.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -138,6 +139,8 @@ class TestResolveDiannIOSettings:
             ({"pg_qvalue": 0.01}, "Unknown keys"),  # typo
             ({"mbr": 1}, "mbr must be bool"),
             ({"pg_qvalue_max": 1.5}, "pg_qvalue_max"),
+            # bool is an int subclass; must not silently pass as 1.0
+            ({"pg_qvalue_max": True}, "pg_qvalue_max"),
         ],
     )
     def test_validation_raises(self, bad_settings, expected_message):
@@ -294,6 +297,46 @@ class TestReadDiann:
         with pytest.raises(ValueError, match="Unknown keys"):
             read_diann(p, advanced={"pg_qvalue": 0.01})
 
+    def test_attrs_funnel_and_columns_read(self, tmp_path):
+        p = _write_synthetic_parquet(tmp_path)
+        df = read_diann(p)
+        # Every funnel stage is stamped, in the same key style as read_spectronaut.
+        assert df.attrs["n_rows_has_gene"] == 4
+        assert df.attrs["n_rows_after_qc"] == 4
+        assert df.attrs["n_rows_phospho"] == 4
+        assert "Modified.Sequence" in df.attrs["columns_read"]
+        assert df.attrs["columns_dropped"] == 0
+
+    def test_tsv_with_utf8_bom(self, tmp_path):
+        p = tmp_path / "synth_diann.tsv"
+        _make_synthetic_diann_df().to_csv(p, sep="\t", index=False, encoding="utf-8-sig")
+        df = read_diann(p)
+        # Without BOM handling "Run" would be read as "﻿Run" and reported missing.
+        assert df.attrs["n_rows_loaded"] == 4
+        assert "R.FileName" in df.columns
+
+    def test_missing_occupancy_column_warns_and_continues(self, tmp_path, caplog):
+        base = _make_synthetic_diann_df().drop(columns=["Site.Occupancy.Probabilities"])
+        p = tmp_path / "no_occ.parquet"
+        base.to_parquet(p, index=False)
+        with caplog.at_level(logging.WARNING, logger="alphaphos.io.diann"):
+            df = read_diann(p)
+        assert len(df) > 0
+        assert "EG.PTMLocalizationProbabilities" not in df.columns
+        assert any("Site.Occupancy.Probabilities" in r.message for r in caplog.records)
+
+    def test_phospho_filter_requires_exact_unimod21_token(self, tmp_path):
+        # "(UniMod:210)" is not phospho; the old substring match "UniMod:21"
+        # let it through to the (unmappable) stage.
+        base = _make_synthetic_diann_df()
+        extra = base.iloc[[0]].copy()
+        extra["Modified.Sequence"] = "AAS(UniMod:210)PLK"
+        p = tmp_path / "unimod210.parquet"
+        pd.concat([base, extra], ignore_index=True).to_parquet(p, index=False)
+        df = read_diann(p)
+        assert df.attrs["n_rows_loaded"] == 5
+        assert df.attrs["n_rows_phospho"] == 4
+
 
 class TestCollapseSitesWithDiann:
     """End-to-end: synthetic parquet -> read_diann -> collapse_sites -> AnnData."""
@@ -320,14 +363,18 @@ class TestCollapseSitesWithDiann:
         assert adata.n_obs == 2
         assert adata.n_vars >= 1
 
-    def test_default_ms2_falls_back_to_ms1(self, tmp_path):
-        # DIA-NN has no MS2 column; MS2 should fall back to MS1 with a warning.
+    def test_default_level_is_ms1_on_diann_without_warning(self, tmp_path):
+        # alphaPhos deliberately prefers MS1 quant on DIA-NN (DEFAULT_QUANT_LEVEL):
+        # quantification_level=None -> Ms1.Translated, no fallback warning.
+        import warnings
+
         import alphaphos as ap
 
         p = _write_synthetic_parquet(tmp_path)
         psm = ap.read_diann(p)
         cdf = pd.DataFrame({"sample": ["s1", "s2"], "condition": ["ctrl", "trt"]})
-        with pytest.warns(UserWarning, match="quantification_level='MS2' unavailable"):
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", UserWarning)
             adata = ap.collapse_sites(
                 psm,
                 condition_df=cdf,
@@ -335,10 +382,37 @@ class TestCollapseSitesWithDiann:
                     "search_engine": "Diann",
                     "localization_strategy": "per_run",
                     "cutoff": 0.5,
-                    # quantification_level defaults to "MS2"
                 },
             )
-        assert adata.uns["alphaphos"]["stats"]["quantification_level_used"] == "MS1"
+        stats = adata.uns["alphaphos"]["stats"]
+        assert stats["quantification_level_requested"] is None
+        assert stats["quantification_level_used"] == "MS1"
+        assert stats["quantification_column_used"] == "Ms1.Translated"
+
+    def test_explicit_ms2_gives_precursor_quantity(self, tmp_path):
+        # "MS2" means MS2 on DIA-NN too: the conventional fragment-derived quant.
+        import warnings
+
+        import alphaphos as ap
+
+        p = _write_synthetic_parquet(tmp_path)
+        psm = ap.read_diann(p)
+        cdf = pd.DataFrame({"sample": ["s1", "s2"], "condition": ["ctrl", "trt"]})
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", UserWarning)
+            adata = ap.collapse_sites(
+                psm,
+                condition_df=cdf,
+                advanced={
+                    "search_engine": "Diann",
+                    "localization_strategy": "per_run",
+                    "cutoff": 0.5,
+                    "quantification_level": "MS2",
+                },
+            )
+        stats = adata.uns["alphaphos"]["stats"]
+        assert stats["quantification_level_used"] == "MS2"
+        assert stats["quantification_column_used"] == "Precursor.Quantity"
 
 
 # ---------------------------------------------------------------------------
@@ -375,3 +449,81 @@ class TestRealDiannReport:
     def test_peptide_positions_all_positive(self):
         df = read_diann(_REAL_DIANN_PARQUET)
         assert (df["PEP.PeptidePosition"] > 0).all()
+
+
+# ---------------------------------------------------------------------------
+# Regressions from the DIA-NN validation on the EGF HeLa series (2026-09-12)
+# ---------------------------------------------------------------------------
+
+
+class TestLeadingProteinSites:
+    """``Protein.Sites`` lists one bracket group per protein-group member in
+    ALPHABETICAL order; the position must come from the LEADING accession of
+    ``Protein.Group``, not from whichever group happens to be listed first."""
+
+    def test_first_phospho_abs_position_selects_requested_protein(self):
+        sites = "[Q16828:S331];[Q16829:S369];[Q99956:S328]"
+        assert first_phospho_abs_position(sites, protein="Q99956") == 328
+        assert first_phospho_abs_position(sites, protein="Q16829") == 369
+        assert first_phospho_abs_position(sites) == 331  # legacy: first group
+        assert np.isnan(first_phospho_abs_position(sites, protein="NOTHERE"))
+
+    def test_adapter_uses_leading_protein_group_member(self):
+        df = _make_synthetic_diann_df().iloc[[0]].copy()
+        # Real case from the benchmark: leading protein Q99956 (S328) is listed
+        # LAST in Protein.Sites.  Peptide SNIS(p)PNFNFMGQLLDFER: phospho at
+        # intra-peptide position 4 -> peptide start = 328 - 4 + 1 = 325.
+        df["Modified.Sequence"] = "SNIS(UniMod:21)PNFNFMGQLLDFER"
+        df["Protein.Group"] = "Q99956;Q16828;Q16829"
+        df["Protein.Sites"] = "[Q16828:S331];[Q16829:S369];[Q99956:S328]"
+        df["Site.Occupancy.Probabilities"] = "SNIS(UniMod:21){0.990000}PNFNFMGQLLDFER2"
+        out, n_unmappable = _diann_to_psm(df)
+        assert n_unmappable == 0
+        assert out["PG.ProteinGroups"].iloc[0] == "Q99956;Q16828;Q16829"
+        assert out["PEP.PeptidePosition"].iloc[0] == 325  # NOT 328 (= 331 - 4 + 1)
+
+
+class TestDiannContaminants:
+    def _psm_with_crap_row(self):
+        base = _make_synthetic_diann_df()
+        crap = base.iloc[[0]].copy()
+        crap["Protein.Group"] = "cRAP-P00761"
+        crap["Protein.Sites"] = "[cRAP-P00761:S100]"
+        crap["Genes"] = "TRYP_PIG"
+        return pd.concat([base, crap], ignore_index=True)
+
+    def test_crap_rows_dropped_by_default(self, tmp_path):
+        p = tmp_path / "crap.parquet"
+        self._psm_with_crap_row().to_parquet(p, index=False)
+        df = read_diann(p)
+        assert not df["PG.ProteinGroups"].str.startswith("cRAP-").any()
+        assert df.attrs["n_rows_after_contaminants"] == df.attrs["n_rows_returned"]
+
+    def test_crap_rows_kept_when_disabled(self, tmp_path):
+        p = tmp_path / "crap.parquet"
+        self._psm_with_crap_row().to_parquet(p, index=False)
+        df = read_diann(p, advanced={"drop_contaminants": False})
+        assert df["PG.ProteinGroups"].str.startswith("cRAP-").any()
+        assert "n_rows_after_contaminants" not in df.attrs
+
+
+class TestTopNAutoForDiann:
+    def test_auto_skips_top_n_for_diann(self, tmp_path):
+        import alphaphos as ap
+
+        p = _write_synthetic_parquet(tmp_path)
+        psm = ap.read_diann(p)
+        cdf = pd.DataFrame({"sample": ["s1", "s2"], "condition": ["ctrl", "trt"]})
+        adata = ap.collapse_sites(
+            psm,
+            condition_df=cdf,
+            advanced={
+                "search_engine": "Diann",
+                "localization_strategy": "per_run",
+                "quantification_level": "auto",
+                "cutoff": 0.5,
+            },
+        )
+        stats = adata.uns["alphaphos"]["stats"]
+        assert stats["top_n_attribution_applied"] is False
+        assert stats["n_psms_after_top_n"] == stats["n_psms_loaded"]

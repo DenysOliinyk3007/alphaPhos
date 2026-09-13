@@ -75,7 +75,7 @@ ap.impute_hybrid(
 | `gaussian_std_offset` | `1.8` | Downshift in units of `sigma`. Perseus default. |
 | `gaussian_std_factor` | `0.3` | Width factor of the imputed Gaussian. Perseus default. |
 | `gaussian_seed` | `42` | RNG seed for reproducible Gaussian draws. |
-| `layer` | `"intensity_log2"` | Which layer to impute. `None` targets `adata.X`. |
+| `layer` | `"intensity_log2"` | Which layer to impute. Imputing the canonical layer also updates `adata.X` (`.X == layers["intensity_log2"]` contract). `None` targets `adata.X` only. |
 | `return_audit` | `False` | If `True`, also return a per-missing-cell DataFrame recording which strategy was applied. |
 | `copy` | `False` | If `True`, mutate a fresh copy and return it. If `False`, mutate in-place and return the same object. |
 
@@ -144,7 +144,7 @@ ap.impute_knn_site_based(
 | `adata` | *required* | `(n_samples, n_sites)` AnnData; every site column must have at least one observed value. |
 | `n_neighbors` | `None` &rarr; `int(sqrt(n_samples))` | k. Dublin's convention. |
 | `weights` | `"uniform"` | Neighbour vote weighting. |
-| `layer` | `"intensity_log2"` | Which layer to impute. `None` targets `.X`. |
+| `layer` | `"intensity_log2"` | Which layer to impute. Imputing the canonical layer also updates `.X` (`.X == layers["intensity_log2"]` contract). `None` targets `.X` only. |
 | `copy` | `False` | If `True`, mutate a fresh copy and return it. If `False`, mutate in-place and return the same object. |
 
 ### When to use pure KNN over hybrid

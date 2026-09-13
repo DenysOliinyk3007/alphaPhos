@@ -69,7 +69,7 @@ def impute_pimms(
     cuda: bool = False,
     seed: int = 0,
     out_folder: str | Path | None = None,
-    copy: bool = True,
+    copy: bool = False,
 ) -> ad.AnnData:
     """Impute missing values with PIMMS deep-learning models.
 
@@ -82,17 +82,23 @@ def impute_pimms(
     ----------
     adata
         AnnData ``(n_samples, n_features)``.  Missing values in
-        ``layer`` (default ``"intensity_log2"``) are imputed in place
-        on a copy.
+        ``layer`` (default ``"intensity_log2"``) are imputed.
     model
         Which PIMMS model to use.  ``"VAE"`` (default; paper's headline
         recommendation), ``"DAE"``, or ``"CF"``.
     layer
-        Layer name to read/write.  Default ``"intensity_log2"``.
-    hidden_layers, latent_dim, batch_size, epochs_max, patience
+        Layer name to read/write.  Default ``"intensity_log2"``; must exist
+        in ``adata.layers``.  Imputing the canonical layer also updates
+        ``adata.X`` (collapse contract ``.X == layers["intensity_log2"]``).
+    hidden_layers, latent_dim, batch_size, epochs_max
         Model hyperparameters.  Defaults match the paper's ALD setup
         (Methods, "Evaluation, imputation and differential expression
-        in GALA-ALD dataset").  ``patience`` triggers early stopping.
+        in GALA-ALD dataset").
+    patience
+        Accepted for API stability but **currently not used**: PIMMS early
+        stopping needs a held-out validation split, and this wrapper trains
+        on every observed cell (``y=None``), so the model always runs
+        ``epochs_max`` epochs.  Provenance records ``patience_used=None``.
     cuda
         Use GPU acceleration if available.  Default ``False`` because
         CI + typical Windows scientific installs lack CUDA; users with
@@ -103,7 +109,10 @@ def impute_pimms(
         Directory where PIMMS writes loss curves and model
         checkpoints.  If ``None``, a temp directory is used.
     copy
-        Return a copy (default) or mutate ``adata`` in place.
+        If ``True``, mutate a fresh copy of ``adata`` and return it.  If
+        ``False`` (default, same as :func:`impute_hybrid` /
+        :func:`impute_knn_site_based`), mutate ``adata`` in place.  Either
+        way the (possibly-mutated) AnnData is returned.
 
     Returns
     -------
@@ -152,8 +161,7 @@ def impute_pimms(
             f"PIMMS was benchmarked at n_samples >= {MIN_RECOMMENDED_SAMPLES} "
             f"(paper's own guidance); you have n_samples={adata.n_obs}.  On "
             "smaller cohorts, alphaphos.impute_hybrid or "
-            "alphaphos.impute_knn_site_based typically match or beat PIMMS. "
-            "Run alphaphos.impute.benchmark(...) on your data to be sure.",
+            "alphaphos.impute_knn_site_based typically match or beat PIMMS.",
             UserWarning,
             stacklevel=2,
         )
@@ -195,23 +203,12 @@ def impute_pimms(
         X_wide.shape,
     )
     # PIMMS fits on the wide DataFrame with NaN; internally it splits
-    # observed/missing.  y=None means "no held-out validation split";
-    # in that mode the EarlyStoppingCallback has no validation loss to
-    # track, so we drop ``patience`` (matches PIMMS notebook 04_1 when
-    # ``sample_splits=False``).
-    effective_patience = patience if patience is not None else None
-    fit_kwargs: dict = {
-        "y": None,
-        "epochs_max": epochs_max,
-        "cuda": bool(cuda),
-    }
-    if effective_patience is not None:
-        # Only add patience when we have a validation set (not the case here).
-        # Setting to None means the transformer skips early stopping entirely.
-        fit_kwargs["patience"] = None
-    else:
-        fit_kwargs["patience"] = None
-    transformer.fit(X_wide, **fit_kwargs)
+    # observed/missing.  y=None means "no held-out validation split"; in
+    # that mode the EarlyStoppingCallback has no validation loss to track,
+    # so ``patience`` is always passed as None (matches PIMMS notebook 04_1
+    # with ``sample_splits=False``).  The user-facing ``patience`` argument
+    # is therefore unused -- documented as such in the signature.
+    transformer.fit(X_wide, y=None, epochs_max=epochs_max, cuda=bool(cuda), patience=None)
     # PIMMS attaches training-loss matplotlib figures to the transformer
     # via ``plot_training_losses``.  Close them explicitly so repeat
     # calls in a benchmark loop don't exhaust Windows GDI handles.
@@ -242,7 +239,8 @@ def impute_pimms(
         "latent_dim": int(latent_dim),
         "batch_size": int(batch_size),
         "epochs_max": int(epochs_max),
-        "patience": (None if patience is None else int(patience)),
+        "patience_requested": (None if patience is None else int(patience)),
+        "patience_used": None,  # no validation split -> no early stopping
         "cuda": bool(cuda),
         "seed": int(seed),
         "n_epochs_trained": int(getattr(transformer, "epochs_trained_", -1)),
@@ -276,15 +274,20 @@ def _set_seeds(seed: int) -> None:
 
 
 def _adata_to_wide(adata: ad.AnnData, *, layer: str) -> pd.DataFrame:
-    X = np.asarray(adata.layers.get(layer, adata.X), dtype=float)
+    if layer not in adata.layers:
+        raise KeyError(
+            f"layer={layer!r} not in adata.layers. Available: {list(adata.layers.keys())}"
+        )
+    X = np.asarray(adata.layers[layer], dtype=float)
     return pd.DataFrame(X, index=adata.obs_names.astype(str), columns=adata.var_names.astype(str))
 
 
 def _wide_to_adata(adata: ad.AnnData, X_new: np.ndarray, *, layer: str) -> None:
     adata.layers[layer] = X_new
-    # Convention: mirror to .X so downstream tools that consume adata.X see
-    # the imputed values.
-    adata.X = X_new.copy()
+    if layer == LAYER_INTENSITY_LOG2:
+        # Collapse contract: .X mirrors the canonical layer (same rule as
+        # impute_hybrid / impute_knn_site_based / batch_correct_combat).
+        adata.X = X_new.copy()
 
 
 def _stamp_provenance(adata: ad.AnnData, provenance: dict) -> None:

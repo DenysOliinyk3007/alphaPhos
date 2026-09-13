@@ -54,15 +54,32 @@ Spectronaut/DIA-NN collapse pipeline:
 - `.X` = `.layers["intensity_log2"]` (log2 intensity).
 - `.var.index` = `"Protein|Gene|aa+pos|Mmult"` (alphaPhos site keys).
 - `.var` columns: `short_key`, `pg_key`, `protein_group_id`, `gene`, `site_aa`,
-  `site_position`, `multiplicity`, `best_localization`, `sequence_window`,
+  `site_position`, `multiplicity`, `n_samples_detected`, `best_localization`,
+  `max_loc_prob` (alias of `best_localization`), `sequence_window`,
   `kinase_sequence` (if `add_kinase_sequence=True`).
+- `.obs.index` = sample id: the raw-file basename with the extension and FragPipe's
+  `_uncalibrated` suffix stripped (Windows `\` and POSIX `/` paths both handled).
 - `.obs` = `condition` (from `condition_df` if given) + any extra `condition_df` columns.
 - `.uns["alphaphos"]` = `version`, `pipeline_params`, `source_file`.
+
+### Contract gaps vs. `collapse_sites`
+
+FragPipe reports **one** localization probability per site (`Best Localization`), not
+one per run, so the per-run-derived columns are **not** produced: `mean_loc_prob`,
+`min_loc_prob`, `n_classI_samples`, `fraction_classI`, `classI_wilson_lb`, and
+`.layers["localization"]`. `UPD_seq` is also absent. Consequences:
+
+- `ap.recommend_pipeline(data_type="phospho")` skips its Class-I step on FragPipe data --
+  use `min_best_localization` at read time instead.
+- `localization_strategy="wilson"` / `ap.apply_wilson_filter` are not applicable.
 
 ## Raises
 
 - `FileNotFoundError` -- path doesn't exist, or the resolved abundance file is missing.
-- `ValueError` -- required columns are absent, or the file has no sample columns.
+- `ValueError` -- required columns are absent, the file has no *numeric* sample columns,
+  two sample headers normalise to the same id, or `Multiplicity` has missing values.
+  Non-numeric extra columns (e.g. a protein description from another FragPipe version)
+  are excluded with a warning rather than treated as samples.
 
 ## Example
 
@@ -98,9 +115,10 @@ result = ap.diff_exp_limma(adata, condition_column="condition",
 
 - **Trust FragPipe's collapse** -- IonQuant + PTM-Prophet already aggregate to
   site-level. We parse identifiers and wrap; we don't re-collapse.
-- **Match the AnnData contract** -- downstream tooling (QC dashboard, imputation,
-  kinase annotation, diff-exp, dose-response) is engine-agnostic because the AnnData
-  produced here uses the same layer/var/obs schema as `collapse_sites`.
+- **Match the AnnData contract as far as the input allows** -- downstream tooling (QC
+  dashboard, imputation, kinase annotation, diff-exp, dose-response) is engine-agnostic
+  because the AnnData produced here uses the same layer/var/obs schema as
+  `collapse_sites`, minus the per-run localization columns listed under "Contract gaps".
 
 ## Known caveats
 

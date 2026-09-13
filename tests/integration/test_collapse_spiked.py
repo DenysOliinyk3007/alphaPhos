@@ -648,11 +648,9 @@ class TestMultiProteinGroup:
         assert adata.var.loc[synthetic[0], "protein_group_id"] == "TEST_PG1"
         assert adata.var.loc[synthetic[0], "gene"] == "PG1GENE"
 
-    def test_P_level_keeps_full_group_string(self, base_psm_df, condition_df, runs):
-        # collapse_level='P' keeps the semicolon-joined string in
-        # protein_group_id (behavior of the current implementation --
-        # downstream may explode it further, but the collapse output does
-        # not).
+    def test_P_level_is_rejected(self, base_psm_df, condition_df, runs):
+        # collapse_level='P' was documented as "protein resolved" but only ever
+        # kept the semicolon-joined group string; it has been removed.
         spike = Spike(
             protein_id="TEST_P1",
             gene="P1GENE",
@@ -664,16 +662,8 @@ class TestMultiProteinGroup:
             protein_ids_semicolon="TEST_P1;TEST_P2",
             genes_semicolon="P1GENE;P2GENE",
         )
-        adata = _collapse_with(
-            base_psm_df,
-            condition_df,
-            [spike],
-            advanced={"collapse_level": "P"},
-        )
-        synthetic = _synthetic_sites(adata)
-        assert len(synthetic) == 1
-        assert synthetic[0].startswith("TEST_P1;TEST_P2|"), synthetic
-        assert adata.var.loc[synthetic[0], "protein_group_id"] == "TEST_P1;TEST_P2"
+        with pytest.raises(ValueError, match="collapse_level must be 'PG'"):
+            _collapse_with(base_psm_df, condition_df, [spike], advanced={"collapse_level": "P"})
 
 
 # ==========================================================================

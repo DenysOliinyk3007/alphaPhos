@@ -58,7 +58,7 @@ try:
 except ImportError:  # pragma: no cover
     ad = None  # type: ignore[assignment]
 
-logger = logging.getLogger("alphaphos.kinase.annotation")
+logger = logging.getLogger(__name__)
 
 
 ERROR_PREFIXES = ("FASTA_ERROR:", "POSITION_ERROR:", "SEQUENCE_MISMATCH:", "PARSING_ERROR:")

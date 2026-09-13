@@ -34,12 +34,8 @@ import numpy as np
 if TYPE_CHECKING:
     import anndata as ad
 
-try:
-    from sklearn.decomposition import PCA as _SklearnPCA
-
-    _HAS_SKLEARN = True
-except ImportError:  # pragma: no cover
-    _HAS_SKLEARN = False
+# scikit-learn is a core dependency but costs several hundred ms to import, so it is
+# imported lazily inside _pca_sklearn rather than at package import.
 
 logger = logging.getLogger(__name__)
 
@@ -129,9 +125,6 @@ def pca(
         If ``True``, mutate a fresh copy of ``adata``; else in-place.
         The (possibly-mutated) AnnData is returned in both cases.
     """
-    if not _HAS_SKLEARN:  # pragma: no cover
-        raise ImportError("scikit-learn is required for alphaphos.dimred.pca.")
-
     # Resolve settings; convenience-arg overrides take precedence over advanced.
     advanced_merged = dict(advanced or {})
     if n_components is not None:
@@ -218,6 +211,8 @@ def pca(
 
 def _pca_sklearn(X: np.ndarray, *, n_components: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Standard PCA via sklearn.  ``X`` must have no NaN."""
+    from sklearn.decomposition import PCA as _SklearnPCA
+
     k = min(n_components, min(X.shape))
     model = _SklearnPCA(n_components=k, svd_solver="full")
     scores = model.fit_transform(X)

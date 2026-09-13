@@ -2,7 +2,7 @@
 
 **Python-native phosphoproteomics analysis toolkit for DIA workflows and large-cohort studies.** Empirically-derived defaults, scale-aware filtering and imputation, and full scanpy / AnnData interoperability.
 
-**Status:** alpha (v0.22.0). Core science modules (IO → collapse → filter → impute → DE → enrichment → dimred → signalome) are populated and tested (916 unit tests, CI green on Windows + Linux, Python 3.10–3.12). API is stable enough for real analyses but may still change in minor bumps. Send feedback: see [`docs/alpha-tester-guide.md`](docs/alpha-tester-guide.md).
+**Status:** alpha (v0.23.0). Core science modules (IO → collapse → filter → impute → DE → enrichment → dimred → signalome) are populated and tested (800+ unit tests, CI green on Windows + Linux, Python 3.10–3.13). API is stable enough for real analyses but may still change in minor bumps. Send feedback: see [`docs/alpha-tester-guide.md`](docs/alpha-tester-guide.md).
 
 ## Start here
 
@@ -72,7 +72,12 @@ Full module inventory + per-function reference: [`docs/how-to-use-alphaphos.md`]
 
 ## Bundled resources
 
-`resources/fastas/` ships human, mouse, and Chinese hamster (CHO) proteomes (~37 MB total, needed by `ap.add_kinase_windows` for sequence-window annotation). Sourced from [UniProt](https://www.uniprot.org/) (CC-BY 4.0) — please cite UniProt if you use these downstream:
+Two tiers (see `alphaphos.resources`):
+
+- **Shipped in the package** — `contaminants.fasta` (MaxQuant list), the KSEA gold-standard tables (`goldstandard/`, Ochoa 2016 + Hernández-Armenta 2017), and the PTM-DB site-set GMT libraries (`libraries/`). Available after any `pip install`.
+- **Repo-level only** — `resources/fastas/` holds 13 UniProt proteomes (human, mouse, rat, Chinese hamster, zebrafish, yeast, *E. coli*, *B. subtilis*, and other model organisms; ~84 MB total), needed by `ap.add_kinase_windows` and `ap.orthology.map_to_human`. They are not in the wheel; a git checkout finds them automatically, otherwise point `ALPHAPHOS_RESOURCES` at a directory containing `fastas/` (or pass `fasta_path=` explicitly).
+
+FASTAs are sourced from [UniProt](https://www.uniprot.org/) (CC-BY 4.0) — please cite UniProt if you use these downstream:
 
 > The UniProt Consortium. *UniProt: the Universal Protein Knowledgebase in 2023.* Nucleic Acids Res. 51:D523-D531 (2023).
 

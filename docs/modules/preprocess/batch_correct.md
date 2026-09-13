@@ -52,7 +52,7 @@ ap.batch_correct_combat(
 | `adata` | *required* | `(n_samples, n_sites)`, log-scale, NaN-free in target layer. |
 | `batch_column` | *required* | Column in `.obs` giving batch label per sample. Categorical; &ge; 2 levels; &ge; 2 samples per level. |
 | `covariates` | `None` | List of `.obs` columns whose variance should be **preserved** (typically the biology of interest, e.g. `["condition"]`). Categorical only. Batch column itself may **not** appear here. |
-| `layer` | `"intensity_log2"` | Which layer to correct. `None` targets `.X`. |
+| `layer` | `"intensity_log2"` | Which layer to correct. Correcting the canonical layer also updates `.X` (`.X == layers["intensity_log2"]` contract). `None` targets `.X` only. |
 | `keep_precombat` | `True` | Copy pre-correction values to `layers["intensity_log2_precombat"]`. Keeps the raw log2 slot available to `diff_exp_limma` for the batch-as-covariate path. |
 | `advanced` | `None` | Overrides for `DEFAULT_COMBAT_SETTINGS`. See below. |
 | `copy` | `False` | If `True`, mutate a fresh copy and return it. If `False`, mutate in-place and return the same object. |

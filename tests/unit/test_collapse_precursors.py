@@ -229,12 +229,25 @@ class TestClassIGate:
         with pytest.raises(ValueError, match="requires annotate_localization"):
             resolve_precursor_settings({"classI_cutoff": 0.75, "annotate_localization": False})
 
+    def test_provenance_records_the_user_cutoff(self):
+        # Regression: pipeline_params used to be stamped with a hard-coded 0.75
+        # regardless of the cutoff actually applied.
+        psm = self._make_psm_with_variable_loc()
+        adata = ap.collapse_precursors(psm, advanced={"classI_cutoff": 0.9})
+        assert adata.uns["alphaphos"]["pipeline_params"]["classI_cutoff"] == 0.9
+
+    def test_cutoff_none_is_recorded_and_h5ad_serialisable(self, tmp_path):
+        psm = self._make_psm_with_variable_loc()
+        adata = ap.collapse_precursors(psm, advanced={"classI_cutoff": None})
+        assert adata.uns["alphaphos"]["pipeline_params"]["classI_cutoff"] is None
+        adata.write_h5ad(tmp_path / "precursors.h5ad")
+
 
 class TestResolveSettings:
     def test_defaults_returned_when_none(self):
         out = resolve_precursor_settings(None)
         assert out["search_engine"] == "SN"
-        assert out["quantification_level"] == "MS2"
+        assert out["quantification_level"] is None  # engine default
         assert out["phospho_only"] is True
         assert out["annotate_localization"] is True
 

@@ -10,7 +10,280 @@ While in `0.x`, breaking API changes may appear in any MINOR bump (`0.1 → 0.2`
 
 ## [Unreleased]
 
-_Nothing yet._
+## [0.23.0] - 2026-09-12
+
+Review-and-validation release: `io/` and `preprocess/` were audited file by
+file, and `collapse_sites` was validated end-to-end against the native site
+tables of **both** engines on the same six EGF HeLa raw files (Spectronaut
+21.1 and DIA-NN 2.2; per-cell r ≥ 0.998, positions 100%).  Guarded by
+skip-if-absent integration tests.
+
+**Upgrade notes**
+
+- Collapse numbers change for every dataset: `precursor_loc_gate=True` (new
+  default) lowers multi-precursor sites by up to ~0.1 log2 -- this is the
+  Spectronaut/Perseus convention and removes a systematic inflation.
+  `advanced={"precursor_loc_gate": False}` restores the 0.22 output.
+- DIA-NN users: shared-peptide positions are now taken from the leading
+  protein (previously sometimes a paralog's position); contaminants are
+  dropped by default; `top_n_attribution` no longer runs on DIA-NN input;
+  `quantification_level="MS2"` now really means `Precursor.Quantity`.
+  The MS1-first *default* on DIA-NN is unchanged.
+- Breaking: `collapse_level="P"` removed; `to_anndata` rewritten for
+  `Protein|Gene|Site|Mult` keys; `preprocess.classify` is a deprecated
+  shim; `preprocess.contaminants` moved to `io.contaminants` (re-export
+  kept); `impute_pimms(copy=...)` defaults to `False`.
+- `alphaphos.resources.external()` locates repo-level FASTAs / PTM-DB
+  (`$ALPHAPHOS_RESOURCES`); gold-standard and GMT libraries now ship in
+  the wheel.
+
+### Changed -- collapse re-validated against Spectronaut's native site report
+
+Full re-validation of `collapse_sites` on the 6-run EGF HeLa nanoPhos series
+(Spectronaut 21.1; MS2 / MS1 / MS1+MS2 long exports, TSV + parquet) against
+Spectronaut's own PTM site report at cutoff 0.75.  Reproducible via
+`docs/benchmark/validate_collapse_egf_hela.py`; guarded by
+`tests/integration/test_collapse_vs_spectronaut_native.py` (skipped when the
+data is absent).  Report: `docs/benchmark/spectronaut_native_benchmark.md` §9.
+
+- **New `advanced={"precursor_loc_gate": True}` (default ON).**  Before
+  aggregation, a precursor contributes to a site in a run only if *its own*
+  localization probability for that site in that run reaches the strategy's
+  Class-I cutoff; when no precursor of the site is Class-I in that run, all
+  are aggregated and the site-level mask decides (the `condition` strategy's
+  recovery path is unchanged).  This is what Spectronaut's PTM consolidation
+  does.  Previously every precursor covering a site was summed, which
+  inflated 22% of observed site-run cells (those mixing Class-I and
+  non-Class-I precursors) by ~+0.12 log2.  Against the native report: mean
+  offset +0.063 → +0.005 log2, cells within 0.1 log2 91.6% → 97.5%,
+  per-cell r 0.990 → 0.998, EGF log2FC r 0.93 → 0.98.  **Numbers change
+  for every dataset** (multi-precursor sites shift down by up to ~0.1 log2);
+  `precursor_loc_gate=False` restores the previous output exactly.
+- Verified and documented (no code change): site positions agree with
+  `EG.ProteinPTMLocations` for 100.000% of 101,636 phospho precursors;
+  localization probabilities identical in 99.75% of cells; MS1+MS2 export
+  at `MS2`/`auto` is byte-identical to the MS2-only export; `sum` beats
+  `consolidate` and `median`.  Known, intended differences: multiplicity is
+  the total phospho count on the precursor (Spectronaut's 0.75 report counts
+  only *localized* groups); repeat peptides mapping to two positions in one
+  protein yield one site (first mapping; Spectronaut emits both; 0.17% of
+  precursors).
+
+### Fixed -- DIA-NN arm validated against DIA-NN's own site table (EGF HeLa, DIA-NN 2.2)
+
+- **`read_diann` assigned the wrong position for shared peptides.**
+  `Protein.Sites` lists one bracket group per protein-group member in
+  alphabetical order; the adapter read the *first* group regardless of
+  which protein it belonged to, so e.g. `SNIS[p]PNFNFMGQLLDFER` in group
+  `Q99956;Q16828;Q16829` received Q16828's S331 instead of Q99956's S328.
+  The position now comes from the leading accession's entry (NaN /
+  unmappable if absent).  Positions are now a subset of DIA-NN's
+  `Occupied` sites for 100% of 33,672 precursors (was 99.991%).
+- **`read_diann` now drops contaminants** like `read_spectronaut`
+  (`drop_contaminants=True`, bundled FASTA + prefixes); the cRAP tags
+  `cRAP-` / `cRAP_` that DIA-NN's `--cont-quant-exclude` uses were added to
+  `DEFAULT_CONTAMINANT_PREFIXES` (456 tagged phospho rows were passing
+  through).  `read_spectronaut` shares the same prefix constant.
+
+### Changed -- `quantification_level` default is engine-aware
+
+- `DEFAULT_COLLAPSE_SETTINGS["quantification_level"]` (and the precursor
+  collapse) is now `None` = the engine's default from the new
+  `alphaphos.io.schemas.DEFAULT_QUANT_LEVEL`: `"MS2"` for Spectronaut,
+  `"MS1"` for DIA-NN.  Behaviour is unchanged on both engines, but the
+  DIA-NN MS1 choice no longer arrives via an empty `"MS2"` slot plus a
+  misleading "MS2 unavailable, falling back to MS1" warning.
+- `QUANT_COLUMN_CANDIDATES["Diann"]["MS2"]` is now `Precursor.Quantity` /
+  `Precursor.Normalised`, so `quantification_level="MS2"` means the
+  conventional fragment-derived quant on DIA-NN as well (previously it
+  silently gave `Ms1.Translated`).  `stats["quantification_level_requested"]`
+  records the caller's value next to `quantification_level_used`.
+
+### Changed -- `top_n_attribution` is engine-aware
+
+- New default `"auto"` (was `True`): applied for `search_engine="SN"`
+  only.  Spectronaut writes one row per candidate localization of an
+  ambiguous precursor (each with the full intensity) and needs the dedup;
+  DIA-NN writes a single peptidoform row per precursor-run, so the filter
+  only deleted low-confidence peptidoforms -- 12.6% of rows and 796 real
+  site-run cells on the EGF HeLa report -- that the Class-I mask handles.
+  `True` / `False` still force either behaviour;
+  `uns["alphaphos"]["stats"]["top_n_attribution_applied"]` records what ran.
+- DIA-NN validation harness `docs/benchmark/validate_collapse_egf_hela_diann.py`
+  and guard `tests/integration/test_collapse_vs_diann_native.py` (skipped
+  without the data): positions vs `site_report`, gated-sum oracle from the
+  site table (r 0.999, 99.3% of cells within 0.1 log2), site set vs
+  `phosphosites_90`, EGFR autophosphorylation recovered by both engines.
+  Documents that DIA-NN's native matrices are Top-1 `Fragment.Sum ×
+  Normalisation.Factor` (a top-3-fragment quantity DIA-NN itself calls
+  preliminary), not a precursor-quantity sum.
+
+### Added -- collapse literature review
+
+- `docs/design/collapse_literature_review.md`: how the field builds site
+  tables (Olsen 2006 Class I; MaxQuant / Perseus Peptide Collapse /
+  Spectronaut / DIA-NN conventions; Lou 2023 and Pham 2024 threshold
+  mappings; MSstatsPTM, PhosR), the caveats the literature itself flags,
+  a point-by-point defensibility assessment of alphaPhos's choices, and
+  suggested methods-section wording.  Clarifies that the Lou 2023 / Pham
+  2024 "Spectronaut 0.75 ≈ DIA-NN 0.01" mapping refers to DIA-NN 1.8's
+  site-confidence *score*; DIA-NN 2.x reports per-site posterior
+  probabilities (thresholded at 0.90 / 0.99 in its own matrices), and
+  alphaPhos's 0.75 applies to exactly that quantity (benchmark §10).
+
+### Fixed -- duplicate-run warning false positive
+
+- `collapse_sites` warned "Potential duplicated run files" for two unrelated
+  runs (r = 0.92, 0% identical values) because the fingerprint was the first
+  100 precursor ids in sorted order, which deep DIA runs of the same sample
+  type share.  The fingerprint now includes the quantities.
+
+### Fixed -- `alphaphos.preprocess` review
+
+- **`collapse_sites`**: `adata.write_h5ad()` failed with "inhomogeneous
+  shape" whenever `uns["alphaphos"]["short_key_collisions"]` was non-empty
+  (any dataset where two protein groups share a gene at the same residue).
+  Collisions are now stored as `{short_key: [full_key, ...]}`.
+- **`collapse_sites`**: gene names containing `_` leaked a `#` into
+  `var.index` and `short_key` (`A0A0B4J2F2|GENE#X|S435|M1`) while
+  `var["gene"]` showed `_` -- a leftover of the pre-`|` delimiter
+  workaround.  The substitution is gone; gene names are used verbatim.
+- **`collapse_sites`**: `advanced={"drop_all_nan": False}` with the
+  `per_run` / `condition` strategies raised "site_quant and site_meta must
+  share the same index".  The aggregation stage now returns all three
+  matrices index-aligned.
+- **`collapse_sites` / `collapse_precursors`**: a duplicated `sample` row in
+  `condition_df` raised "Setting with non-unique columns"; integer sample
+  ids silently joined to NaN.  `condition_df["sample"]` is str-cast and
+  de-duplicated before the join (as `to_anndata` already did).
+- **`localization_strategy="condition"`**: samples present in the data but
+  absent from `condition_df` silently bypassed Class-I masking entirely.
+  They now get the strict `per_run` rule and a warning naming them; a
+  duplicated `condition_df` row no longer inflates the per-condition `N`.
+- **`impute_hybrid`**: a sample with fewer than two observed values had its
+  MNAR cells written as `0.0` on the log2 scale (zeros-initialised buffer
+  short-circuited the global-Gaussian fallback).  Buffer is NaN-initialised.
+- **`collapse_precursors`**: `uns["pipeline_params"]["classI_cutoff"]` was
+  stamped as `0.75` regardless of the cutoff actually applied.
+- **`parse_localization_probabilities`** raised `ValueError` on an unclosed
+  bracket despite its "never raises" contract; it now returns the partial
+  result.
+- **`collapse_sites(verbose=False)`** forced the module logger to WARNING
+  on every call, overriding any level the user had configured.  The
+  logger is now left untouched unless `verbose=True`.
+
+### Changed -- `alphaphos.preprocess` review
+
+- **`to_anndata` rewritten for the current key format.**  It parsed the
+  pre-`|` `PG~Gene_S100_M1` keys and required a `PTM_Collapse_key` column,
+  so it could not consume anything alphaPhos produces today.  New
+  signature: `to_anndata(sites, *, var_meta=None, loc_per_run=None,
+  condition_df=None, ...)` where `sites` is a numeric (sites × samples)
+  frame indexed by `Protein|Gene|Site|Mult`; motif flags are derived from a
+  `kinase_sequence` column in `var_meta`.  **Breaking** for old-format callers.
+- **`preprocess.classify`** is now a deprecated shim: `apply_condition_aware_classI_mask`
+  takes `(site_quant, loc_per_run, sample_to_condition)` and delegates to
+  `_collapse.masking.mask_condition_aware` with a `DeprecationWarning`;
+  `META_COLS` / `DEFAULT_META_COLS` are removed.
+- **`collapse_level="P"` removed** -- documented as "protein resolved" but it
+  only kept the raw `;`-joined group string.  `"PG"` is the only value.
+- **Imputers and ComBat keep `.X` in sync with the canonical layer**: when
+  `layer="intensity_log2"` is written, `.X` is updated too (collapse
+  contract `.X == layers["intensity_log2"]`).  Previously `impute_pimms`
+  mirrored and `impute_hybrid` / `impute_knn_site_based` /
+  `batch_correct_combat` did not, so `.X` readers
+  (`filter_by_completeness`, `wilson_threshold_sensitivity`, scanpy) saw
+  stale NaN.  Other layers remain independent.
+- **`impute_pimms`**: `copy` default is now `False` (same as the other
+  imputers); `patience` is documented as unused (no validation split ->
+  no early stopping) and recorded as `patience_requested` /
+  `patience_used=None`; a missing `layer` raises `KeyError` instead of
+  silently falling back to `.X`; removed a reference to a non-existent
+  `alphaphos.impute.benchmark`.
+- `resolve_settings` rejects `bool` and `str` for `cutoff`,
+  `classI_cutoff`, `condition_threshold`, `wilson_threshold`.
+- Internals: one shared `select_quantification_column` /
+  `enable_verbose_logging` (were copy-pasted in both entry points);
+  `attribution.parse_loc_dict` / `top_n_positions` delegate to the
+  `_collapse.parsing` implementations; row-wise `DataFrame.apply` in the
+  explode stage and the per-run boolean scan in the duplicate-file check
+  replaced with list comprehensions / one `groupby`; `precursor_to_site_view`
+  no longer uses `iterrows`.
+
+### Changed -- package structure cleanup
+
+- **Packaging**: `resources/goldstandard/` and `resources/libraries/` moved
+  into the package (`src/alphaphos/resources/`) so they ship in the wheel;
+  `alphaphos.enrichment.validation` and `load_libraries` users no longer
+  need a git checkout.  The ~84 MB FASTAs and the PTM-DB parquet stay
+  repo-level and are located via the new `alphaphos.resources.external()`
+  (`$ALPHAPHOS_RESOURCES` → `<repo>/resources` → `~/.alphaphos/resources`)
+  instead of hard-coded `parents[3]` paths that only worked from a checkout.
+- **Version**: single source in `alphaphos/_version.py`, read by hatchling
+  (`dynamic = ["version"]`).  Modules that stamp provenance import from
+  there instead of from `alphaphos` (removes an import-order dependency).
+- **`preprocess.contaminants` → `io.contaminants`**: the PSM-boundary
+  contaminant filter moved next to the readers that call it, breaking the
+  `io ↔ preprocess` import cycle.  `alphaphos.preprocess.contaminants` and
+  `ap.preprocess.filter_contaminants` remain as re-exports.
+- **Lazy optional imports**: `scikit-learn` (dimred) and `inmoose`/`patsy`
+  (stats, batch correction) are now imported on first use instead of at
+  package import.  Net effect on `import alphaphos` is modest (~1.3 s →
+  ~1.2 s) because they share `scipy`/`pandas` with the core `anndata`
+  dependency, which is the remaining floor; the change mainly keeps
+  optional-extra packages out of the import path.
+- Loggers use `logging.getLogger(__name__)` uniformly.
+- Removed the empty `alphaphos.viz` stub, `tests/regression/`, the unused
+  `regression` pytest marker, and empty placeholder directories
+  (`envs/`, `studies/_template/`).
+- `mkdocs.yml`: nav now only lists pages that exist (11 phantom `api/*` and
+  `design/*` entries dropped; signalome + getting-started docs added);
+  `docs/index.md` landing page added; docstring style set to numpy.
+- Added `.pre-commit-config.yaml` (ruff check + format, mirrors CI);
+  CI matrix + classifiers include Python 3.13; project URLs point at the
+  actual repository; `Development Status` bumped to `3 - Alpha`.
+
+### Fixed -- `alphaphos.io` reader review
+
+- **`read_fragpipe_sites`**: sample ids are now derived with
+  `PureWindowsPath`, so headers written by FragPipe on Windows
+  (`D:\data\run_01_uncalibrated.mzML`) normalize to `run_01` when alphaPhos
+  runs on macOS / Linux (previously the whole `D:\data\run_01_uncalibrated`
+  string leaked into `obs.index`).
+- **`read_fragpipe_sites`**: non-numeric extra columns (e.g. a protein
+  description from another FragPipe version) are excluded with a warning
+  instead of being treated as samples and crashing the float conversion;
+  sample headers that collide after normalization raise a `ValueError`
+  naming the offenders; a duplicated `sample` row in `condition_df` no
+  longer multiplies `obs` rows (mirrors `to_anndata`); a missing `Gene`
+  yields `""` in the site key instead of `"nan"`; a missing `Multiplicity`
+  raises a clear error.
+- **`read_spectronaut`**: the decoy filter parses `EG.IsDecoy` explicitly.
+  `Series.astype(bool)` mapped the *string* `"False"` (and NaN) to `True`,
+  so string-typed or NaN-containing decoy columns dropped every row.
+- **`read_spectronaut` / `read_diann`**: TSV inputs with a UTF-8 BOM
+  (Windows exports) are read with `utf-8-sig`; previously the first column
+  came back as `\ufeffR.FileName` and was reported missing.
+- **`read_diann`**: the phospho filter matches the exact `(UniMod:21)` token
+  (was a substring match on `UniMod:21`).
+- **`resolve_io_settings` / `resolve_diann_io_settings`**: `bool` is
+  rejected for the float thresholds (`eg_qvalue_max=True` used to pass as
+  1.0); `contaminant_prefixes` elements must be `str`.
+
+### Changed
+
+- **`read_fragpipe_sites`** adds `var["n_samples_detected"]` and
+  `var["max_loc_prob"]` (alias of `best_localization`) so completeness
+  helpers find the `collapse_sites` column names; docs now list the
+  per-run localization columns FragPipe cannot provide.
+- **`read_diann`** stamps `n_rows_has_gene` and `columns_read` in
+  `df.attrs`, aligning its lineage keys with `read_spectronaut`, and logs a
+  warning when `require_locprobs=True` but `Site.Occupancy.Probabilities`
+  is absent.
+- Docs / comments: DIA-NN quant selection is documented as a deliberate
+  MS1-first choice (`Precursor.Quantity` *is* fragment-derived; the old
+  wording "DIA-NN has no MS2 quant" was inaccurate). `collapse_sites`
+  docstrings no longer claim only `"SN"` is implemented.
 
 ## [0.22.0] - 2026-07-21
 
@@ -66,9 +339,9 @@ applied to the Class-I fraction; not a novel method.
   cohorts.
 
 Empirical basis: sfPhospho SF (n=304), uPhosHT full-plate (n=383),
-PhosphoScape rapamycin (n=305) retention curves — see
-`scratchpad/wilson_retention_curve.py` and
-`scratchpad/classI_wilson_filter.py`.  Frame in a methods section as
+PhosphoScape rapamycin (n=305) retention curves (internal analysis
+scripts `wilson_retention_curve.py` / `classI_wilson_filter.py`, not
+shipped).  Frame in a methods section as
 "Wilson binomial CI on Class-I fraction (Wilson 1927; Newcombe 1998)".
 
 Backward compatible.  Existing collapse calls using the three prior
@@ -120,8 +393,8 @@ whether to impute, which imputer, and which DE call.
 
 Empirical basis: 10-config grouping grid over the sfPhospho 304-fiber
 cohort plus MAE benchmarks across EGF (n=6), cardio (n=69), bulk phospho
-(n=99), SF phospho (n=304), and bulk proteome (n=367) — see
-``scratchpad/sfphospho_grouping_grid.py`` and ``scratchpad/imputation_benchmark_*``.
+(n=99), SF phospho (n=304), and bulk proteome (n=367) (internal analysis
+scripts ``sfphospho_grouping_grid.py`` / ``imputation_benchmark_*``, not shipped).
 
 The advisor is additive.  All existing calls (``filter_by_completeness``,
 ``impute_pimms/knn/hybrid``, ``diff_exp_*``, ``on_off_detection``) keep
@@ -159,8 +432,8 @@ the README status line since 0.15.  Both share the same API as
   per (n, config), boost = 2-3 std, features = 400): below these,
   silhouette recovery is either variable across seeds (t-SNE) or
   collapses to near-zero (UMAP), while PCA remains reliable at
-  n >= 6.  See ``scratchpad/tsne_umap_n_threshold_study.py`` for
-  the sweep.  Silence via ``warnings.filterwarnings("ignore",
+  n >= 6 (internal sweep script ``tsne_umap_n_threshold_study.py``, not
+  shipped).  Silence via ``warnings.filterwarnings("ignore",
   category=UserWarning)`` when you know what you're doing.
 - **`n_pca_components=` bridge**: when set, ``tsne`` and ``umap`` read
   ``adata.obsm["X_pca"]`` (from a prior ``ap.dimred.pca`` call) as

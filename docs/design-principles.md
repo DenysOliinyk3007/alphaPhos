@@ -184,6 +184,8 @@ Alternatives via `advanced={"aggregation_method": ...}`:
 
 Nothing about the design forbids other aggregations, but the empirical evidence is that `sum` is almost always the right default. Alternative choices should be justified in the methods section.
 
+**Which precursors enter the sum** (`precursor_loc_gate = True`, 0.23): only precursors whose *own* localization probability for the site in that run reaches the Class-I cutoff. An ambiguous precursor scored 30% for a site must not add its full intensity to a site that another precursor localizes at 99% — that is what Spectronaut's PTM consolidation does, and summing everything inflated 22% of site-run cells by ~+0.12 log2 on the EGF HeLa benchmark. When no precursor of a site is Class-I in a run, everything is summed and the site-level strategy (`condition` / `per_run`) decides, so the condition rule's recovery of borderline runs is preserved.
+
 ### 3.3 Condition-aware localization strategy
 
 `collapse_sites` has three (now four, with Wilson) `localization_strategy` options controlling how the Class-I mask (`classI_cutoff = 0.75` by default) is applied at the precursor × run level:

@@ -98,11 +98,19 @@ class TestImputeKnnSiteBased:
         X = np.array([[1.0, np.nan], [3.0, 4.0]])
         adata = _make_adata(X)
         adata.layers["alt"] = X.copy()
-        # Imputes the requested layer only, leaves .X and other layers alone
+        # Imputes the requested (non-canonical) layer only, leaves .X and the
+        # canonical layer alone
         impute_knn_site_based(adata, layer="alt")
         assert not np.isnan(adata.layers["alt"]).any()
         assert np.isnan(adata.layers[LAYER_INTENSITY_LOG2][0, 1])
         assert np.isnan(adata.X[0, 1])
+
+    def test_default_layer_mirrors_into_X(self):
+        X = np.array([[1.0, np.nan], [3.0, 4.0]])
+        adata = _make_adata(X)
+        impute_knn_site_based(adata)
+        np.testing.assert_array_equal(adata.X, adata.layers[LAYER_INTENSITY_LOG2])
+        assert not np.isnan(adata.X).any()
 
     def test_layer_none_targets_X(self):
         X = np.array([[1.0, np.nan], [3.0, 4.0]])
@@ -250,9 +258,10 @@ class TestImputeHybrid:
         # Copy has imputed values
         assert not np.isnan(result.layers[LAYER_INTENSITY_LOG2]).any()
 
-    def test_default_targets_log2_layer_not_X(self):
-        # Two cells missing on the same low-abundance site. The default writes
-        # to the log2 layer; .X stays untouched. (Silent-wrong-result guard.)
+    def test_default_imputes_log2_layer_and_mirrors_X(self):
+        # The default writes to the canonical log2 layer AND mirrors into .X
+        # (collapse contract .X == layers["intensity_log2"]), so .X readers
+        # such as filter_by_completeness see the imputed values too.
         X = np.array(
             [
                 [10.0, 11.0, 12.0, 13.0, np.nan],
@@ -264,7 +273,22 @@ class TestImputeHybrid:
         adata = _make_adata(X)
         impute_hybrid(adata)
         assert not np.isnan(adata.layers[LAYER_INTENSITY_LOG2]).any()
-        assert np.isnan(adata.X[0, 4])  # .X untouched
+        np.testing.assert_array_equal(adata.X, adata.layers[LAYER_INTENSITY_LOG2])
+
+    def test_sample_with_single_observation_never_gets_zero_filled(self):
+        # Regression: gauss_filled used to be zeros-initialised, so a sample with
+        # <2 observed values (no per-sample sigma) had its MNAR cells written as
+        # 0.0 on the log2 scale instead of falling through to the global Gaussian.
+        rng = np.random.default_rng(0)
+        X = rng.normal(20, 2, size=(6, 40))
+        X[X < 17.5] = np.nan
+        X[5, :] = np.nan
+        X[5, 0] = 21.0  # exactly one observed value in sample 5
+        adata = _make_adata(X)
+        impute_hybrid(adata)
+        L = adata.layers[LAYER_INTENSITY_LOG2]
+        assert not np.isnan(L).any()
+        assert (L[5] > 5.0).all(), "zero-filled cells leaked into the log2 matrix"
 
 
 # ============================================================================

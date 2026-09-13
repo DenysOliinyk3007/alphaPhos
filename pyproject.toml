@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "alphaPhos"
-version = "0.22.0"
+dynamic = ["version"]
 description = "Phosphoproteomics analysis toolkit — IO, preprocessing, PTM site mapping, statistics, KSEA, enrichment, kinase-substrate signalome, orthology, dimensionality reduction and QC."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -14,13 +14,14 @@ authors = [
 ]
 keywords = ["phosphoproteomics", "mass-spectrometry", "proteomics", "PTM", "KSEA", "kinase"]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
 ]
 dependencies = [
@@ -79,11 +80,34 @@ docs = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/oliinyk/alphaPhos"
-Documentation = "https://github.com/oliinyk/alphaPhos"
-Issues = "https://github.com/oliinyk/alphaPhos/issues"
+Homepage = "https://github.com/DenysOliinyk3007/alphaPhos"
+Documentation = "https://github.com/DenysOliinyk3007/alphaPhos/tree/main/docs"
+Issues = "https://github.com/DenysOliinyk3007/alphaPhos/issues"
+Changelog = "https://github.com/DenysOliinyk3007/alphaPhos/blob/main/CHANGELOG.md"
+
+[tool.hatch.version]
+path = "src/alphaphos/_version.py"
+
+[tool.hatch.build.targets.sdist]
+# Source distribution = package + tests + docs + metadata.  Research artefacts
+# and the repo-level FASTAs (~140 MB together) are not part of the release.
+# Patterns are gitignore-style; the leading "/" anchors them to the repo root so
+# that "src/alphaphos/resources/" (shipped) is NOT matched by "/resources/".
+exclude = [
+    "/resources/",
+    "/prob_weighted_benchmark/",
+    "/docs/benchmark/",
+    "/examples/",
+    "/studies/",
+    "/scripts/",
+    "/.github/",
+    "/.pre-commit-config.yaml",
+]
 
 [tool.hatch.build.targets.wheel]
+# Data under src/alphaphos/resources/ (contaminants.fasta, goldstandard/,
+# libraries/) ships with the wheel; the ~84 MB FASTAs stay in the repo-level
+# resources/ and are located at runtime via alphaphos.resources.external().
 packages = ["src/alphaphos"]
 
 [tool.ruff]
@@ -123,7 +147,6 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-ra --strict-markers"
 markers = [
-    "regression: golden-snapshot regression tests against legacy pipelines",
     "slow: tests that take more than a few seconds",
 ]
 

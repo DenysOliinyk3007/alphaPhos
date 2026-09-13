@@ -39,44 +39,27 @@ import re
 
 import pandas as pd
 
+from alphaphos.preprocess._collapse.parsing import (
+    parse_localization_probabilities,
+    rank_select_positions,
+)
+
 
 def parse_loc_dict(s: str | float) -> dict[int, float]:
     """Parse `EG.PTMLocalizationProbabilities` -> {peptide_position_1indexed: prob}.
 
-    Returns an empty dict for non-string / missing / unparseable input. Only
-    `[Phospho (STY)]` annotations are extracted; other PTM types are ignored.
-    Positions are 1-indexed amino-acid offsets into the peptide. Probabilities
-    are returned in [0, 1] (Spectronaut writes percentages, we divide by 100).
+    Thin alias of
+    :func:`alphaphos.preprocess._collapse.parsing.parse_localization_probabilities`
+    (one parser, one set of edge-case rules).  Returns an empty dict for
+    non-string / missing / unparseable input; only `[Phospho (STY)]`
+    annotations are extracted; positions are 1-indexed; probabilities in [0, 1].
 
     Example
     -------
     >>> parse_loc_dict("_PVS[Phospho (STY): 92.3%]PS[Phospho (STY): 7.6%]_")
     {3: 0.923, 5: 0.076}
     """
-    if not isinstance(s, str):
-        return {}
-    s = s.strip("_.* ")
-    out: dict[int, float] = {}
-    pos = 0
-    i = 0
-    while i < len(s):
-        if s[i] == "[":
-            try:
-                end = s.index("]", i)
-            except ValueError:
-                break
-            bracket = s[i + 1 : end]
-            if bracket.startswith("Phospho (STY)"):
-                m = re.search(r":\s*([\d.]+)%", bracket)
-                if m:
-                    out[pos] = float(m.group(1)) / 100.0
-            i = end + 1
-        elif s[i].isalpha():
-            pos += 1
-            i += 1
-        else:
-            i += 1
-    return out
+    return parse_localization_probabilities(s)
 
 
 def parse_precid_phospho_positions(precid: str | float) -> tuple[int, ...]:
@@ -115,7 +98,10 @@ def top_n_positions(loc_dict: dict[int, float], n: int) -> tuple[int, ...]:
     ascending position. Matches R's ``rank(-prob, ties.method='first')`` then
     take the first N.
 
-    Returns an empty tuple if N <= 0 or loc_dict is empty.
+    Returns an empty tuple if N <= 0 or loc_dict is empty.  Same ranking as
+    :func:`alphaphos.preprocess._collapse.parsing.rank_select_positions`, but
+    returned as a position-sorted tuple for set-equality against the
+    PrecursorId-encoded positions.
 
     Example
     -------
@@ -124,10 +110,8 @@ def top_n_positions(loc_dict: dict[int, float], n: int) -> tuple[int, ...]:
     >>> top_n_positions({3: 0.9, 8: 0.1}, n=1)
     (3,)
     """
-    if n <= 0 or not loc_dict:
-        return ()
-    ranked = sorted(loc_dict.items(), key=lambda kv: (-kv[1], kv[0]))[:n]
-    return tuple(sorted(p for p, _ in ranked))
+    positions, _ = rank_select_positions(loc_dict, n)
+    return tuple(sorted(positions))
 
 
 def filter_to_top_n_positions(

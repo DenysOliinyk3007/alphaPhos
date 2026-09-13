@@ -74,9 +74,14 @@ from alphaphos.constants import (
     DIANN_SITE_OCCUPANCY_PROBS,
     UNIMOD_PHOSPHO,
 )
-from alphaphos.io.schemas import REQUIRED_COLUMNS, all_needed_columns
+from alphaphos.io.contaminants import DEFAULT_CONTAMINANT_PREFIXES, filter_contaminants
+from alphaphos.io.schemas import (
+    QUANT_COLUMN_CANDIDATES,
+    REQUIRED_COLUMNS,
+    all_needed_columns,
+)
 
-logger = logging.getLogger("alphaphos.io.diann")
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -94,6 +99,12 @@ DEFAULT_DIANN_IO_SETTINGS: dict[str, Any] = {
     "quantity_quality_min": 0.5,
     "pg_maxlfq_quality_min": 0.7,
     "require_locprobs": True,  # drop rows missing Site.Occupancy.Probabilities
+    # Contaminant handling (same mechanism as read_spectronaut).  DIA-NN's
+    # ``--cont-quant-exclude cRAP-`` only excludes tagged proteins from protein
+    # quantification; their precursor rows stay in the report.
+    "drop_contaminants": True,
+    "contaminants_fasta": None,  # None -> bundled MaxQuant fasta
+    "contaminant_prefixes": DEFAULT_CONTAMINANT_PREFIXES,
 }
 
 
@@ -124,12 +135,12 @@ def resolve_diann_io_settings(advanced: dict[str, Any] | None) -> dict[str, Any]
         )
     settings.update(advanced)
 
-    if not isinstance(settings["mbr"], bool):
-        raise ValueError(f"mbr must be bool, got {type(settings['mbr']).__name__}")
-    if not isinstance(settings["require_locprobs"], bool):
-        raise ValueError(
-            f"require_locprobs must be bool, got {type(settings['require_locprobs']).__name__}"
-        )
+    for bool_key in ("mbr", "require_locprobs", "drop_contaminants"):
+        if not isinstance(settings[bool_key], bool):
+            raise ValueError(f"{bool_key} must be bool, got {type(settings[bool_key]).__name__}")
+    prefixes = settings["contaminant_prefixes"]
+    if not isinstance(prefixes, (tuple, list)) or not all(isinstance(x, str) for x in prefixes):
+        raise ValueError("contaminant_prefixes must be a tuple / list of strings")
     for k in (
         "pg_qvalue_max",
         "global_pg_qvalue_max",
@@ -138,7 +149,10 @@ def resolve_diann_io_settings(advanced: dict[str, Any] | None) -> dict[str, Any]
         "pg_maxlfq_quality_min",
     ):
         v = settings[k]
-        if v is not None and not (isinstance(v, (int, float)) and 0 <= float(v) <= 1):
+        # bool is an int subclass -- reject it explicitly so True doesn't pass as 1.0.
+        if v is not None and (
+            isinstance(v, bool) or not (isinstance(v, (int, float)) and 0 <= float(v) <= 1)
+        ):
             raise ValueError(f"{k} must be None or a float in [0, 1], got {v!r}")
     return settings
 
@@ -192,14 +206,37 @@ def diann_loc_probs(occ: str | float) -> float | str:
     return "_" + s + "_"
 
 
-def first_phospho_abs_position(protein_sites: Any) -> float:
+def _protein_sites_groups(protein_sites: Any) -> dict[str, str]:
+    """Parse ``[P1:S10,T12];[P2:S15]`` -> ``{"P1": "S10,T12", "P2": "S15"}``.
+
+    One bracket group per protein of the protein group; insertion order is
+    DIA-NN's (alphabetical), which is generally NOT the ``Protein.Group`` order.
+    """
+    out: dict[str, str] = {}
+    for grp in str(protein_sites).split(";"):
+        grp = grp.strip().strip("[]")
+        if ":" not in grp:
+            continue
+        prot, sites = grp.split(":", 1)
+        out.setdefault(prot.strip(), sites.strip())
+    return out
+
+
+def first_phospho_abs_position(protein_sites: Any, protein: str | None = None) -> float:
     """Return the absolute protein position of the FIRST phospho S/T/Y.
 
     Parses DIA-NN's ``Protein.Sites`` column, which looks like
-    ``[P35221:C116,S118]`` (brackets, protein id, colon, comma-separated
-    positions). Non-STY entries (carbamidomethyl-C etc.) are ignored.
-    Returns ``np.nan`` when no S/T/Y entry is present or the string is
-    unparseable.
+    ``[P35221:C116,S118]`` or, for a multi-protein group,
+    ``[Q16828:S331];[Q16829:S369];[Q99956:S328]`` -- one bracket group per
+    protein, listed ALPHABETICALLY, whereas ``Protein.Group`` lists the
+    leading protein first.  Pass ``protein`` (the leading accession) to
+    read that protein's positions; reading the first group blindly would
+    stamp another paralog's position onto the leading protein (this
+    happened on the EGF HeLa benchmark for shared peptides).  With
+    ``protein=None`` the first group is used.  Non-STY entries
+    (carbamidomethyl-C etc.) are ignored.  Returns ``np.nan`` when the
+    requested protein is absent, no S/T/Y entry is present, or the string
+    is unparseable.
 
     Examples
     --------
@@ -207,25 +244,34 @@ def first_phospho_abs_position(protein_sites: Any) -> float:
     117
     >>> first_phospho_abs_position("[P35221:C116,S118]")
     118
+    >>> first_phospho_abs_position("[Q16828:S331];[Q99956:S328]", protein="Q99956")
+    328
     >>> first_phospho_abs_position("[P00000:]")
     nan
     """
-    inner = str(protein_sites).strip("[]").split(";")[0]
-    if ":" not in inner:
+    groups = _protein_sites_groups(protein_sites)
+    if not groups:
         return np.nan
-    sty = [t for t in inner.split(":", 1)[1].split(",") if t[:1] in ("S", "T", "Y")]
+    if protein is None:
+        sites = next(iter(groups.values()))
+    else:
+        sites = groups.get(protein)
+        if sites is None:
+            return np.nan
+    sty = [t for t in sites.split(",") if t[:1] in ("S", "T", "Y")]
     if not sty:
         return np.nan
     return int(re.sub(r"\D", "", sty[0]))
 
 
-def diann_peptide_start(modseq: str, protein_sites: Any) -> float:
+def diann_peptide_start(modseq: str, protein_sites: Any, protein: str | None = None) -> float:
     """Return the peptide's start position in the parent protein (1-indexed).
 
     Derives from the DIA-NN row: the first phospho's absolute position
-    (from ``Protein.Sites``) minus its intra-peptide 1-indexed position
-    (from ``Modified.Sequence``, using the position immediately before
-    the first ``(UniMod:21)`` marker), plus 1.
+    (from ``Protein.Sites``, for ``protein`` -- see
+    :func:`first_phospho_abs_position`) minus its intra-peptide 1-indexed
+    position (from ``Modified.Sequence``, using the position immediately
+    before the first ``(UniMod:21)`` marker), plus 1.
 
     Returns ``np.nan`` if either input is missing / unparseable.
 
@@ -238,7 +284,7 @@ def diann_peptide_start(modseq: str, protein_sites: Any) -> float:
     if UNIMOD_PHOSPHO not in modseq:
         return np.nan
     within = len(_UNIMOD.sub("", modseq[: modseq.index(UNIMOD_PHOSPHO)]))
-    abs_pos = first_phospho_abs_position(protein_sites)
+    abs_pos = first_phospho_abs_position(protein_sites, protein)
     if abs_pos != abs_pos:  # NaN check
         return np.nan
     return int(abs_pos) - within + 1
@@ -260,7 +306,13 @@ def _diann_to_psm(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
         (``Precursor.Quantity`` and any other present quant candidates)
         preserved as-is. ``n_unmappable`` counts rows where the peptide
         start position could not be derived (dropped from the output).
+
+    The peptide start is read from the ``Protein.Sites`` entry of the
+    LEADING accession of ``Protein.Group`` (the accession alphaPhos keys
+    sites by), not from the first listed entry -- DIA-NN lists the entries
+    alphabetically, so for shared peptides the two differ.
     """
+    leading_protein = df[DIANN_PROTEIN_GROUP].astype(str).str.split(";").str[0]
     # Build the canonical metadata columns.
     out = pd.DataFrame(
         {
@@ -272,8 +324,13 @@ def _diann_to_psm(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
                 )
             ],
             COL_PEP_PEPTIDE_POSITION: [
-                diann_peptide_start(m, p)
-                for m, p in zip(df[DIANN_MODIFIED_SEQUENCE], df[DIANN_PROTEIN_SITES], strict=True)
+                diann_peptide_start(m, p, prot)
+                for m, p, prot in zip(
+                    df[DIANN_MODIFIED_SEQUENCE],
+                    df[DIANN_PROTEIN_SITES],
+                    leading_protein,
+                    strict=True,
+                )
             ],
             COL_EG_PTM_ASSAY_PROB: df[DIANN_PTM_SITE_CONFIDENCE].values,
             COL_PG_GENES: df[DIANN_GENES].astype(str).str.split(";").str[0],
@@ -283,16 +340,13 @@ def _diann_to_psm(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
     if DIANN_SITE_OCCUPANCY_PROBS in df.columns:
         out[COL_EG_PTM_LOC_PROBS] = [diann_loc_probs(o) for o in df[DIANN_SITE_OCCUPANCY_PROBS]]
 
-    # Carry through the DIA-NN quant columns so downstream can pick via
-    # QUANT_COLUMN_CANDIDATES["Diann"][level].
-    for quant_col in (
-        "Precursor.Quantity",
-        "Precursor.Normalised",
-        "Ms1.Translated",
-        "Ms1.Area",
-    ):
-        if quant_col in df.columns:
-            out[quant_col] = df[quant_col].values
+    # Carry through every DIA-NN quant candidate so collapse can pick via
+    # QUANT_COLUMN_CANDIDATES["Diann"][level]. Iterating the schema (not a
+    # literal list) keeps the two in sync when a candidate is added.
+    for level_cols in QUANT_COLUMN_CANDIDATES["Diann"].values():
+        for quant_col in level_cols:
+            if quant_col in df.columns and quant_col not in out.columns:
+                out[quant_col] = df[quant_col].values
 
     # Drop rows where the peptide start couldn't be derived.
     n_unmappable = int(out[COL_PEP_PEPTIDE_POSITION].isna().sum())
@@ -313,7 +367,8 @@ def _scan_available_columns(path: Path) -> set[str]:
     """
     if path.suffix.lower() == ".parquet":
         return set(pq.read_schema(str(path)).names)
-    with open(path, encoding="utf-8", errors="replace") as f:
+    # "utf-8-sig" transparently strips a leading BOM (Windows exports).
+    with open(path, encoding="utf-8-sig", errors="replace") as f:
         header = f.readline().rstrip("\r\n").split("\t")
     return set(header)
 
@@ -324,13 +379,21 @@ def _scan_available_columns(path: Path) -> set[str]:
 
 
 def _apply_qc_filter(df: pd.DataFrame, settings: dict[str, Any]) -> tuple[pd.DataFrame, dict]:
-    """Apply the six-step DIA-NN QC filter chain.
+    """Apply the DIA-NN QC filter chain.
+
+    Stages, in order: gene annotation present -> PG / Global.PG / Lib.PG
+    q-value and Quantity.Quality / PG.MaxLFQ.Quality masks (each only when
+    its setting is not None and the column exists) -> phospho-only
+    (``(UniMod:21)`` in ``Modified.Sequence``) -> localizable
+    (``Protein.Sites`` and, if ``require_locprobs``,
+    ``Site.Occupancy.Probabilities`` present).
 
     Returns
     -------
     (df, funnel)
         ``df`` is the filtered DataFrame. ``funnel`` is a dict of row
-        counts at each stage, for provenance stamping.
+        counts at each stage (``raw_precursors``, ``has_gene``, ``after_qc``,
+        ``phospho``, ``localizable``), for provenance stamping.
     """
     funnel: dict[str, int] = {"raw_precursors": len(df)}
 
@@ -355,13 +418,22 @@ def _apply_qc_filter(df: pd.DataFrame, settings: dict[str, Any]) -> tuple[pd.Dat
     df = df[mask]
     funnel["after_qc"] = len(df)
 
-    # Phospho-only: keep rows with UniMod:21 in Modified.Sequence.
-    df = df[df[DIANN_MODIFIED_SEQUENCE].str.contains("UniMod:21", na=False)].copy()
+    # Phospho-only: keep rows with "(UniMod:21)" in Modified.Sequence.
+    # Literal match (regex=False) on the parenthesised token so e.g.
+    # "(UniMod:210)" never matches.
+    df = df[df[DIANN_MODIFIED_SEQUENCE].str.contains(UNIMOD_PHOSPHO, regex=False, na=False)].copy()
     funnel["phospho"] = len(df)
 
     if settings["require_locprobs"] and DIANN_SITE_OCCUPANCY_PROBS in df.columns:
         df = df[df[DIANN_PROTEIN_SITES].notna() & df[DIANN_SITE_OCCUPANCY_PROBS].notna()]
     else:
+        if settings["require_locprobs"]:
+            logger.warning(
+                "require_locprobs=True but column %r is absent from the report; "
+                "no per-site localization probabilities will be available downstream "
+                "(EG.PTMLocalizationProbabilities not populated). Requires DIA-NN >= 1.9.",
+                DIANN_SITE_OCCUPANCY_PROBS,
+            )
         df = df[df[DIANN_PROTEIN_SITES].notna()]
     funnel["localizable"] = len(df)
 
@@ -401,12 +473,16 @@ def read_psm(
             source_path            -- str, absolute path read
             engine                 -- "Diann"
             n_rows_loaded          -- int, rows before any filter
-            n_rows_after_qc        -- int, after the six-step QC filter
-            n_rows_phospho         -- int, after the UniMod:21 filter
+            n_rows_has_gene        -- int, after dropping rows with no Genes entry
+            n_rows_after_qc        -- int, after the q-value / quality masks
+            n_rows_phospho         -- int, after the (UniMod:21) filter
             n_rows_localizable     -- int, after the loc-string presence filter
             n_rows_unmappable      -- int, rows dropped because peptide-start
                                       could not be derived from Protein.Sites
+            n_rows_after_contaminants -- int, only if drop_contaminants=True
             n_rows_returned        -- int, final row count
+            columns_read           -- list[str], DIA-NN columns actually loaded
+            columns_dropped        -- int, count of columns pruned at read time
 
     Raises
     ------
@@ -440,7 +516,7 @@ def read_psm(
     if p.suffix.lower() == ".parquet":
         df = pd.read_parquet(p, columns=cols_to_read)
     elif p.suffix.lower() in (".tsv", ".txt"):
-        df = pd.read_csv(p, sep="\t", usecols=cols_to_read, low_memory=False)
+        df = pd.read_csv(p, sep="\t", usecols=cols_to_read, low_memory=False, encoding="utf-8-sig")
     else:
         raise ValueError(
             f"Unsupported file extension {p.suffix!r}; expected .parquet, .tsv, or .txt"
@@ -448,21 +524,35 @@ def read_psm(
 
     n_loaded = len(df)
 
-    # Apply the six-step DIA-NN QC filter chain (funnel counts stamped later).
+    # Apply the DIA-NN QC filter chain (funnel counts stamped later).
     df, funnel = _apply_qc_filter(df, settings)
 
     # Adapt to Spectronaut-canonical schema.
     df_out, n_unmappable = _diann_to_psm(df)
     df_out = df_out.reset_index(drop=True)
 
+    n_after_contam = None
+    if settings["drop_contaminants"]:
+        df_out = filter_contaminants(
+            df_out,
+            contaminants_fasta=settings["contaminants_fasta"],
+            prefix_patterns=tuple(settings["contaminant_prefixes"]),
+        )
+        n_after_contam = len(df_out)
+        logger.info("Dropped contaminants: %d rows remaining.", n_after_contam)
+
     df_out.attrs["source_path"] = str(p)
     df_out.attrs["engine"] = engine
     df_out.attrs["n_rows_loaded"] = n_loaded
+    df_out.attrs["n_rows_has_gene"] = funnel["has_gene"]
     df_out.attrs["n_rows_after_qc"] = funnel["after_qc"]
     df_out.attrs["n_rows_phospho"] = funnel["phospho"]
     df_out.attrs["n_rows_localizable"] = funnel["localizable"]
     df_out.attrs["n_rows_unmappable"] = n_unmappable
+    if n_after_contam is not None:
+        df_out.attrs["n_rows_after_contaminants"] = n_after_contam
     df_out.attrs["n_rows_returned"] = len(df_out)
+    df_out.attrs["columns_read"] = cols_to_read
     df_out.attrs["columns_dropped"] = n_dropped_cols
 
     logger.info(

@@ -241,8 +241,12 @@ def parse_localization_probabilities(loc_string: Any) -> dict[int, float]:
     while i < len(s):
         if s[i] == "[":
             # Skip whole bracket. Non-phospho brackets are ignored via the
-            # startswith check below.
-            end = s.index("]", i)
+            # startswith check below.  An unclosed bracket means a truncated
+            # / malformed string: stop parsing rather than raise (docstring
+            # contract: never raises).
+            end = s.find("]", i)
+            if end == -1:
+                break
             bracket_content = s[i + 1 : end]
             if bracket_content.startswith("Phospho (STY)"):
                 match = re.search(r":\s*([\d.]+)%", bracket_content)
