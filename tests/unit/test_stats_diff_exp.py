@@ -269,7 +269,7 @@ class TestDeterminism:
 class TestSettings:
     def test_default_settings_shape(self):
         assert set(DEFAULT_STATS_SETTINGS) == {"trend", "robust", "winsor_tail_p"}
-        assert DEFAULT_STATS_SETTINGS["trend"] is False
+        assert DEFAULT_STATS_SETTINGS["trend"] is True  # limma-trend default since 0.24
         assert DEFAULT_STATS_SETTINGS["robust"] is False
 
 
@@ -392,13 +392,14 @@ class TestSanitizeHelpers:
     def test_sanitize_level_prefixes_digit_start(self):
         from alphaphos.stats.diff_exp import _sanitize_level
 
-        assert _sanitize_level("1uM") == "_1uM"
-        assert _sanitize_level("10uM") == "_10uM"
+        # Shared rule with stats.design: digit-leading levels get an ``x_`` prefix.
+        assert _sanitize_level("1uM") == "x_1uM"
+        assert _sanitize_level("10uM") == "x_10uM"
 
-    def test_sanitize_level_empty_becomes_underscore(self):
+    def test_sanitize_level_empty_becomes_placeholder(self):
         from alphaphos.stats.diff_exp import _sanitize_level
 
-        assert _sanitize_level("") == "_"
+        assert _sanitize_level("") == "empty"
 
     def test_sanitize_map_is_bijective_under_collision(self):
         from alphaphos.stats.diff_exp import _sanitize_and_map_levels

@@ -35,6 +35,8 @@ from typing import TYPE_CHECKING, Literal
 import numpy as np
 import pandas as pd
 
+from alphaphos.constants import LAYER_INTENSITY_LOG2
+
 if TYPE_CHECKING:
     import anndata as ad
 
@@ -50,7 +52,7 @@ def on_off_detection(
     condition_column: str,
     comparison: tuple[str, str],
     min_observed_per_group: int = 3,
-    layer: str | None = "intensity_log2",
+    layer: str | None = LAYER_INTENSITY_LOG2,
 ) -> pd.DataFrame:
     """Per-feature detection call for a two-group contrast.
 
@@ -163,7 +165,7 @@ def annotate_imputed_provenance(
     condition_column: str,
     comparison: tuple[str, str],
     min_observed_per_group: int = 3,
-    layer: str | None = "intensity_log2",
+    layer: str | None = LAYER_INTENSITY_LOG2,
 ) -> pd.DataFrame:
     """Attach observation counts + an ``imputed_driven`` flag to a limma result.
 
@@ -257,7 +259,7 @@ def diff_exp_limma_observed_only(
     comparison: tuple[str, str],
     min_observed_per_group: int = 3,
     covariates: list[str] | None = None,
-    layer: str | None = "intensity_log2",
+    layer: str | None = LAYER_INTENSITY_LOG2,
     imputer: str | None = "hybrid",
     imputer_kwargs: dict | None = None,
     limma_advanced: dict | None = None,
@@ -344,18 +346,22 @@ def diff_exp_limma_observed_only(
 
     sub = adata[:, testable].copy()
     if imputer is not None:
+        if layer is None:
+            raise ValueError(
+                "layer=None (test adata.X) cannot be combined with an imputer: the "
+                "imputers write a named layer. Pass the layer name, or imputer=None."
+            )
         from alphaphos.preprocess.impute import impute_hybrid, impute_knn_site_based
 
-        imputer_kwargs = dict(imputer_kwargs or {})
+        # The imputer must fill the SAME layer limma will test (a mismatch left
+        # NaN in the tested slot before 0.24).
+        imputer_kwargs = {**dict(imputer_kwargs or {}), "layer": layer}
         if imputer == "hybrid":
             sub = impute_hybrid(sub, **imputer_kwargs)
         elif imputer == "knn":
             sub = impute_knn_site_based(sub, **imputer_kwargs)
         else:
             raise ValueError(f"imputer={imputer!r} not recognised; use 'hybrid', 'knn', or None")
-        # impute_* rewrites the layer; also propagate to .X for limma default.
-        if layer is not None and layer in sub.layers:
-            sub.X = sub.layers[layer].copy()
 
     result = diff_exp_limma(
         sub,

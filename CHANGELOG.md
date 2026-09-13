@@ -10,6 +10,80 @@ While in `0.x`, breaking API changes may appear in any MINOR bump (`0.1 → 0.2`
 
 ## [Unreleased]
 
+### Fixed -- `alphaphos.stats` review
+
+- **Integer-coded covariates were fit as a linear trend.** `covariates=["batch"]`
+  with `batch` = 1, 2, 3 produced one continuous column in both the inmoose
+  path (patsy) and `design_matrix`, i.e. a silently misspecified model,
+  while the docs promised dummy coding.  Integer / bool covariate columns now
+  raise with instructions (`.astype(str)` for a factor, `.astype(float)` for a
+  continuous covariate); floats stay continuous, strings / categoricals are
+  dummy-coded as before.
+- `diff_exp_limma_contrasts(joint=True)` and `diff_exp_anova` now apply the
+  same guards as `diff_exp_limma`: duplicate `var_names` rejected,
+  double-batch-correction refusal, NaN condition labels rejected, small-group
+  warning.  `advanced=` on the joint path used to be silently ignored
+  (`robust` / `trend` only exist in the inmoose backend) and now raises.
+- `diff_exp_limma` compares condition levels as strings throughout, so
+  integer-coded `obs` columns work with `comparison=("2", "1")` (previously
+  passed validation and then failed with "No samples found").
+- The double-batch guard also fires for `layer=None` (`.X` mirrors the
+  corrected canonical layer).
+- A covariate confounded with the condition on the inmoose path raised a raw
+  `LinAlgError: Singular matrix`; the design is now rank-checked with the
+  same message as the clean-room path.
+- `diff_exp_limma_observed_only`: the imputer now fills the layer limma
+  tests (a non-default `layer` left NaN in the tested slot); `layer=None`
+  with an imputer is rejected.
+- `moderated_f_test`: numerator df and divisor use `rank(C)` (limma) instead
+  of the column count when the contrast matrix is redundant.
+- `advanced` values are type-checked (`trend` / `robust` bool,
+  `winsor_tail_p` a pair in [0, 0.5)).
+- `recommend_pipeline` snippets for the DE step used a non-existent
+  `condition_col=` / `design=` API; they now show runnable calls.
+
+### Changed -- `alphaphos.stats` review
+
+- **limma-trend is the default** (`advanced={"trend": True}`) on every entry
+  point, and the clean-room stack (`diff_exp_limma_contrasts(joint=True)`,
+  `diff_exp_anova`, now with an `advanced=` parameter) implements it: the
+  prior variance follows a natural cubic spline in average log-intensity
+  (limma's `fitFDist(covariate=Amean)`, spline df 4).  Motivation: on the
+  EGF HeLa series residual SD falls from 0.33 to 0.16 between the lowest and
+  highest intensity quintile (Spearman -0.38), so the constant prior is
+  misspecified for MS intensities.  **Results change slightly** (EGF HeLa:
+  1,782 -> 1,842 sites at 5% FDR); `advanced={"trend": False}` restores the
+  constant prior.  Validated against inmoose `eBayes(trend=True)`: per-feature
+  prior, `df0`, moderated t, p and F agree to ~1e-9 on 2- and 3-group designs
+  and on 12,029 real sites.
+- `advanced={"robust": True}` **raises `NotImplementedError`** with an
+  explanation: inmoose 0.9.1 does not implement the Phipson 2016 robust
+  prior (it failed deep inside `squeezeVar`) and alphaPhos does not either;
+  the option had been documented as available.
+- Statistical audit on the EGF HeLa data (12,029 complete sites, 3 vs 3),
+  recorded in `docs/modules/stats/index.md`: BH FDR verified against scipy and
+  statsmodels per contrast over the tested sites; `t = log2fc/se`,
+  `p = 2 t.sf(|t|, df0 + df_res)`, pooled shrunk variance all consistent;
+  parametric-bootstrap null gives 5.3% of p < 0.05 and 0.1 false FDR hits per
+  12k sites; spike-in empirical FDR 0.050 / 0.023 at nominal 0.05 with 1.5x
+  the power of a Student t at n = 3; impute-then-test produced 30%
+  imputed-driven hits with 2x the effect size, which the observed-only flow
+  removes.
+
+- Level sanitisation is shared (`stats.design.sanitize_and_map_levels`):
+  digit-leading levels encode as `x_1uM` (was `_1uM` on the inmoose path) and
+  an empty level as `empty`.  Internal identifiers only; user labels are
+  unchanged in results.
+- Documented validation: the clean-room moderated stack reproduces inmoose's
+  moderated t, prior (`df0`, `s0^2`) and F to ~1e-13 on 2- and 3-group designs
+  (synthetic and 12,029 real EGF HeLa sites).  Its F p-value follows limma
+  (`pf(F, rank, df_prior + df_residual)`); **inmoose 0.9.1's F p-value uses
+  `df2 = inf`** (`classifyTestsF`), i.e. the chi-square limit, which is
+  anti-conservative -- another reason `joint=True` is the default.
+- `docs/modules/stats/index.md` rewritten: it still described a single
+  two-group function; the page now covers all seven public functions, the
+  design conventions, the on/off flow and the validation above.
+
 ## [0.23.0] - 2026-09-12
 
 Review-and-validation release: `io/` and `preprocess/` were audited file by

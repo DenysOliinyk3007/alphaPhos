@@ -87,6 +87,8 @@ class TestFitFDist:
         variances = np.full(n, 1.5, dtype=np.float64)
         prior = fit_f_dist(variances, residual_df=10)
         assert not np.isfinite(prior.prior_df)
+        # Current limma (post-Jan-2017 fitFDist): the degenerate constant prior
+        # is the pooled variance mean(s^2) -- the MLE of the scale.
         assert prior.prior_variance == pytest.approx(1.5)
 
     def test_moderate_variance_shrinks_toward_prior(self):

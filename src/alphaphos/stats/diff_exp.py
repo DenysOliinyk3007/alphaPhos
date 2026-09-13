@@ -1,11 +1,20 @@
-"""Two-group moderated t-test via limma (inmoose backend).
+"""Differential testing entry points.
 
-Implements a single pairwise comparison. ANOVA / multi-contrast F-tests
-are intentionally NOT included in this module (see 0.5.0 changelog):
-they will land later once inmoose's multi-contrast eBayes has been
-regression-tested against R limma on real data.
+* :func:`diff_exp_limma` -- two-group moderated t-test on the inmoose limma
+  port (``lmFit -> contrasts_fit -> eBayes -> topTable``).
+* :func:`diff_exp_limma_contrasts` -- several named contrasts on ONE joint
+  fit, moderated with alphaPhos's clean-room Smyth 2004 stack
+  (:mod:`alphaphos.stats.linear_model`); ``joint=False`` loops
+  :func:`diff_exp_limma` instead.
+* :func:`diff_exp_anova` -- moderated F-test across all levels (same stack).
+* :func:`anova_hits` -- split an F-test table into ORA hits / background.
 
-Result columns:
+The clean-room stack reproduces inmoose's moderated t, prior and F to ~1e-13
+(``tests/unit/test_stats_moderated.py``); its F p-value follows limma
+(``pf(F, rank, df_prior + df_residual)``) where inmoose 0.9.1 reports the
+chi-square limit (``df2 = inf``), which is anti-conservative.
+
+Result columns (two-group / per-contrast tables):
 
 * ``log2fc``   -- ``mean(treatment) - mean(control)`` on the input layer's scale.
 * ``se``       -- standard error of ``log2fc``.
@@ -24,7 +33,7 @@ from __future__ import annotations
 
 import importlib.util
 import logging
-import re
+import numbers
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -38,6 +47,7 @@ from alphaphos.constants import (
     UNS_ALPHAPHOS,
     UNS_BATCH_CORRECTION,
 )
+from alphaphos.stats.design import covariate_is_continuous, sanitize_and_map_levels
 
 if TYPE_CHECKING:
     import anndata as ad
@@ -66,10 +76,20 @@ _HAS_STATS_DEPS = all(importlib.util.find_spec(m) is not None for m in ("inmoose
 
 
 DEFAULT_STATS_SETTINGS: dict = {
-    "trend": False,
+    # limma-trend: prior variance follows a spline in average log-intensity.
+    # MS residual variance falls steeply with intensity (EGF HeLa: residual SD
+    # 0.33 -> 0.16 from the lowest to the highest quintile), so the constant
+    # prior is misspecified; on by default since 0.24.
+    "trend": True,
+    # Phipson 2016 robust prior: NOT available -- inmoose 0.9.1 raises
+    # NotImplementedError inside squeezeVar and the clean-room stack does not
+    # implement it.  Kept so that robust=True fails fast with a clear message.
     "robust": False,
     "winsor_tail_p": (0.05, 0.1),
 }
+
+# advanced keys the clean-room (joint / ANOVA) path understands.
+_JOINT_PATH_KEYS = frozenset({"trend"})
 
 INMOOSE_TOPTABLE_COLS = {
     "log2FoldChange": "log2fc",
@@ -114,11 +134,14 @@ def diff_exp_limma(
     advanced : dict, optional
         Overrides for ``DEFAULT_STATS_SETTINGS``:
 
-        - ``trend`` (bool): pass to ``eBayes``; enables mean-variance
-          trend fitting.
-        - ``robust`` (bool): pass to ``eBayes``; enables the
-          Phipson-2016 robust EB estimator.
-        - ``winsor_tail_p`` ((float, float)): passed to ``eBayes``.
+        - ``trend`` (bool, default True): limma-trend -- the prior variance
+          follows a natural cubic spline in average log-intensity (Law 2014).
+          Set False for the constant prior of Smyth 2004.
+        - ``robust`` (bool): Phipson-2016 robust EB estimator.  **Not
+          available** (inmoose 0.9.1 does not implement it); ``True`` raises
+          ``NotImplementedError``.
+        - ``winsor_tail_p`` ((float, float)): passed to ``eBayes``; only
+          meaningful with ``robust``.
 
     Returns
     -------
@@ -142,7 +165,10 @@ def diff_exp_limma(
 
     settings = _resolve_stats_settings(advanced)
 
-    treatment, control = comparison
+    # Levels are compared as strings throughout (obs columns are often
+    # categorical / integer-coded); the user's original values are kept for
+    # the result attrs.
+    treatment, control = str(comparison[0]), str(comparison[1])
     _validate_inputs(
         adata,
         condition_column=condition_column,
@@ -153,14 +179,10 @@ def diff_exp_limma(
     )
     _refuse_double_batch_correction(adata, covariates=covariates, layer=layer)
 
-    sample_mask = adata.obs[condition_column].isin([treatment, control]).to_numpy()
-    if not sample_mask.any():
-        raise ValueError(
-            f"No samples found with {condition_column} in {{{treatment!r}, {control!r}}}"
-        )
+    sample_mask = adata.obs[condition_column].astype(str).isin([treatment, control]).to_numpy()
     sub = adata[sample_mask, :]
 
-    _warn_on_small_groups(sub, condition_column, treatment, control)
+    _warn_on_small_groups(sub, condition_column, [treatment, control])
 
     X = _get_matrix(sub, layer=layer)
     _validate_no_nan(X, layer=layer)
@@ -222,7 +244,10 @@ def _refuse_double_batch_correction(
     if not bc:
         return
     corrected_layer = bc.get("layer")
-    if corrected_layer != layer:
+    # ``layer=None`` tests ``.X``, which by the collapse contract mirrors the
+    # canonical log2 layer -- so a correction of that layer applies to it too.
+    tested_layer = layer if layer is not None else LAYER_INTENSITY_LOG2
+    if corrected_layer != tested_layer:
         # Different layer -- e.g. testing the untouched precombat slot -- is fine.
         return
     prior_batch_col = bc.get("batch_column")
@@ -260,7 +285,62 @@ def _resolve_stats_settings(advanced: dict | None) -> dict:
             f"Unknown advanced keys: {sorted(unknown)}. Allowed: {sorted(DEFAULT_STATS_SETTINGS)}"
         )
     out.update(advanced)
+    for key in ("trend", "robust"):
+        if not isinstance(out[key], bool):
+            raise ValueError(f"{key} must be bool, got {type(out[key]).__name__}")
+    wt = out["winsor_tail_p"]
+    if (
+        not isinstance(wt, (tuple, list))
+        or len(wt) != 2
+        or not all(isinstance(x, numbers.Real) and not isinstance(x, bool) for x in wt)
+        or not all(0 <= float(x) < 0.5 for x in wt)
+    ):
+        raise ValueError(f"winsor_tail_p must be a pair of floats in [0, 0.5), got {wt!r}")
+    out["winsor_tail_p"] = (float(wt[0]), float(wt[1]))
+    if out["robust"]:
+        raise NotImplementedError(
+            "advanced={'robust': True}: the Phipson 2016 robust prior is not available -- "
+            "inmoose 0.9.1 raises inside squeezeVar and alphaPhos's clean-room stack does "
+            "not implement it. Use the default (trend=True) or trend=False."
+        )
     return out
+
+
+def _validate_frame(
+    adata: ad.AnnData,
+    *,
+    condition_column: str,
+    covariates: list[str] | None,
+    layer: str | None,
+) -> None:
+    """Checks shared by all differential-testing entry points."""
+    if not adata.var_names.is_unique:
+        raise ValueError(
+            "adata.var_names must be unique; duplicates would silently break "
+            "row alignment of the result table."
+        )
+    if condition_column not in adata.obs.columns:
+        raise KeyError(
+            f"condition_column={condition_column!r} not in adata.obs. "
+            f"Available: {list(adata.obs.columns)}"
+        )
+    n_nan = int(adata.obs[condition_column].isna().sum())
+    if n_nan:
+        raise ValueError(
+            f"adata.obs[{condition_column!r}] has {n_nan} missing value(s); "
+            "drop those samples or fill the label first."
+        )
+    for cov in covariates or ():
+        if cov not in adata.obs.columns:
+            raise KeyError(
+                f"covariate={cov!r} not in adata.obs. Available: {list(adata.obs.columns)}"
+            )
+        if cov == condition_column:
+            raise ValueError(f"covariate={cov!r} is the condition column; cannot self-adjust.")
+    if layer is not None and layer not in adata.layers:
+        raise KeyError(
+            f"layer={layer!r} not in adata.layers. Available: {list(adata.layers.keys())}"
+        )
 
 
 def _validate_inputs(
@@ -272,16 +352,7 @@ def _validate_inputs(
     covariates: list[str] | None,
     layer: str | None,
 ) -> None:
-    if not adata.var_names.is_unique:
-        raise ValueError(
-            "adata.var_names must be unique; duplicates would silently break "
-            "row alignment after sorting the limma output."
-        )
-    if condition_column not in adata.obs.columns:
-        raise KeyError(
-            f"condition_column={condition_column!r} not in adata.obs. "
-            f"Available: {list(adata.obs.columns)}"
-        )
+    _validate_frame(adata, condition_column=condition_column, covariates=covariates, layer=layer)
     levels_present = set(adata.obs[condition_column].astype(str).unique())
     if treatment not in levels_present:
         raise ValueError(
@@ -295,17 +366,6 @@ def _validate_inputs(
         )
     if treatment == control:
         raise ValueError("treatment and control must be different levels.")
-    for cov in covariates or ():
-        if cov not in adata.obs.columns:
-            raise KeyError(
-                f"covariate={cov!r} not in adata.obs. Available: {list(adata.obs.columns)}"
-            )
-        if cov == condition_column:
-            raise ValueError(f"covariate={cov!r} is the condition column; cannot self-adjust.")
-    if layer is not None and layer not in adata.layers:
-        raise KeyError(
-            f"layer={layer!r} not in adata.layers. Available: {list(adata.layers.keys())}"
-        )
 
 
 def _get_matrix(adata: ad.AnnData, *, layer: str | None) -> np.ndarray:
@@ -337,63 +397,29 @@ def _validate_log_scale(X: np.ndarray, *, layer: str | None) -> None:
         )
 
 
-def _warn_on_small_groups(
-    adata: ad.AnnData, condition_column: str, treatment: str, control: str
-) -> None:
-    counts = adata.obs[condition_column].value_counts()
-    n_treat = int(counts.get(treatment, 0))
-    n_ctrl = int(counts.get(control, 0))
-    if n_treat < MIN_REPLICATES_WARNING or n_ctrl < MIN_REPLICATES_WARNING:
+def _warn_on_small_groups(adata: ad.AnnData, condition_column: str, levels: list[str]) -> None:
+    """Warn when any of ``levels`` has fewer than ``MIN_REPLICATES_WARNING`` samples."""
+    counts = adata.obs[condition_column].astype(str).value_counts()
+    small = {
+        lv: int(counts.get(lv, 0)) for lv in levels if counts.get(lv, 0) < MIN_REPLICATES_WARNING
+    }
+    if small:
         logger.warning(
-            "Small groups: %s=%d, %s=%d. limma is designed for small n but n<%d "
-            "gives unstable moderated statistics -- interpret with caution.",
-            treatment,
-            n_treat,
-            control,
-            n_ctrl,
+            "Small groups: %s. limma is designed for small n but n<%d gives unstable "
+            "moderated statistics -- interpret with caution.",
+            ", ".join(f"{lv}={n}" for lv, n in small.items()),
             MIN_REPLICATES_WARNING,
         )
 
 
-_UNSAFE_LEVEL_CHAR_RE = re.compile(r"[^A-Za-z0-9_]")
-
-
+# Level sanitisation lives in alphaphos.stats.design so the inmoose path and
+# the clean-room path encode levels identically; these names are kept for
+# backwards compatibility of the private helpers.
 def _sanitize_level(label: str) -> str:
-    """Map a categorical level to a Python-identifier-safe token.
-
-    Levels flow through patsy dummy column names (``condition[<level>]``)
-    and then through ``inmoose.limma.makeContrasts``, which evaluates the
-    contrast string via ``eval()``.  Any non-identifier character
-    (``+``, ``-``, ``.``, ``/``, space, leading digit, ...) is a
-    ``SyntaxError`` waiting to happen.  Replaces unsafe characters with
-    ``_``, prefixes an ``_`` when the result starts with a digit, and
-    falls back to ``_`` for an empty string.
-    """
-    safe = _UNSAFE_LEVEL_CHAR_RE.sub("_", str(label))
-    if safe and safe[0].isdigit():
-        safe = "_" + safe
-    return safe or "_"
+    return sanitize_and_map_levels([str(label)])[str(label)]
 
 
-def _sanitize_and_map_levels(labels: list[str]) -> dict[str, str]:
-    """Build a bijective ``original -> safe`` mapping over the given labels.
-
-    Collisions (``EGF+`` and ``EGF-`` both sanitize to ``EGF_``) are broken
-    by suffixing ``_2``, ``_3``, ... in first-seen order.  The mapping is
-    an implementation detail; the sanitized names never leak to the user.
-    """
-    mapping: dict[str, str] = {}
-    used: set[str] = set()
-    for orig in labels:
-        base = _sanitize_level(orig)
-        safe = base
-        i = 2
-        while safe in used:
-            safe = f"{base}_{i}"
-            i += 1
-        mapping[str(orig)] = safe
-        used.add(safe)
-    return mapping
+_sanitize_and_map_levels = sanitize_and_map_levels
 
 
 def _build_design(
@@ -417,14 +443,15 @@ def _build_design(
     safe_treatment = cond_map[str(treatment)]
     safe_control = cond_map[str(control)]
 
-    # Same for any categorical covariate columns.  Continuous (numeric)
-    # covariates flow through patsy as plain names and are unaffected.
+    # Same for any categorical covariate columns.  Continuous (float)
+    # covariates flow through patsy as plain names; integer / bool columns
+    # are rejected as ambiguous (see design.covariate_is_continuous).
     if covariates:
         for cov in covariates:
             col = obs_df[cov]
-            if col.dtype == object or isinstance(col.dtype, pd.CategoricalDtype):
+            if not covariate_is_continuous(col, name=cov):
                 col_str = col.astype(str)
-                cov_map = _sanitize_and_map_levels(col_str.unique().tolist())
+                cov_map = sanitize_and_map_levels(col_str.unique().tolist())
                 obs_df[cov] = col_str.map(cov_map)
 
     formula_parts = [f"0 + {condition_column}"]
@@ -441,6 +468,13 @@ def _build_design(
     if level_treat not in cols or level_ctrl not in cols:
         raise ValueError(
             f"Design matrix missing expected levels {level_treat!r}/{level_ctrl!r}. Got: {cols}"
+        )
+    rank = int(np.linalg.matrix_rank(np.asarray(design)))
+    if rank < len(cols):
+        raise ValueError(
+            f"design matrix is rank-deficient (rank {rank} < {len(cols)} coefficients). "
+            "Common cause: a covariate is perfectly confounded with the condition within "
+            f"the compared samples. Coefficients: {cols}"
         )
     return design, {"treatment": level_treat, "control": level_ctrl}
 
@@ -516,6 +550,10 @@ def diff_exp_limma_contrasts(
     ----------
     adata, condition_column, covariates, layer
         As in :func:`diff_exp_limma`.
+    advanced
+        As in :func:`diff_exp_limma`.  With ``joint=True`` only ``trend``
+        is meaningful (``robust`` / ``winsor_tail_p`` belong to the inmoose
+        backend and raise).
     contrasts
         Either a list of ``(treatment, control)`` tuples (keys auto-
         generated as ``f"{treatment}_vs_{control}"``) or a dict
@@ -578,10 +616,16 @@ def diff_exp_limma_contrasts(
         return results
 
     # ----- joint=True path (default): use our own moderated stack.
+    settings = _resolve_joint_settings(advanced)
+    _validate_frame(adata, condition_column=condition_column, covariates=covariates, layer=layer)
+    if block_column is not None and block_column not in adata.obs.columns:
+        raise KeyError(f"block_column {block_column!r} not in adata.obs")
+    _refuse_double_batch_correction(adata, covariates=covariates, layer=layer)
+
     from alphaphos.stats.design import design_matrix
     from alphaphos.stats.linear_model import (
         contrasts_fit,
-        fit_f_dist,
+        fit_prior,
         lm_fit,
         moderated_t_test,
     )
@@ -598,6 +642,9 @@ def diff_exp_limma_contrasts(
                     f"not in adata.obs[{condition_column!r}] "
                     f"(available: {sorted(obs_levels)})"
                 )
+    _warn_on_small_groups(
+        adata, condition_column, sorted({str(lv) for pair in contrasts.values() for lv in pair})
+    )
 
     X = _get_matrix(adata, layer=layer)
     _validate_no_nan(X, layer=layer)
@@ -610,8 +657,8 @@ def diff_exp_limma_contrasts(
         block_column=block_column,
     )
     fit = lm_fit(X, dm.frame.to_numpy(), coefficient_labels=dm.coefficient_labels)
-    # Fit the EB prior once, reused across all contrasts.
-    prior = fit_f_dist(fit.sigma_sq, residual_df=fit.df_residual)
+    # Fit the EB prior once (constant or intensity trend), reused across all contrasts.
+    prior = fit_prior(fit, trend=settings["trend"])
 
     # Build one column per contrast.  Condition-column encoding is
     # ``condition[<sanitized_level>]`` -- map raw level -> sanitized.
@@ -648,8 +695,22 @@ def diff_exp_limma_contrasts(
         r.attrs["control"] = ctrl
         r.attrs["prior_variance"] = prior.prior_variance
         r.attrs["prior_df"] = prior.prior_df
+        r.attrs["trend"] = prior.trend
         finalized[name] = r
     return finalized
+
+
+def _resolve_joint_settings(advanced: dict | None) -> dict:
+    """Settings for the clean-room path: full validation, but only ``trend`` may be set."""
+    settings = _resolve_stats_settings(advanced)
+    extra = set(advanced or ()) - _JOINT_PATH_KEYS
+    if extra:
+        raise ValueError(
+            f"advanced keys {sorted(extra)} belong to the inmoose eBayes backend and have no "
+            "effect on the clean-room fit (joint=True / diff_exp_anova). Only 'trend' applies "
+            "here; pass joint=False to use the others."
+        )
+    return settings
 
 
 def diff_exp_anova(
@@ -658,8 +719,12 @@ def diff_exp_anova(
     condition_column: str,
     covariates: list[str] | None = None,
     layer: str | None = LAYER_INTENSITY_LOG2,
+    advanced: dict | None = None,
 ) -> pd.DataFrame:
     """Moderated F-test per feature across all condition levels (ANOVA-style).
+
+    ``advanced={"trend": bool}`` selects the limma-trend (default) or the
+    constant prior; other keys raise (they belong to the inmoose backend).
 
     Answers **"does the mean differ anywhere across the K levels of
     ``condition_column``?"** as a single moderated F-statistic per
@@ -700,14 +765,14 @@ def diff_exp_anova(
     from alphaphos.stats.design import design_matrix
     from alphaphos.stats.linear_model import lm_fit, moderated_f_test
 
+    settings = _resolve_joint_settings(advanced)
+    _validate_frame(adata, condition_column=condition_column, covariates=covariates, layer=layer)
+    _refuse_double_batch_correction(adata, covariates=covariates, layer=layer)
     obs = adata.obs
-    if condition_column not in obs.columns:
-        raise KeyError(f"condition_column {condition_column!r} not in adata.obs")
-    if obs[condition_column].isna().any():
-        raise ValueError(f"adata.obs[{condition_column!r}] has NaN; drop or impute first.")
     levels = sorted(obs[condition_column].astype(str).unique())
     if len(levels) < 2:
         raise ValueError(f"condition_column {condition_column!r} needs >=2 levels; got {levels}")
+    _warn_on_small_groups(adata, condition_column, levels)
 
     X = _get_matrix(adata, layer=layer)
     _validate_no_nan(X, layer=layer)
@@ -731,7 +796,9 @@ def diff_exp_anova(
         C[idx, j] = 1.0
         C[ref_idx, j] = -1.0
 
-    result = moderated_f_test(fit, contrasts=C, var_names=list(adata.var_names))
+    result = moderated_f_test(
+        fit, contrasts=C, var_names=list(adata.var_names), trend=settings["trend"]
+    )
     result.attrs["condition_column"] = condition_column
     result.attrs["condition_levels"] = tuple(levels)
     result.attrs["reference_level"] = dm.reference_level

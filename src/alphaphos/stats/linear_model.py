@@ -18,8 +18,11 @@ The empirical-Bayes prior is fit once (across all features) and applied
 to all downstream contrasts, giving proper joint moderation that
 inmoose can't provide today.
 
-Numerically validated against a reference implementation (see
-``tests/unit/test_stats_linear_model.py``).
+Validated against inmoose's limma port (``tests/unit/test_stats_moderated.py``):
+moderated t, prior df / s0^2 and F agree to ~1e-13 on 2- and 3-group designs.
+The F **p-value** deliberately follows limma (``pf(F, rank(C), df_prior +
+df_residual)``); inmoose 0.9.1's ``classifyTestsF`` returns ``df2 = inf`` and
+so reports the chi-square limit, which is anti-conservative.
 """
 
 from __future__ import annotations
@@ -66,6 +69,9 @@ class LinearModelFit:
     coefficient_labels : tuple[str, ...]
         Names of the coefficients (columns of the design matrix), in
         order.  Used to build human-readable contrast tables.
+    amean : ndarray, shape (n_features,)
+        Average value of each feature across all samples (limma's
+        ``Amean``); the covariate for the limma-trend prior.
     """
 
     coefficients: np.ndarray
@@ -73,6 +79,7 @@ class LinearModelFit:
     df_residual: int
     cov_unscaled: np.ndarray
     coefficient_labels: tuple[str, ...] = ()
+    amean: np.ndarray | None = None
 
     @property
     def n_features(self) -> int:
@@ -149,7 +156,10 @@ def lm_fit(
         raise ValueError(f"Y has {Y.shape[0]} rows (samples) but design has {X.shape[0]}")
     n_samples, n_coef = X.shape
     if n_samples <= n_coef:
-        raise ValueError(f"design is rank-deficient: {n_samples} samples <= {n_coef} coefficients")
+        raise ValueError(
+            f"design has no residual degrees of freedom: {n_samples} samples <= "
+            f"{n_coef} coefficients"
+        )
     rank = int(np.linalg.matrix_rank(X))
     if rank < n_coef:
         raise ValueError(f"design is rank-deficient: rank {rank} < {n_coef} coefficients")
@@ -185,6 +195,22 @@ def lm_fit(
         df_residual=int(df_residual),
         cov_unscaled=cov_unscaled,
         coefficient_labels=labels,
+        amean=Y.mean(axis=0),
+    )
+
+
+def fit_prior(fit: LinearModelFit, *, trend: bool) -> EmpiricalBayesPrior:
+    """Fit the empirical-Bayes variance prior for a :class:`LinearModelFit`.
+
+    ``trend=True`` is *limma-trend*: the prior scale follows a natural cubic
+    spline in ``fit.amean`` (average log-intensity), which is the right model
+    when residual variance depends on intensity -- as it does for MS
+    intensities.  ``trend=False`` fits the constant prior of Smyth 2004.
+    """
+    return fit_f_dist(
+        fit.sigma_sq,
+        residual_df=fit.df_residual,
+        covariate=fit.amean if trend else None,
     )
 
 
@@ -245,6 +271,7 @@ def moderated_t_test(
     *,
     var_names: Sequence[str] | None = None,
     prior: EmpiricalBayesPrior | None = None,
+    trend: bool = False,
 ) -> dict[str, pd.DataFrame]:
     """Per-contrast moderated t-test using empirical-Bayes shrinkage.
 
@@ -254,8 +281,10 @@ def moderated_t_test(
     var_names : sequence of str, optional
         Feature names; used as the index of the returned DataFrames.
     prior : EmpiricalBayesPrior, optional
-        Pre-fit prior.  ``None`` (default) fits it here from
-        ``contrast_fit.fit.sigma_sq`` + ``df_residual``.
+        Pre-fit prior.  ``None`` (default) fits it here via
+        :func:`fit_prior` (constant, or trended when ``trend=True``).
+    trend : bool
+        Only used when ``prior`` is None; see :func:`fit_prior`.
 
     Returns
     -------
@@ -277,7 +306,7 @@ def moderated_t_test(
     n_features = fit.n_features
 
     if prior is None:
-        prior = fit_f_dist(fit.sigma_sq, residual_df=fit.df_residual)
+        prior = fit_prior(fit, trend=trend)
     sigma_sq_mod, df_mod = moderate_variance(fit.sigma_sq, residual_df=fit.df_residual, prior=prior)
 
     idx = pd.Index(var_names) if var_names is not None else None
@@ -320,6 +349,7 @@ def moderated_t_test(
         )
         df.attrs["prior_variance"] = prior.prior_variance
         df.attrs["prior_df"] = prior.prior_df
+        df.attrs["trend"] = prior.trend
         df.attrs["contrast_name"] = name
         results[name] = df
     return results
@@ -331,6 +361,7 @@ def moderated_f_test(
     *,
     var_names: Sequence[str] | None = None,
     prior: EmpiricalBayesPrior | None = None,
+    trend: bool = False,
 ) -> pd.DataFrame:
     """Joint moderated F-test across ``n_contrasts`` linear combinations.
 
@@ -343,6 +374,8 @@ def moderated_f_test(
     contrasts : ndarray, shape (n_coefficients, n_contrasts)
     var_names : sequence of str, optional
     prior : EmpiricalBayesPrior, optional
+    trend : bool
+        Only used when ``prior`` is None; see :func:`fit_prior`.
 
     Returns
     -------
@@ -352,19 +385,20 @@ def moderated_f_test(
             F            -- moderated F statistic
             p_value      -- from the F-distribution
             fdr          -- BH-adjusted p across features
-            ave_expr     -- mean of coefficient estimates (proxy)
-            df_between   -- numerator df = n_contrasts
-            df_moderated -- moderated denominator df
+            df_between   -- numerator df = rank(C)
+            df_moderated -- moderated denominator df (df_prior + df_residual)
 
     Notes
     -----
     Formula (see Smyth 2004 eq 10)::
 
         F = beta_contrasts^T (C^T (X^T X)^{-1} C)^{-1} beta_contrasts
-            / (n_contrasts * sigma_sq_moderated)
+            / (rank(C) * sigma_sq_moderated)
 
     where ``beta_contrasts = C^T beta``.  Under the null,
-    ``F ~ F(n_contrasts, df_moderated)``.
+    ``F ~ F(rank(C), df_moderated)``.  As in limma, a rank-deficient
+    contrast matrix (redundant contrasts) is handled via the pseudo-inverse
+    and the numerator df is the rank, not the number of columns.
     """
     from scipy.stats import f as f_dist
     from scipy.stats import false_discovery_control
@@ -373,9 +407,19 @@ def moderated_f_test(
     n_contrasts = cf.n_contrasts
     if n_contrasts < 1:
         raise ValueError("need >=1 contrast for the moderated F-test")
+    rank = int(np.linalg.matrix_rank(cf.contrasts))
+    if rank < 1:
+        raise ValueError("contrast matrix is all zeros")
+    if rank < n_contrasts:
+        logger.warning(
+            "moderated_f_test: contrast matrix has rank %d < %d columns (redundant "
+            "contrasts); numerator df uses the rank.",
+            rank,
+            n_contrasts,
+        )
 
     if prior is None:
-        prior = fit_f_dist(fit.sigma_sq, residual_df=fit.df_residual)
+        prior = fit_prior(fit, trend=trend)
     sigma_sq_mod, df_mod = moderate_variance(fit.sigma_sq, residual_df=fit.df_residual, prior=prior)
 
     # Invert the unscaled contrast covariance once.  Use pinv for
@@ -389,8 +433,8 @@ def moderated_f_test(
     q = np.einsum("gi,ij,gj->g", est, A_inv, est)
 
     with np.errstate(divide="ignore", invalid="ignore"):
-        F = q / (n_contrasts * sigma_sq_mod)
-    df_between = int(n_contrasts)
+        F = q / (rank * sigma_sq_mod)
+    df_between = rank
 
     n_features = fit.n_features
     p = np.full(n_features, np.nan, dtype=np.float64)
@@ -424,12 +468,15 @@ def moderated_f_test(
     result.attrs["method"] = "moderated_anova"
     result.attrs["prior_variance"] = prior.prior_variance
     result.attrs["prior_df"] = prior.prior_df
+    result.attrs["trend"] = prior.trend
     result.attrs["n_contrasts"] = n_contrasts
+    result.attrs["rank"] = rank
     logger.info(
-        "moderated_f_test: n_features=%d, n_contrasts=%d, prior_df=%.3f, prior_var=%.4g",
+        "moderated_f_test: n_features=%d, n_contrasts=%d, prior_df=%.3f, prior_var=%.4g%s",
         n_features,
         n_contrasts,
         prior.prior_df,
-        prior.prior_variance,
+        float(np.median(prior.prior_variance)),
+        " (median of trend)" if prior.trend else "",
     )
     return result

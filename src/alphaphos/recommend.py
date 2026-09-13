@@ -235,7 +235,11 @@ def _decide_de(goal: Goal) -> tuple[str, str, str]:
         return (
             "ap.on_off_detection",
             "on/off → dedicated on/off detection; plain limma drops on/off features",
-            'results = ap.on_off_detection(adata, condition_col="{primary}")',
+            (
+                "results = ap.on_off_detection(\n"
+                '    adata, condition_column="{primary}", comparison=("<treatment>", "<control>")\n'
+                ")"
+            ),
         )
     if goal in ("viz_only", "profiling"):
         return ("(none — visualization/profiling only)", "no DE step requested", "")
@@ -244,10 +248,12 @@ def _decide_de(goal: Goal) -> tuple[str, str, str]:
             "ap.diff_exp_limma_contrasts",
             "interaction → limma-trend with explicit interaction contrasts",
             (
+                "# one combined factor column, e.g. adata.obs['{primary}_x_{secondary}'] = "
+                "adata.obs['{primary}'].astype(str) + '_' + adata.obs['{secondary}'].astype(str)\n"
                 "results = ap.diff_exp_limma_contrasts(\n"
                 "    adata,\n"
-                '    design="~ 0 + {primary}_x_{secondary}",\n'
-                '    contrasts={{"interaction_A_vs_B": "..."}},\n'
+                '    condition_column="{primary}_x_{secondary}",\n'
+                '    contrasts={{"<trt_lvl2>_vs_<ctrl_lvl2>": ("<trt>_<lvl2>", "<ctrl>_<lvl2>")}},\n'
                 ")"
             ),
         )
@@ -255,15 +261,22 @@ def _decide_de(goal: Goal) -> tuple[str, str, str]:
         return (
             "ap.diff_exp_limma_observed_only",
             "marginal DE → limma on observed values, per-feature complete-case",
-            'results = ap.diff_exp_limma_observed_only(adata, condition_col="{primary}")',
+            (
+                "results, on_off = ap.diff_exp_limma_observed_only(\n"
+                '    adata, condition_column="{primary}", comparison=("<treatment>", "<control>")\n'
+                ")"
+            ),
         )
     return (
         "ap.diff_exp_limma_observed_only (+ ap.diff_exp_limma_contrasts)",
         "primary DE → main effects + interaction contrasts, per-feature complete-case",
         (
-            'main = ap.diff_exp_limma_observed_only(adata, condition_col="{primary}")\n'
-            "# interaction contrasts:\n"
-            "# inter = ap.diff_exp_limma_contrasts(adata, ...)"
+            "main, on_off = ap.diff_exp_limma_observed_only(\n"
+            '    adata, condition_column="{primary}", comparison=("<treatment>", "<control>")\n'
+            ")\n"
+            "# interaction contrasts on a combined factor column:\n"
+            '# inter = ap.diff_exp_limma_contrasts(adata, condition_column="{primary}_x_{secondary}", '
+            "contrasts={{...}})"
         ),
     )
 
