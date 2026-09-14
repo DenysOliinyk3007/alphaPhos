@@ -17,16 +17,18 @@ For each site::
 
 Output string per site::
 
-    _..._{left_flank}{aa_lower}*{right_flank}_..._
+    _{left_flank}*{AA}*{right_flank}_
 
-where ``aa_lower`` is the lowercased center residue wrapped in ``*``s, the
-flanks are the window of ``window_size`` residues on each side, and ``_``
-padding is inserted at protein N- and C-termini when the window overflows
-the sequence.
+where ``AA`` is the (upper-case) centre residue wrapped in ``*`` markers, the
+flanks are ``window_size`` residues on each side, the outer ``_`` are fixed
+delimiters, and additional ``_`` padding is inserted at protein N- and
+C-termini when the window overflows the sequence.  A ``window_size=7`` string
+is therefore always 19 characters (17 after stripping the markers -- the
+15-mer plus the two delimiters the Yaffe Kinase Library accepts).
 
-Example (``window_size=7``, center at position 4 of "PEPTIDES...")::
+Example (``window_size=7``, EGFR Y1172)::
 
-    _PEPTIDEs*ABCDEFG_
+    _ISLDNPD*Y*QQDFFPK_
 
 Sentinel strings for failures (matches the historical alphaPhos convention;
 downstream :mod:`kinase.library` recognizes these and treats them as missing):
@@ -46,22 +48,57 @@ Usage
 Species mismatch: use the SAME FASTA that the search engine used. Common
 mistake is running collapse on CHO data and then annotating against a
 human FASTA -- most lookups will fail with ``FASTA_ERROR:``.
+
+Accession fallbacks: ``collapse_sites`` keys a site under a contaminant-tagged
+twin when the protein group contains one (``cRAP-P00441`` for
+``P00441;cRAP-P00441``), and search engines may report isoform accessions
+(``P00533-2``).  Neither is a FASTA key, so :func:`resolve_fasta_accession`
+falls back to the untagged / base accession; the counts are reported in
+``adata.uns["alphaphos"]["kinase_annotation"]``.
 """
 
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-try:
+from alphaphos.io.contaminants import DEFAULT_CONTAMINANT_PREFIXES
+
+if TYPE_CHECKING:
     import anndata as ad
-except ImportError:  # pragma: no cover
-    ad = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
 
 ERROR_PREFIXES = ("FASTA_ERROR:", "POSITION_ERROR:", "SEQUENCE_MISMATCH:", "PARSING_ERROR:")
+
+_ISOFORM_SUFFIX_RE = re.compile(r"-\d+$")
+
+
+def resolve_fasta_accession(fasta_dict: dict[str, str], accession: str) -> tuple[str | None, str]:
+    """Find the FASTA key for ``accession``, trying the documented fallbacks.
+
+    Returns ``(key, how)`` with ``how`` one of ``"exact"``,
+    ``"contaminant_tag"`` (``cRAP-P00441`` -> ``P00441``), ``"isoform"``
+    (``P00533-2`` -> ``P00533``), ``"contaminant_tag+isoform"``, or
+    ``(None, "missing")``.
+    """
+    acc = str(accession)
+    if acc in fasta_dict:
+        return acc, "exact"
+    untagged = acc
+    for prefix in DEFAULT_CONTAMINANT_PREFIXES:
+        if untagged.startswith(prefix):
+            untagged = untagged[len(prefix) :]
+            break
+    if untagged != acc and untagged in fasta_dict:
+        return untagged, "contaminant_tag"
+    base = _ISOFORM_SUFFIX_RE.sub("", untagged)
+    if base != untagged and base in fasta_dict:
+        return base, "isoform" if untagged == acc else "contaminant_tag+isoform"
+    return None, "missing"
 
 
 # ---------------------------------------------------------------------------
@@ -263,7 +300,9 @@ def add_kinase_windows(
     AnnData
         Same shape as input; ``.var[out_col]`` contains the window strings.
         Also stamps ``adata.uns["alphaphos"]["kinase_annotation"] = {...}``
-        with the FASTA path, window size, and per-status counts.
+        with the FASTA path, window size, per-status counts and the number
+        of sites resolved through the contaminant-tag / isoform fallbacks
+        (see :func:`resolve_fasta_accession`).
 
     Raises
     ------
@@ -273,9 +312,6 @@ def add_kinase_windows(
     FileNotFoundError
         If ``fasta_path`` doesn't exist.
     """
-    if ad is None:  # pragma: no cover
-        raise ImportError("anndata is required. Install with `pip install anndata`.")
-
     for col in (protein_col, position_col, aa_col):
         if col not in adata.var.columns:
             raise KeyError(
@@ -287,6 +323,7 @@ def add_kinase_windows(
 
     sequences: list[str] = []
     n_ok = n_fasta_err = n_pos_err = n_mismatch = 0
+    n_fallback: dict[str, int] = {}
     for pid, pos, aa in zip(
         ad_out.var[protein_col].tolist(),
         ad_out.var[position_col].tolist(),
@@ -294,8 +331,15 @@ def add_kinase_windows(
         strict=True,
     ):
         try:
+            key, how = resolve_fasta_accession(fasta_dict, str(pid))
+            if how not in ("exact", "missing"):
+                n_fallback[how] = n_fallback.get(how, 0) + 1
             window = extract_window(
-                fasta_dict, str(pid), int(pos), str(aa), window_size=window_size
+                fasta_dict,
+                key if key is not None else str(pid),
+                int(pos),
+                str(aa),
+                window_size=window_size,
             )
         except Exception as exc:  # defensive: don't crash on one bad row
             window = f"PARSING_ERROR: {exc}"
@@ -320,15 +364,20 @@ def add_kinase_windows(
         "n_fasta_error": n_fasta_err,
         "n_position_error": n_pos_err,
         "n_sequence_mismatch": n_mismatch,
+        "n_fallback_contaminant_tag": n_fallback.get("contaminant_tag", 0)
+        + n_fallback.get("contaminant_tag+isoform", 0),
+        "n_fallback_isoform": n_fallback.get("isoform", 0)
+        + n_fallback.get("contaminant_tag+isoform", 0),
     }
 
     logger.info(
         "add_kinase_windows: %d ok, %d fasta_error, %d position_error, "
-        "%d sequence_mismatch (total %d).",
+        "%d sequence_mismatch (total %d); accession fallbacks: %s.",
         n_ok,
         n_fasta_err,
         n_pos_err,
         n_mismatch,
         len(sequences),
+        n_fallback or "none",
     )
     return ad_out

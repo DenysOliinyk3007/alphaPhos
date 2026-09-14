@@ -113,7 +113,7 @@ class TestMergeInSeq:
 class TestDiffphosKsea:
     def test_returns_per_kintype_with_combined_columns(self):
         df, seq = _make_diff_results()
-        out = kinase_enrichment_from_diffexp(df, seq)
+        out = kinase_enrichment_from_diffexp(df, seq, id_col="protein")
 
         assert isinstance(out, dict)
         # ser_thr should always come back (the synthetic data has S/T sites)
@@ -141,7 +141,7 @@ class TestDiffphosKsea:
         # Tight thresholds — fewer sites should hit fg, so log2_freq_factors
         # will move (we don't pin exact numbers, just that the call succeeds)
         out = kinase_enrichment_from_diffexp(
-            df, seq, lfc_thresh=1.5, pval_thresh=0.01, kl_thresh=95
+            df, seq, id_col="protein", lfc_thresh=1.5, pval_thresh=0.01, kl_thresh=95
         )
         assert "ser_thr" in out
 
@@ -151,7 +151,7 @@ class TestDiffphosKsea:
         bad = {sid: "FASTA_ERROR: x" for i, sid in enumerate(df["protein"]) if i % 4 == 3}
         seq = pd.concat([seq, pd.Series(bad)])
         seq = seq[~seq.index.duplicated(keep="last")]
-        out = kinase_enrichment_from_diffexp(df, seq)
+        out = kinase_enrichment_from_diffexp(df, seq, id_col="protein")
         assert "ser_thr" in out
 
 
@@ -163,12 +163,12 @@ class TestDiffphosKsea:
 class TestKinaseMea:
     def test_returns_per_kintype_with_nes_columns(self):
         df, seq = _make_diff_results()
-        out = kinase_mea(df, seq, permutation_num=50, threads=1)
+        out = kinase_mea(df, seq, id_col="protein", permutation_num=50, threads=1)
         assert isinstance(out, dict)
         assert "ser_thr" in out
         st = out["ser_thr"]
         # Index is kinase names
-        assert st.index.dtype == object
+        assert pd.api.types.is_string_dtype(st.index) or st.index.dtype == object
         # Headline statistic
         assert "NES" in st.columns
         assert "ES" in st.columns
@@ -178,10 +178,18 @@ class TestKinaseMea:
     def test_min_size_filters(self):
         df, seq = _make_diff_results()
         # min_size=1000 means no kinase should have enough substrates
-        out = kinase_mea(df, seq, permutation_num=20, min_size=1000, threads=1)
-        # All NES values should be NaN (no kinase passed min_size)
-        if "ser_thr" in out:
-            assert out["ser_thr"]["NES"].isna().all()
+        # No kinase can pass min_size=1000: kinase_library either returns
+        # all-NaN NES or fails per pool; when every pool fails alphaPhos now
+        # raises instead of returning an empty dict.
+        try:
+            out = kinase_mea(
+                df, seq, id_col="protein", permutation_num=20, min_size=1000, threads=1
+            )
+        except RuntimeError as exc:
+            assert "every kinase pool failed" in str(exc)
+            return
+        for df_kt in out.values():
+            assert df_kt["NES"].isna().all()
 
 
 # ============================================================================

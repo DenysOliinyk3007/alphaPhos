@@ -80,6 +80,8 @@ nav:
       - alphaphos.enrichment.pathway_gsea: modules/enrichment/pathway_gsea.md
     - Signalome:
       - alphaphos.signalome: modules/signalome/index.md
+    - Kinase:
+      - alphaphos.kinase: modules/kinase.md
     - Orthology:
       - alphaphos.orthology: modules/orthology.md
   - Design notes:
