@@ -697,7 +697,7 @@ class TestPathwayGeneExtractionAcceptsBothKeyFormats:
     keys (``Protein|Gene|Peptide|Charge|Mods``)."""
 
     def test_pathway_enrichment_gene_extraction_works_on_precursor_keys(self):
-        from alphaphos.enrichment.pathway.enrichment import _keys_to_genes
+        from alphaphos.enrichment._gene_keys import keys_to_genes as _keys_to_genes
 
         keys = [
             "P00533|EGFR|SPMK|2|Phospho (STY)",  # precursor key
@@ -715,7 +715,7 @@ class TestPathwayGeneExtractionAcceptsBothKeyFormats:
         assert out["P|G"] == "G"
 
     def test_pathway_gsea_gene_extraction_works_on_precursor_keys(self):
-        from alphaphos.enrichment.pathway_gsea.gsea import _keys_to_genes
+        from alphaphos.enrichment._gene_keys import keys_to_genes as _keys_to_genes
 
         keys = [
             "P00533|EGFR|SPMK|2|Phospho (STY)",

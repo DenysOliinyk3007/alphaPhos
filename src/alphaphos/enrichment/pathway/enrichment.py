@@ -22,26 +22,19 @@ from typing import Literal
 
 import pandas as pd
 
+from alphaphos.enrichment._gene_keys import (
+    DEFAULT_LIBRARIES_HUMAN,
+    DEFAULT_LIBRARIES_MOUSE,
+    default_libraries,
+    extract_keys,
+    gene_map,
+    normalise_organism,
+    require_gseapy,
+)
+
 logger = logging.getLogger(__name__)
 
-
-DEFAULT_LIBRARIES_HUMAN: list[str] = [
-    "GO_Biological_Process_2023",
-    "GO_Molecular_Function_2023",
-    "GO_Cellular_Component_2023",
-    "KEGG_2021_Human",
-    "Reactome_2022",
-    "MSigDB_Hallmark_2020",
-]
-
-DEFAULT_LIBRARIES_MOUSE: list[str] = [
-    "GO_Biological_Process_2023",
-    "GO_Molecular_Function_2023",
-    "GO_Cellular_Component_2023",
-    "KEGG_2019_Mouse",
-    "Reactome_2022",
-    "MSigDB_Hallmark_2020",
-]
+__all__ = ["pathway_enrichment", "DEFAULT_LIBRARIES_HUMAN", "DEFAULT_LIBRARIES_MOUSE"]
 
 
 _OUTPUT_COLUMNS: list[str] = [
@@ -49,6 +42,8 @@ _OUTPUT_COLUMNS: list[str] = [
     "library",
     "term",
     "overlap",
+    "n_overlap",
+    "n_term",
     "p_value",
     "fdr",
     "odds_ratio",
@@ -145,8 +140,14 @@ def pathway_enrichment(
     -------
     pandas.DataFrame with columns::
 
-        direction, library, term, overlap, p_value, fdr, odds_ratio,
-        combined_score, genes, n_foreground, n_background
+        direction, library, term, overlap, n_overlap, n_term, p_value, fdr,
+        odds_ratio, combined_score, genes, n_foreground, n_background
+
+    ``n_overlap`` is the number of foreground genes in the term (from
+    ``genes``); ``n_term`` is the term size in the library (``NaN`` if the
+    library could not be re-read); ``overlap`` is ``"k/n"``.  gseapy's
+    background mode does not return an ``Overlap`` column, so both are
+    derived here.
 
     Sorted by ``fdr`` ascending within each ``direction`` + ``library``.
     ``.attrs["provenance"]`` records libraries, background_type,
@@ -157,28 +158,15 @@ def pathway_enrichment(
         raise ValueError(
             f"direction must be 'up', 'down', 'both', 'split', or 'any'; got {direction!r}"
         )
-    organism = organism.lower()  # type: ignore[assignment]
-    if organism not in ("human", "mouse"):
-        raise ValueError(f"organism must be 'human' or 'mouse'; got {organism!r}")
-
-    try:
-        import gseapy as gp
-    except ImportError as exc:
-        raise ImportError(
-            "pathway_enrichment requires gseapy. Install with: "
-            "pip install 'alphaphos[enrichment]' or pip install gseapy>=1.1"
-        ) from exc
+    organism = normalise_organism(organism)  # type: ignore[assignment]
+    gp = require_gseapy("pathway_enrichment")
 
     if libraries is None:
-        libraries = (
-            DEFAULT_LIBRARIES_HUMAN.copy()
-            if organism == "human"
-            else DEFAULT_LIBRARIES_MOUSE.copy()
-        )
+        libraries = default_libraries(organism)
     if not libraries:
         raise ValueError("libraries must be non-empty")
 
-    keys = _extract_keys(diff_exp_result, key_column)
+    keys = extract_keys(diff_exp_result, key_column)
     if fdr_col not in diff_exp_result.columns:
         raise ValueError(
             f"fdr_col={fdr_col!r} not in diff_exp_result columns "
@@ -197,29 +185,7 @@ def pathway_enrichment(
             )
         stats = diff_exp_result[stat_col].to_numpy()
 
-    if gene_column is not None:
-        if gene_column not in diff_exp_result.columns:
-            raise ValueError(
-                f"gene_column={gene_column!r} not found in diff_exp_result "
-                f"columns (available: {list(diff_exp_result.columns)})"
-            )
-        # Direct gene lookup (proteome workflow).  Semicolon-joined
-        # multi-gene entries: keep the first name.
-        gene_series = diff_exp_result[gene_column].astype(str).str.split(";").str[0]
-        key_to_gene = {
-            str(k): g
-            for k, g in zip(keys, gene_series, strict=True)
-            if isinstance(g, str) and g and g.lower() != "nan"
-        }
-    else:
-        key_to_gene = _keys_to_genes(keys)
-    if not key_to_gene:
-        raise ValueError(
-            "No parseable gene names extracted from diff_exp_result.  For "
-            "phospho input, keys must be in 'Protein|Gene|Site|Mult' format.  "
-            "For proteome input, attach a gene column and pass "
-            "gene_column='<name>' (e.g. gene_column='PG_Genes')."
-        )
+    key_to_gene = gene_map(diff_exp_result, keys, gene_column=gene_column)
 
     bg_genes, background_type = _resolve_background(
         background,
@@ -254,8 +220,26 @@ def pathway_enrichment(
         if direction == "both":
             to_run.append(("both", sorted(set(up_genes) | set(down_genes))))
 
+    # Foreground genes absent from a caller-supplied background are outside
+    # the universe the hypergeometric test is computed on; make that visible.
+    if bg_genes is not None and background_type == "custom":
+        bg_lookup = set(bg_genes)
+        for tag, genes in to_run:
+            missing = [g for g in genes if g not in bg_lookup]
+            if missing:
+                warnings.warn(
+                    f"pathway_enrichment: {len(missing)} of {len(genes)} {tag!r} foreground "
+                    f"genes are not in the supplied background (e.g. {missing[:3]}); the test "
+                    "is computed relative to the background, so they cannot count as hits. A "
+                    "proteome background should include every phospho gene -- consider "
+                    "background=sorted(set(bg) | set(phospho_genes)).",
+                    UserWarning,
+                    stacklevel=2,
+                )
+
     frames: list[pd.DataFrame] = []
     n_foreground_per_direction: dict[str, int] = {}
+    term_sizes: dict[str, dict[str, int]] | None = None
     for tag, genes in to_run:
         n_foreground_per_direction[tag] = len(genes)
         if not genes:
@@ -282,11 +266,16 @@ def pathway_enrichment(
             verbose=False,
             no_plot=True,
         )
+        if "Overlap" not in enr.results.columns and term_sizes is None:
+            # gseapy >= 1.1 background mode: no Overlap column -> re-read the
+            # libraries (gseapy caches the download) to recover term sizes.
+            term_sizes = _fetch_term_sizes(gp, libraries, organism=organism)
         frame = _normalise_enrichr_output(
             enr.results,
             direction=tag,
             n_foreground=len(genes),
             n_background=len(bg_genes) if bg_genes is not None else 0,
+            term_sizes=term_sizes,
         )
         frames.append(frame)
 
@@ -315,32 +304,20 @@ def pathway_enrichment(
 # ---------------------------------------------------------------------------
 
 
-def _extract_keys(
-    result: pd.DataFrame,
-    key_column: str | None,
-) -> list[str]:
-    if key_column is not None:
-        return list(result[key_column])
-    return list(result.index)
-
-
-def _keys_to_genes(keys: list[str]) -> dict[str, str]:
-    """Extract the gene symbol from an alphaPhos site or precursor key.
-
-    Both key formats share the same ``Protein|Gene|...`` prefix -- site keys
-    are ``Protein|Gene|Site|Mult`` (4 fields), precursor keys are
-    ``Protein|Gene|Peptide|Charge|Mods`` (5 fields).  The gene is always
-    the second pipe-delimited field, so a permissive split works for both.
-    """
-    out: dict[str, str] = {}
-    for k in keys:
-        parts = str(k).split("|")
-        if len(parts) < 2:
-            continue
-        gene = parts[1].strip()
-        if gene and gene.lower() != "nan":
-            out[str(k)] = gene
-    return out
+def _fetch_term_sizes(gp, libraries: list[str], *, organism: str) -> dict[str, dict[str, int]]:
+    """``{library: {term: n_genes}}`` via ``gseapy.get_library`` (cached by gseapy)."""
+    sizes: dict[str, dict[str, int]] = {}
+    for lib in libraries:
+        try:
+            sizes[lib] = {
+                term: len(genes)
+                for term, genes in gp.get_library(name=lib, organism=organism).items()
+            }
+        except Exception as exc:  # network / unknown library -- keep going without sizes
+            logger.warning(
+                "pathway_enrichment: could not read library %s for term sizes: %s", lib, exc
+            )
+    return sizes
 
 
 def _select_hits(
@@ -439,14 +416,31 @@ def _resolve_background(
     )
 
 
+_REQUIRED_ENRICHR_COLUMNS = ("Gene_set", "Term", "P-value", "Adjusted P-value", "Genes")
+
+
 def _normalise_enrichr_output(
     raw: pd.DataFrame,
     *,
     direction: str,
     n_foreground: int,
     n_background: int,
+    term_sizes: dict[str, dict[str, int]] | None = None,
 ) -> pd.DataFrame:
-    """Rename gseapy's Enrichr columns to our schema."""
+    """Rename gseapy's Enrichr columns to our schema and derive overlap counts.
+
+    gseapy's web (genome-background) mode returns ``Overlap`` as ``"k/n"``;
+    its local background mode (gseapy >= 1.1) returns no ``Overlap`` at all.
+    ``n_overlap`` is therefore always derived from ``Genes`` and ``n_term``
+    from ``Overlap`` when present, else from ``term_sizes``.  Missing
+    essential columns raise instead of silently producing a thinner table.
+    """
+    missing = [c for c in _REQUIRED_ENRICHR_COLUMNS if c not in raw.columns]
+    if missing:
+        raise ValueError(
+            f"gseapy Enrichr result is missing columns {missing} (got {list(raw.columns)}); "
+            "the gseapy output schema has changed -- please report this."
+        )
     rename_map = {
         "Gene_set": "library",
         "Term": "term",
@@ -458,8 +452,29 @@ def _normalise_enrichr_output(
         "Genes": "genes",
     }
     df = raw.rename(columns=rename_map).copy()
+    genes_str = df["genes"].fillna("").astype(str)
+    df["n_overlap"] = genes_str.map(lambda s: len([g for g in s.split(";") if g]))
+    if "overlap" in df.columns:
+        n_term = pd.to_numeric(df["overlap"].astype(str).str.split("/").str[1], errors="coerce")
+    else:
+        n_term = pd.Series(float("nan"), index=df.index)
+        if term_sizes:
+            n_term = pd.Series(
+                [
+                    float(term_sizes.get(str(lib), {}).get(str(term), float("nan")))
+                    for lib, term in zip(df["library"], df["term"], strict=True)
+                ],
+                index=df.index,
+            )
+    df["n_term"] = n_term
+    df["overlap"] = [
+        f"{int(k)}/{int(n)}" if pd.notna(n) else f"{int(k)}/?"
+        for k, n in zip(df["n_overlap"], df["n_term"], strict=True)
+    ]
+    for col in ("odds_ratio", "combined_score"):
+        if col not in df.columns:
+            df[col] = float("nan")
     df["direction"] = direction
     df["n_foreground"] = n_foreground
     df["n_background"] = n_background
-    keep = [c for c in _OUTPUT_COLUMNS if c in df.columns]
-    return df[keep]
+    return df[_OUTPUT_COLUMNS]

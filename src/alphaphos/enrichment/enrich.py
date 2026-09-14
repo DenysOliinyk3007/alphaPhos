@@ -30,17 +30,24 @@ analysis").
 1. Background restriction — set members not measured in the background
    are removed BEFORE testing (otherwise ORA over-estimates enrichment
    because it treats database sites as "assayed").
-2. Overlap must meet ``min_overlap`` before a Fisher call — otherwise
-   we spawn a p-value from a 1-count observation.
+2. Sets are filtered on their *restricted size* (``min_set_size``), which
+   does not depend on the hits, so the BH denominator is data-independent
+   and two-sided tests really do test depletion (a set with 0 hits is the
+   most depleted one).  An ``min_overlap`` filter is available as an
+   opt-in for one-sided enrichment questions.
 3. Every result carries both nominal p and BH-adjusted q; users see
    both.
-4. Library-set redundancy is reported (Jaccard) so users know when
-   apparent "independent" hits are really one signal.
+4. :func:`gsea` refuses duplicated site ids (multiplicity variants that
+   canonicalise to one site) instead of silently mis-positioning them.
+5. :func:`library_redundancy` reports pairwise Jaccard overlap between
+   sets so users know when apparent "independent" hits are one signal.
 """
 
 from __future__ import annotations
 
 import logging
+import warnings
+from itertools import combinations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -56,9 +63,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_MIN_OVERLAP = 2
+DEFAULT_MIN_OVERLAP = 0  # opt-in only; see ora()
 DEFAULT_MIN_SET_SIZE = 5  # matches PTM-SEA / library-emit convention
-DEFAULT_MAX_SET_SIZE = 500  # fgsea default; caps very-broad sets
+# No upper cap by default: fgsea's 500 is a gene-level heuristic; the shipped
+# site-set libraries have 750-49k members and would be skipped wholesale.
+DEFAULT_MAX_SET_SIZE: int | None = None
 DEFAULT_N_PERMUTATIONS = 10_000
 DEFAULT_SEED = 42
 
@@ -77,6 +86,7 @@ def ora(
     background: Iterable[str],
     libraries: dict[str, dict[str, list[str]]] | str | Path,
     *,
+    min_set_size: int = DEFAULT_MIN_SET_SIZE,
     min_overlap: int = DEFAULT_MIN_OVERLAP,
     alternative: str = "two-sided",
     fdr_method: str = "bh",
@@ -98,9 +108,15 @@ def ora(
         ``{library: {set: [sites]}}`` (from
         :func:`alphaphos.enrichment.libraries.load_libraries`) or a
         directory of ``.gmt`` files.
+    min_set_size
+        Minimum number of set members *present in the background* for the
+        set to be tested.  Default 5.  Independent of the hits, so it does
+        not bias the FDR.
     min_overlap
-        Minimum number of hits × in-set overlaps required to compute a
-        p-value.  Below this the set is skipped.  Default 2.
+        Optional minimum hit/set overlap (default 0 = no filter).  Only
+        sensible for ``alternative="greater"``; with a two-sided test it
+        removes exactly the most *depleted* sets and makes the number of
+        tests depend on the hits, so a ``UserWarning`` is emitted.
     alternative
         ``"two-sided"`` (default): tests both enrichment AND depletion.
         ``"greater"``: enrichment only (one-sided; more powerful when
@@ -152,6 +168,15 @@ def ora(
         raise ValueError(f"alternative must be 'two-sided' or 'greater', got {alternative!r}")
 
     libraries_dict = _resolve_libraries(libraries, library_names=library_names)
+    if min_overlap > 0 and alternative == "two-sided":
+        warnings.warn(
+            f"ora(min_overlap={min_overlap}, alternative='two-sided'): the overlap filter "
+            "removes the most depleted sets before testing, so depletion is only partially "
+            "tested and the BH denominator depends on the hits. Use min_overlap=0 (default) "
+            "or alternative='greater'.",
+            UserWarning,
+            stacklevel=2,
+        )
     hits_set = frozenset(hits)
     bg_set = frozenset(background)
     if not hits_set.issubset(bg_set):
@@ -170,15 +195,19 @@ def ora(
         raise ValueError("both hits and background must be non-empty")
 
     rows: list[dict] = []
+    n_skipped_size = 0
+    n_skipped_overlap = 0
     for library_name, sets in libraries_dict.items():
         for set_name, members in sets.items():
             restricted = frozenset(members) & bg_set
             n_set = len(restricted)
-            if n_set == 0:
+            if n_set < max(min_set_size, 1):
+                n_skipped_size += 1
                 continue
             overlap = restricted & hits_set
             n_overlap = len(overlap)
             if n_overlap < min_overlap:
+                n_skipped_overlap += 1
                 continue
 
             a = n_overlap
@@ -220,12 +249,72 @@ def ora(
             )
 
     result = pd.DataFrame(rows)
+    if n_skipped_size or n_skipped_overlap:
+        logger.info(
+            "ora: %d set(s) skipped (restricted size < %d), %d skipped (overlap < %d); %d tested",
+            n_skipped_size,
+            min_set_size,
+            n_skipped_overlap,
+            min_overlap,
+            len(result),
+        )
     if result.empty:
         result["fdr"] = pd.Series(dtype=float)
-        return result
+    else:
+        result = _apply_fdr(result, method=fdr_method, per_library=fdr_per_library)
+        result = result.sort_values(["fdr", "p_value"]).reset_index(drop=True)
+    result.attrs["n_sets_skipped_size"] = n_skipped_size
+    result.attrs["n_sets_skipped_overlap"] = n_skipped_overlap
+    return result
 
-    result = _apply_fdr(result, method=fdr_method, per_library=fdr_per_library)
-    return result.sort_values(["fdr", "p_value"]).reset_index(drop=True)
+
+def library_redundancy(
+    libraries: dict[str, dict[str, list[str]]] | str | Path,
+    *,
+    background: Iterable[str] | None = None,
+    min_jaccard: float = 0.0,
+) -> pd.DataFrame:
+    """Pairwise Jaccard overlap between sets of the same library.
+
+    Enrichment results for two sets that share most members are one
+    signal, not two.  Call this on the libraries you test (optionally
+    restricted to the assayed ``background``) and read the high-Jaccard
+    pairs alongside :func:`ora` / :func:`gsea` output.
+
+    Returns a DataFrame with ``library``, ``set_a``, ``set_b``, ``n_a``,
+    ``n_b``, ``n_shared``, ``jaccard`` sorted by ``jaccard`` descending;
+    pairs below ``min_jaccard`` are omitted.
+    """
+    libraries_dict = _resolve_libraries(libraries, library_names=None)
+    bg = frozenset(background) if background is not None else None
+    rows: list[dict] = []
+    for library_name, sets in libraries_dict.items():
+        members = {
+            name: (frozenset(m) & bg if bg is not None else frozenset(m))
+            for name, m in sets.items()
+        }
+        for a, b in combinations(members, 2):
+            union = members[a] | members[b]
+            if not union:
+                continue
+            shared = len(members[a] & members[b])
+            jac = shared / len(union)
+            if jac < min_jaccard:
+                continue
+            rows.append(
+                {
+                    "library": library_name,
+                    "set_a": a,
+                    "set_b": b,
+                    "n_a": len(members[a]),
+                    "n_b": len(members[b]),
+                    "n_shared": shared,
+                    "jaccard": jac,
+                }
+            )
+    cols = ["library", "set_a", "set_b", "n_a", "n_b", "n_shared", "jaccard"]
+    out = pd.DataFrame(rows, columns=cols)
+    return out.sort_values("jaccard", ascending=False).reset_index(drop=True)
 
 
 # ---------------------------------------------------------------------------
@@ -238,7 +327,7 @@ def gsea(
     libraries: dict[str, dict[str, list[str]]] | str | Path,
     *,
     min_set_size: int = DEFAULT_MIN_SET_SIZE,
-    max_set_size: int = DEFAULT_MAX_SET_SIZE,
+    max_set_size: int | None = DEFAULT_MAX_SET_SIZE,
     n_permutations: int = DEFAULT_N_PERMUTATIONS,
     seed: int = DEFAULT_SEED,
     weight: float = 1.0,
@@ -255,15 +344,20 @@ def gsea(
         Site-level ranking metric (e.g. limma t-statistic or log2FC).
         Series indexed by site_id (``Protein_AApos``).  Sign matters:
         positive = up in condition of interest.  Ties are broken by
-        original order.
+        original order.  **Ids must be unique**: multiplicity variants of
+        one site (``...|M1`` / ``...|M2``) canonicalise to the same id and
+        must be aggregated first (e.g. keep the largest ``|stat|`` per
+        site, as :func:`alphaphos.enrichment.kinase_activity` does);
+        duplicates raise.
     libraries
         Nested dict or GMT directory (see :func:`ora`).
     min_set_size, max_set_size
         Sets with fewer members (after background restriction to the
-        ranking's universe) than ``min_set_size`` or more than
-        ``max_set_size`` are skipped.  ``max=500`` follows fgsea; very
-        large sets pick up broad transcriptional trends rather than
-        specific pathway biology.
+        ranking's universe) than ``min_set_size`` or, when
+        ``max_set_size`` is given, more than that are skipped.  Default
+        ``None`` (no cap): fgsea's 500 is a gene-level heuristic and would
+        skip most shipped site-set libraries.  Skipped sets are logged and
+        listed in ``result.attrs["skipped_sets"]``.
     n_permutations
         Number of set-membership permutations for the null.  10k is the
         conventional target for FDR<0.001 resolution.
@@ -305,6 +399,15 @@ def gsea(
             f"{int(ranked_stats.isna().sum())} NaN values in ranked_stats; "
             "drop them or impute before calling gsea()"
         )
+    dup = ranked_stats.index.astype(str).duplicated()
+    if dup.any():
+        examples = sorted(set(ranked_stats.index.astype(str)[dup]))[:3]
+        raise ValueError(
+            f"{int(dup.sum())} duplicated site ids in ranked_stats (e.g. {examples}). "
+            "Multiplicity variants collapse to the same Protein_AApos id; aggregate "
+            "first, e.g. keep the largest |stat| per site: "
+            "s.groupby(level=0).agg(lambda v: v.iloc[int(v.abs().to_numpy().argmax())])."
+        )
     # Sort descending by score.  Ties broken by original position (stable sort).
     ranked = ranked_stats.sort_values(ascending=False, kind="mergesort")
     universe = list(ranked.index.astype(str))
@@ -314,6 +417,7 @@ def gsea(
     rng = np.random.default_rng(seed)
 
     rows: list[dict] = []
+    skipped: dict[str, str] = {}
     for library_name, sets in libraries_dict.items():
         for set_name, members in sets.items():
             in_universe_idx = np.array(
@@ -321,7 +425,15 @@ def gsea(
                 dtype=np.int64,
             )
             n_set = int(in_universe_idx.size)
-            if n_set < min_set_size or n_set > max_set_size:
+            if n_set < min_set_size:
+                skipped[f"{library_name}/{set_name}"] = (
+                    f"n_set={n_set} < min_set_size={min_set_size}"
+                )
+                continue
+            if max_set_size is not None and n_set > max_set_size:
+                skipped[f"{library_name}/{set_name}"] = (
+                    f"n_set={n_set} > max_set_size={max_set_size}"
+                )
                 continue
 
             es, hit_positions = _compute_es(ranks_signed, in_universe_idx, weight=weight)
@@ -339,7 +451,7 @@ def gsea(
                 p_value = (n_more_extreme + 1) / (len(same_sign) + 1)
                 nes = float(es / np.mean(np.abs(same_sign)))
 
-            leading_edge = _leading_edge(ranks_signed, hit_positions, es)
+            leading_edge = _leading_edge(ranks_signed, hit_positions, es, weight=weight)
             leading_ids = [universe[i] for i in leading_edge]
 
             rows.append(
@@ -356,11 +468,19 @@ def gsea(
             )
 
     result = pd.DataFrame(rows)
+    if skipped:
+        logger.info(
+            "gsea: %d set(s) skipped by size filters (see result.attrs['skipped_sets']): %s",
+            len(skipped),
+            "; ".join(f"{k} ({v})" for k, v in list(skipped.items())[:5]),
+        )
     if result.empty:
         result["fdr"] = pd.Series(dtype=float)
-        return result
-    result = _apply_fdr(result, method=fdr_method, per_library=fdr_per_library)
-    return result.sort_values(["fdr", "p_value"]).reset_index(drop=True)
+    else:
+        result = _apply_fdr(result, method=fdr_method, per_library=fdr_per_library)
+        result = result.sort_values(["fdr", "p_value"]).reset_index(drop=True)
+    result.attrs["skipped_sets"] = skipped
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -427,6 +547,8 @@ def _leading_edge(
     ranks_signed: np.ndarray,
     in_universe_idx: np.ndarray,
     es: float,
+    *,
+    weight: float = 1.0,
 ) -> list[int]:
     """Return the leading-edge indices (subset of the set's members
     driving the enrichment).
@@ -434,6 +556,7 @@ def _leading_edge(
     Following Subramanian 2005 §2.5: for positive ES, these are the
     set members appearing BEFORE the peak of the running-sum in the
     ranked list; for negative ES, those appearing AFTER the trough.
+    Uses the same ``weight`` exponent as the ES computation.
     """
     n = len(ranks_signed)
     n_hits = len(in_universe_idx)
@@ -442,7 +565,7 @@ def _leading_edge(
         return []
     hit_mask = np.zeros(n, dtype=bool)
     hit_mask[in_universe_idx] = True
-    r_pow = np.abs(ranks_signed) ** 1.0
+    r_pow = np.abs(ranks_signed) ** weight
     hit_weight_sum = r_pow[hit_mask].sum()
     increments = np.where(hit_mask, r_pow / hit_weight_sum, -1.0 / n_miss)
     running = np.cumsum(increments)

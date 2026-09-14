@@ -12,7 +12,9 @@ Answers site-level *functional* enrichment questions:
   (Ochoa 2020)?
 
 Backed by an integrated PTM functional database (8 sources merged,
-504k phospho relations, 235k unique phosphosites).
+504k phospho relations, 235k unique phosphosites).  The GMT site-set
+libraries derived from it ship in the wheel; the database parquet itself
+is external (``alphaphos.resources.external("ptm_functional_db.parquet")``).
 
 Kinase-substrate inference lives in
 :func:`alphaphos.enrichment.kinase_activity` (decoupler ULM on the
@@ -25,14 +27,17 @@ prediction lives in :mod:`alphaphos.kinase.library` (Yaffe PWM). The
 five cover different scientific questions and are intentionally kept
 separate.
 
-Public API (v1, Phase 1):
+Public API:
 
-* :func:`load_ptm_db` -- load the DB parquet.
-* :func:`emit_libraries` -- generate GMT-format site-set files.
-* :func:`load_gmt` -- read a GMT file back into a Python dict.
-
-The matching engine, ORA / GSEA scoring, and validation harness land
-in later phases.
+* Site level: :func:`ora`, :func:`gsea`, :func:`library_redundancy`
+  (engines), :func:`canonicalise_site_ids` / :func:`match_sites` /
+  :func:`attach_site_ids` (key matching), :func:`load_libraries` /
+  :func:`load_gmt` / :func:`emit_libraries` (libraries).
+* Kinases: :func:`kinase_activity` with :func:`fetch_omnipath_ks_network` /
+  :func:`load_ptm_ks_network`.
+* Gene level: :func:`pathway_enrichment` (Enrichr ORA), :func:`pathway_gsea`.
+* Validation: :func:`build_kinase_substrate_library`, :func:`load_ev3`,
+  :func:`load_ev2`, :func:`score_against_ev3`.
 """
 
 from alphaphos.enrichment.db import (
@@ -41,7 +46,7 @@ from alphaphos.enrichment.db import (
     load_ptm_db,
     site_id,
 )
-from alphaphos.enrichment.enrich import gsea, ora
+from alphaphos.enrichment.enrich import gsea, library_redundancy, ora
 from alphaphos.enrichment.ksea import (
     fetch_omnipath_ks_network,
     kinase_activity,
@@ -82,6 +87,7 @@ __all__ = [
     "MatchResult",
     "ora",
     "gsea",
+    "library_redundancy",
     "kinase_activity",
     "fetch_omnipath_ks_network",
     "load_ptm_ks_network",

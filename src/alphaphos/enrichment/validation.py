@@ -222,6 +222,12 @@ def score_against_ev3(
     """
     if ev3 is None:
         ev3 = load_ev3()
+    if kinase_scores.index.has_duplicates:
+        dups = sorted(set(kinase_scores.index[kinase_scores.index.duplicated()].astype(str)))[:3]
+        raise ValueError(
+            f"kinase_scores index has duplicated kinases (e.g. {dups}); aggregate to one "
+            "score per kinase first."
+        )
 
     if exact_condition is not None:
         expected = ev3[ev3["Condition"] == exact_condition]
@@ -274,10 +280,12 @@ def _compute_directional_auc(per_kinase: pd.DataFrame) -> float | None:
     """Compute ROC AUC where the positive class is `expected == "up"`.
 
     Returns None if only one class is present (AUC undefined).
-    Uses the standard rank-based computation without sklearn (avoids a
-    dependency for this validation-only utility).
+    Rank-based (Mann-Whitney U) with average ranks for ties, so tied
+    scores count 0.5; no sklearn dependency for this validation-only utility.
     """
-    scores = per_kinase["observed_score"].to_numpy()
+    from scipy.stats import rankdata
+
+    scores = per_kinase["observed_score"].to_numpy(dtype=float)
     labels = (per_kinase["expected_direction"].to_numpy() == "up").astype(int)
     if labels.sum() == 0 or labels.sum() == len(labels):
         return None
@@ -287,10 +295,8 @@ def _compute_directional_auc(per_kinase: pd.DataFrame) -> float | None:
     scores = scores[valid]
     labels = labels[valid]
     # Rank-based AUC (Mann-Whitney U): fraction of (pos, neg) pairs
-    # where pos > neg, with ties counted as 0.5.
-    order = np.argsort(scores)
-    ranks = np.empty_like(scores, dtype=float)
-    ranks[order] = np.arange(1, len(scores) + 1)
+    # where pos > neg, with ties counted as 0.5 (average ranks).
+    ranks = rankdata(scores, method="average")
     n_pos = labels.sum()
     n_neg = len(labels) - n_pos
     sum_ranks_pos = ranks[labels == 1].sum()

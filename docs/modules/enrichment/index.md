@@ -53,12 +53,20 @@ positive -- that's a triangulated finding worth reporting.
 
 Lower-level primitives used internally, exposed for advanced use:
 
-- **`load_ptm_db`**, **`site_id`**, **`emit_libraries`**, **`load_gmt`** -- access to the
-  bundled 235k-site PTM functional database and its GMT emission machinery.
-- **`match_sites`**, **`attach_site_ids`**, **`parse_alphaphos_key`** -- site-key matching
-  engine (`Protein|Gene|Site|Mult` &harr; `Protein_AApos`).
-- **`ora`**, **`gsea`** -- site-level engines used by the PTM-signature validation
-  pipeline. Not the same as `pathway_enrichment`/`pathway_gsea` (which are gene-level).
+- **`load_ptm_db`**, **`site_id`**, **`emit_libraries`**, **`load_gmt`**, **`load_libraries`** --
+  the PTM functional database (235k sites; the parquet is *external*, located via
+  `alphaphos.resources.external()`) and its GMT emission machinery. The three derived
+  site-set libraries (`functional_effect`, `disease_variant`, `functional_score`) ship in
+  the wheel at `alphaphos.resources.LIBRARIES_DIR`.
+- **`match_sites`**, **`attach_site_ids`**, **`canonicalise_site_ids`**,
+  **`parse_alphaphos_key`** -- site-key matching engine
+  (`Protein|Gene|Site|Mult` &harr; `Protein_AApos`).
+- **`ora`**, **`gsea`**, **`library_redundancy`** -- **site-level** engines for the shipped
+  site-set libraries (Fisher ORA with a hit-independent `min_set_size` filter, so two-sided
+  tests really test depletion; preranked GSEA validated against `gseapy.prerank`).
+  Multiplicity variants canonicalise to one site id: de-duplicate before `gsea`
+  (`s.groupby(level=0).agg(lambda v: v.iloc[int(v.abs().to_numpy().argmax())])`); `ora` de-duplicates
+  internally. Not the same as `pathway_enrichment`/`pathway_gsea` (gene-level).
 - **`build_kinase_substrate_library`**, **`load_ev3`**, **`ev2`**,
   **`score_against_ev3`** -- validation harness against the
   Hernández-Armenta 2017 / Ochoa 2020 EV3 benchmark.

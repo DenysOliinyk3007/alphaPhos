@@ -128,7 +128,8 @@ class TestBasicMockedRun:
             "nes",
             "p_value",
             "fdr",
-            "size",
+            "n_set",
+            "n_leading_edge",
             "leading_edge",
             "direction",
         }
@@ -147,11 +148,12 @@ class TestBasicMockedRun:
         assert (out.loc[out["nes"] >= 0, "direction"] == "up").all()
         assert (out.loc[out["nes"] < 0, "direction"] == "down").all()
 
-    def test_size_extracted_from_tag_percent(self, mock_gseapy):
+    def test_tag_percent_split_into_leading_edge_and_set_size(self, mock_gseapy):
         diff = _make_diff_exp()
         out = pathway_gsea(diff, libraries=["GO_BP"])
-        # fake writes "3/<n_rnk>" for Tag % -> size should be 3
-        assert (out["size"] == 3).all()
+        # fake writes "3/<n_rnk>" for Tag % -> 3 leading-edge genes out of n_rnk in the set
+        assert (out["n_leading_edge"] == 3).all()
+        assert (out["n_set"] > 3).all()
 
     def test_sorted_by_fdr_within_library(self, mock_gseapy):
         diff = _make_diff_exp()
