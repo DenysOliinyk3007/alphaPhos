@@ -11,10 +11,12 @@ Submodules:
   needing kinase-level analysis) doesn't have to touch a FASTA.
 
 - ``alphaphos.kinase.library`` — per-site PWM-based kinase prediction using
-  the Yaffe Kinase Library (Johnson et al. *Nature* 2023; 311 Ser/Thr + 78
-  tyrosine kinases). Sequence-based, predicts upstream kinase for ANY
-  site that has a ±7 flanking window — including novel sites with no
-  database evidence.
+  the Yaffe Kinase Library (Johnson et al. *Nature* 2023, Yaromenko et al.
+  2024; 311 Ser/Thr + 78 tyrosine PWMs in kinase-library 1.8). Sequence-
+  based, predicts upstream kinases for ANY site with a ±7 flanking window
+  — including novel sites with no database evidence.  Ranked by percentile
+  (default) or raw score.  Requires the optional ``kinase-library`` package
+  (see the module docstring for the ``--no-deps`` install recipe).
 
 - ``alphaphos.kinase.enrichment`` — kinase enrichment / KSEA. Three
   statistical frameworks:
@@ -31,6 +33,7 @@ from alphaphos.kinase.annotation import (
     add_kinase_windows,
     extract_window,
     load_fasta,
+    resolve_fasta_accession,
 )
 from alphaphos.kinase.enrichment import (
     kinase_enrichment_binary,
@@ -47,6 +50,7 @@ __all__ = [
     "add_kinase_windows",
     "extract_window",
     "load_fasta",
+    "resolve_fasta_accession",
     # Per-site PWM prediction
     "predict_kinases",
     "score_kinases",

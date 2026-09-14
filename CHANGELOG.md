@@ -10,6 +10,47 @@ While in `0.x`, breaking API changes may appear in any MINOR bump (`0.1 → 0.2`
 
 ## [Unreleased]
 
+### Fixed -- `alphaphos.kinase` review
+
+- **`import alphaphos` no longer reconfigures `sys.stdout` / `sys.stderr`.**
+  `kinase.enrichment` changed the process-wide stream error handlers to
+  `"replace"` at import (a workaround for kinase_library's tqdm output on
+  Windows cp1252).  The wrappers now redirect kinase_library's stdout / stderr into a
+  buffer per call (`quiet=True`, default), which also removes its
+  unconditional progress chatter.
+- **`predict_kinases` ranks by percentile by default** (`metric="percentile"`;
+  `"score"` restores the raw log2 PWM ranking).  Raw scores are not
+  comparable across kinases -- the canonical MEK site MAPK1 T185 ranked
+  PRP4/BMPR1A/YANK2 first; by percentile it is MEK2 (100) / MEK1 (99), and
+  RPS6 S235 is AKT1 (100).  `score_kinases` writes both matrices
+  (`varm["kinase_score_<pool>"]`, `varm["kinase_percentile_<pool>"]`) and its
+  provenance moved to `uns["alphaphos"]["kinase_scores"]` (was
+  `uns["alphaphos_kinase"]`).
+- The three KSEA wrappers no longer swallow failures into an empty dict: a
+  pool that cannot be tested is omitted with a warning, and a
+  `RuntimeError` is raised when every pool fails.  `id_col=None` (new
+  default) reads site keys from the index, which is what `diff_exp_*`
+  return (the old default `"protein"` matched no alphaPhos output).
+- `add_kinase_windows` resolves accessions keyed under a contaminant twin
+  (`cRAP-P00441`, collapse's deliberate tag for `P00441;cRAP-P00441`) or
+  carrying an isoform suffix (`P00533-2`) to the FASTA entry, and reports the
+  counts (`n_fallback_contaminant_tag`, `n_fallback_isoform`).  24 sites on
+  the EGF HeLa DIA-NN run.
+- Multiplicity variants share one sequence window and were counted as two
+  substrates by MEA / Fisher KSEA; `dedup_sequences=True` (default) keeps one
+  row per window (strongest statistic).  Duplicated `sequence_lookup`
+  indices raise a clear error.  `kinase_mea(threads=1)` default
+  (deterministic, like `pathway_gsea`).
+- Docstrings: kinase counts (311 Ser/Thr + 78 Tyr in kinase-library 1.8),
+  window format (upper-case centre, 19 characters), `rank_col="t_stat"`.
+- New `docs/modules/kinase.md`; always-on tests for `annotation.py` and the
+  pure helpers (`tests/unit/test_kinase_review.py`); the kinase-library-backed
+  tests were made pandas-3-safe.  **kinase-library 1.8 cannot be installed
+  with its own pins** (`numpy~=1.26`, `pandas~=2.2`, `matplotlib~=3.8.3`) on
+  Python 3.13 / pandas 3 -- `pip install --no-deps kinase-library` plus its
+  runtime deps works and is documented; all wrappers were validated against
+  it on the EGF HeLa data (ERK1/2, RSK2, p90RSK, AKT1, MAPKAPK2 up at FDR 0).
+
 ### Fixed -- `alphaphos.enrichment` review
 
 - **`gsea()` mis-scored inputs with duplicated site ids.**  Multiplicity

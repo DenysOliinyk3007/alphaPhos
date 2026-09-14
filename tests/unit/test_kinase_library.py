@@ -94,7 +94,7 @@ class TestScoreKinases:
     def test_uns_provenance(self):
         adata = _make_adata_with_sequences(_VALID_SEQS)
         score_kinases(adata)
-        info = adata.uns["alphaphos_kinase"]
+        info = adata.uns["alphaphos"]["kinase_scores"]
         assert info["n_sites_scored"] == 4
         assert info["n_sites_dropped"] == 0
         assert info["n_ser_thr_scored"] == 3
@@ -111,7 +111,7 @@ class TestScoreKinases:
         ]
         adata = _make_adata_with_sequences(seqs)
         score_kinases(adata)
-        info = adata.uns["alphaphos_kinase"]
+        info = adata.uns["alphaphos"]["kinase_scores"]
         assert info["n_sites_scored"] == 1  # only the valid one
         assert info["n_sites_dropped"] == 3
         # Dropped rows should be all-NaN in varm
@@ -184,14 +184,27 @@ class TestPredictKinases:
         adata = _make_adata_with_sequences(_VALID_SEQS)
         score_kinases(adata)
         # Manually mark we ran -- predict_kinases shouldn't re-score
-        old_st = adata.varm["kinase_score_ser_thr"].copy()
+        old_st = adata.varm["kinase_percentile_ser_thr"].copy()
+        adata.uns["alphaphos"]["kinase_scores"]["n_sites_scored"] = -1  # sentinel
         predict_kinases(adata, top_k=2, overwrite=False)
-        pd.testing.assert_frame_equal(adata.varm["kinase_score_ser_thr"], old_st, check_exact=False)
+        pd.testing.assert_frame_equal(
+            adata.varm["kinase_percentile_ser_thr"], old_st, check_exact=False
+        )
+        assert adata.uns["alphaphos"]["kinase_scores"]["n_sites_scored"] == -1  # not re-run
+
+    def test_percentile_default_and_score_option(self):
+        adata = _make_adata_with_sequences(_VALID_SEQS)
+        pct = predict_kinases(adata, top_k=3)
+        sc = predict_kinases(adata, top_k=3, metric="score")
+        assert pct.attrs["metric"] == "percentile" and sc.attrs["metric"] == "score"
+        assert "kinase_percentile_ser_thr" in adata.varm and "kinase_score_ser_thr" in adata.varm
+        # percentiles are bounded, raw log2 scores are not
+        assert float(pct["top1_score"].dropna().astype(float).max()) <= 100.0
 
     def test_overwrite_reruns(self):
         adata = _make_adata_with_sequences(_VALID_SEQS)
         score_kinases(adata)
         # overwrite=True should call score_kinases again (idempotent so values match)
         predict_kinases(adata, top_k=2, overwrite=True)
-        info = adata.uns["alphaphos_kinase"]
+        info = adata.uns["alphaphos"]["kinase_scores"]
         assert info["n_sites_scored"] == 4
