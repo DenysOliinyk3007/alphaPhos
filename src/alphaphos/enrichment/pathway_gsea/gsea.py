@@ -23,26 +23,19 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 
+from alphaphos.enrichment._gene_keys import (
+    DEFAULT_LIBRARIES_HUMAN,
+    DEFAULT_LIBRARIES_MOUSE,
+    default_libraries,
+    extract_keys,
+    gene_map,
+    normalise_organism,
+    require_gseapy,
+)
+
 logger = logging.getLogger(__name__)
 
-
-DEFAULT_LIBRARIES_HUMAN: list[str] = [
-    "GO_Biological_Process_2023",
-    "GO_Molecular_Function_2023",
-    "GO_Cellular_Component_2023",
-    "KEGG_2021_Human",
-    "Reactome_2022",
-    "MSigDB_Hallmark_2020",
-]
-
-DEFAULT_LIBRARIES_MOUSE: list[str] = [
-    "GO_Biological_Process_2023",
-    "GO_Molecular_Function_2023",
-    "GO_Cellular_Component_2023",
-    "KEGG_2019_Mouse",
-    "Reactome_2022",
-    "MSigDB_Hallmark_2020",
-]
+__all__ = ["pathway_gsea", "DEFAULT_LIBRARIES_HUMAN", "DEFAULT_LIBRARIES_MOUSE"]
 
 
 _OUTPUT_COLUMNS: list[str] = [
@@ -52,7 +45,8 @@ _OUTPUT_COLUMNS: list[str] = [
     "nes",
     "p_value",
     "fdr",
-    "size",
+    "n_set",
+    "n_leading_edge",
     "leading_edge",
     "direction",
 ]
@@ -135,13 +129,17 @@ def pathway_gsea(
     -------
     pandas.DataFrame with columns::
 
-        library, term, es, nes, p_value, fdr, size, leading_edge, direction
+        library, term, es, nes, p_value, fdr, n_set, n_leading_edge,
+        leading_edge, direction
 
     ``es`` is the raw enrichment score, ``nes`` is the size-normalised
-    score, ``size`` is the number of collapsed genes in the pathway
-    overlap, ``leading_edge`` is the semicolon-joined list of genes
-    driving the enrichment, ``direction`` is ``"up"`` if ``nes >= 0``
-    else ``"down"``. Sorted by ``fdr`` within each library.
+    score, ``n_set`` is the number of ranked genes in the term (the
+    denominator of gseapy's ``Tag %``), ``n_leading_edge`` the number of
+    those in the leading edge (the numerator), ``leading_edge`` the
+    semicolon-joined list of those genes, ``direction`` is ``"up"`` if
+    ``nes >= 0`` else ``"down"``. Sorted by ``fdr`` within each library.
+    A library whose gseapy run fails is skipped with a warning; if *every*
+    library fails a ``RuntimeError`` is raised.
     ``.attrs["provenance"]`` records libraries, method, stat_col,
     site_to_gene_agg, n_permutations, seed, gseapy version, and
     site-to-gene collapse statistics.
@@ -150,28 +148,15 @@ def pathway_gsea(
         raise ValueError(
             f"site_to_gene_agg must be 'max_abs' or 'top_significant'; got {site_to_gene_agg!r}"
         )
-    organism = organism.lower()  # type: ignore[assignment]
-    if organism not in ("human", "mouse"):
-        raise ValueError(f"organism must be 'human' or 'mouse'; got {organism!r}")
-
-    try:
-        import gseapy as gp
-    except ImportError as exc:
-        raise ImportError(
-            "pathway_gsea requires gseapy. Install with: "
-            "pip install 'alphaphos[enrichment]' or pip install gseapy>=1.1"
-        ) from exc
+    organism = normalise_organism(organism)  # type: ignore[assignment]
+    gp = require_gseapy("pathway_gsea")
 
     if libraries is None:
-        libraries = (
-            DEFAULT_LIBRARIES_HUMAN.copy()
-            if organism == "human"
-            else DEFAULT_LIBRARIES_MOUSE.copy()
-        )
+        libraries = default_libraries(organism)
     if not libraries:
         raise ValueError("libraries must be non-empty")
 
-    keys = _extract_keys(diff_exp_result, key_column)
+    keys = extract_keys(diff_exp_result, key_column)
     if stat_col not in diff_exp_result.columns:
         if "F" in diff_exp_result.columns:
             raise ValueError(
@@ -191,27 +176,7 @@ def pathway_gsea(
     stats = diff_exp_result[stat_col].to_numpy()
     fdrs = diff_exp_result[fdr_col].to_numpy() if site_to_gene_agg == "top_significant" else None
 
-    if gene_column is not None:
-        if gene_column not in diff_exp_result.columns:
-            raise ValueError(
-                f"gene_column={gene_column!r} not found in diff_exp_result "
-                f"columns (available: {list(diff_exp_result.columns)})"
-            )
-        gene_series = diff_exp_result[gene_column].astype(str).str.split(";").str[0]
-        key_to_gene = {
-            str(k): g
-            for k, g in zip(keys, gene_series, strict=True)
-            if isinstance(g, str) and g and g.lower() != "nan"
-        }
-    else:
-        key_to_gene = _keys_to_genes(keys)
-    if not key_to_gene:
-        raise ValueError(
-            "No parseable gene names extracted from diff_exp_result.  For "
-            "phospho input, keys must be in 'Protein|Gene|Site|Mult' format.  "
-            "For proteome input, attach a gene column and pass "
-            "gene_column='<name>'."
-        )
+    key_to_gene = gene_map(diff_exp_result, keys, gene_column=gene_column)
 
     gene_to_stat, collapse_stats = _collapse_sites_to_genes(
         keys=keys,
@@ -238,6 +203,7 @@ def pathway_gsea(
 
     outdir = str(cache_dir) if cache_dir is not None else None
     frames: list[pd.DataFrame] = []
+    failures: dict[str, str] = {}
     for library in libraries:
         try:
             pre = gp.prerank(
@@ -253,11 +219,17 @@ def pathway_gsea(
                 no_plot=True,
             )
         except Exception as exc:
+            failures[library] = f"{type(exc).__name__}: {exc}"
             logger.warning("pathway_gsea: library %s failed: %s", library, exc)
             continue
         frame = _normalise_prerank_output(pre.res2d, library=library)
         frames.append(frame)
 
+    if failures and len(failures) == len(libraries):
+        raise RuntimeError(
+            "pathway_gsea: every library failed -- "
+            + "; ".join(f"{lib}: {err}" for lib, err in failures.items())
+        )
     if not frames:
         out = pd.DataFrame(columns=_OUTPUT_COLUMNS)
     else:
@@ -278,6 +250,7 @@ def pathway_gsea(
         "max_set_size": max_set_size,
         "organism": organism,
         "seed": seed,
+        "failed_libraries": failures,
         "gseapy_version": getattr(gp, "__version__", None),
     }
     return out
@@ -286,32 +259,6 @@ def pathway_gsea(
 # ---------------------------------------------------------------------------
 # Internals
 # ---------------------------------------------------------------------------
-
-
-def _extract_keys(
-    result: pd.DataFrame,
-    key_column: str | None,
-) -> list[str]:
-    if key_column is not None:
-        return list(result[key_column])
-    return list(result.index)
-
-
-def _keys_to_genes(keys: list[str]) -> dict[str, str]:
-    """Extract the gene symbol from an alphaPhos site or precursor key.
-
-    Both formats share the ``Protein|Gene|...`` prefix (site key has 4
-    fields, precursor key has 5); a permissive pipe split works for both.
-    """
-    out: dict[str, str] = {}
-    for k in keys:
-        parts = str(k).split("|")
-        if len(parts) < 2:
-            continue
-        gene = parts[1].strip()
-        if gene and gene.lower() != "nan":
-            out[str(k)] = gene
-    return out
 
 
 def _collapse_sites_to_genes(
@@ -420,15 +367,18 @@ def _normalise_prerank_output(raw: pd.DataFrame, *, library: str) -> pd.DataFram
     df["nes"] = pd.to_numeric(df["NES"], errors="coerce")
     df["p_value"] = pd.to_numeric(df["NOM p-val"], errors="coerce")
     df["fdr"] = pd.to_numeric(df["FDR q-val"], errors="coerce")
-    df["size"] = df["Tag %"].astype(str).map(_parse_tag_size)
+    tag = df["Tag %"].astype(str).map(_parse_tag)
+    df["n_leading_edge"] = [k for k, _ in tag]
+    df["n_set"] = [n for _, n in tag]
     df["leading_edge"] = df["Lead_genes"].astype(str)
     df["direction"] = np.where(df["nes"] >= 0, "up", "down")
     return df[_OUTPUT_COLUMNS]
 
 
-def _parse_tag_size(tag: str) -> int:
-    """``"8/20"`` -> ``8`` (leading-edge overlap size)."""
+def _parse_tag(tag: str) -> tuple[int, int]:
+    """gseapy ``Tag %`` ``"8/20"`` -> ``(8, 20)``: leading-edge hits / ranked set size."""
     try:
-        return int(tag.split("/", 1)[0])
+        k, n = tag.split("/", 1)
+        return int(k), int(n)
     except (ValueError, AttributeError):
-        return 0
+        return 0, 0

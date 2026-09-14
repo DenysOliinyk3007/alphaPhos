@@ -59,7 +59,7 @@ consulted when `site_to_gene_agg="top_significant"`.
 | `libraries` | `None` &rarr; defaults | Enrichr library slugs to query. | Same defaults as `pathway_enrichment`. Any Enrichr slug. |
 | `site_to_gene_agg` | `"max_abs"` | How to collapse sites &rarr; genes. | `"top_significant"`. See below. |
 | `min_set_size` | `15` | Skip terms with fewer members in the ranked universe. | gseapy prerank default. Lower to include micro-pathways. |
-| `max_set_size` | `500` | Skip terms larger than this. | gseapy prerank default; caps very-broad terms. |
+| `max_set_size` | `500` | Skip terms larger than this. | gseapy prerank default; caps very-broad *gene* sets (the site-level `ap.enrichment.gsea` has no cap by default). |
 | `n_permutations` | `1000` | Set-membership permutations for the empirical null. | Raise to `10000` for FDR resolution below 0.001. |
 | `seed` | `42` | Reproducibility seed for the permutation sample. | Any int. |
 | `organism` | `"human"` | Selects the default library set. | `"mouse"`. |
@@ -97,7 +97,8 @@ A `pd.DataFrame`, one row per (library, term) pair that met `min_set_size`, sort
 | `nes` | float | Size-normalised ES -- comparable across terms and libraries. Sign encodes direction. |
 | `p_value` | float | Nominal p from the permutation null. |
 | `fdr` | float | BH-adjusted q within this library. |
-| `size` | int | Number of term members in the leading edge (extracted from gseapy's `Tag %`). |
+| `n_set` | int | Number of ranked genes in the term (denominator of gseapy's `Tag %`). |
+| `n_leading_edge` | int | Number of those in the leading edge (numerator of `Tag %`). |
 | `leading_edge` | str | Semicolon-joined gene symbols driving the enrichment. |
 | `direction` | str | `"up"` if `nes >= 0` else `"down"`. |
 

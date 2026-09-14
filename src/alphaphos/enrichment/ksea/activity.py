@@ -89,7 +89,8 @@ def kinase_activity(
         Currently only ``"bh"`` is supported (decoupler applies BH
         internally).  Documented for API forward-compatibility.
     seed
-        Reproducibility seed used by any stochastic component.
+        Unused -- ULM / MLM are deterministic closed-form fits.  Kept for
+        backward compatibility and recorded in provenance.
     cache_path
         OmniPath fetch cache location (parquet).
     key_column
@@ -98,11 +99,13 @@ def kinase_activity(
 
     Returns
     -------
-    pandas.DataFrame indexed by kinase, columns:
+    pandas.DataFrame with a ``kinase`` column and:
 
-    - ``score`` -- signed activity (positive = activated, negative = inhibited)
-    - ``p_value`` -- nominal p from decoupler
-    - ``fdr`` -- BH-adjusted q across all kinases in this run
+    - ``score`` -- signed activity (the ULM / MLM t-value; positive =
+      activated, negative = inhibited)
+    - ``fdr`` -- BH-adjusted p across all kinases in this run (decoupler
+      2.x returns adjusted p only; verified against a manual univariate fit
+      + BH -- there is no nominal ``p_value`` column)
     - ``n_substrates`` -- substrates observed in ``diff_exp_result``
     - ``direction`` -- ``"up"`` if score >= 0 else ``"down"``
 
@@ -205,13 +208,9 @@ def kinase_activity(
             "fdr": padj_df.iloc[0],
         }
     )
-    # Nominal p-values -- not returned by decoupler's ULM/MLM directly;
-    # BH-adjusted values are.  Report the BH-adjusted as `fdr` and, for
-    # user convenience, back-transform to an approximate nominal p using
-    # the BH inversion for the top kinase and mark others.  (Users who
-    # need exact nominal p should refit; the score-based interpretation
-    # in most manuscripts uses only score + FDR.)
-    # Keep API honest: only expose fdr since that's what decoupler emits.
+    # decoupler 2.x returns BH-adjusted p-values only (checked against a
+    # manual univariate fit + BH), so `fdr` is the honest name and there is
+    # no nominal p column.
     result.index.name = "kinase"
 
     substrates_by_kinase = _substrates_per_kinase(net, present=set(data.columns))

@@ -10,6 +10,66 @@ While in `0.x`, breaking API changes may appear in any MINOR bump (`0.1 → 0.2`
 
 ## [Unreleased]
 
+### Fixed -- `alphaphos.enrichment` review
+
+- **`gsea()` mis-scored inputs with duplicated site ids.**  Multiplicity
+  variants (`...|M1` / `...|M2`) canonicalise to one `Protein_AApos`; the
+  duplicates silently inflated the universe and overwrote positions (ES 0.56
+  instead of 0.83 in a test case).  Duplicates now raise with an aggregation
+  recipe (keep the largest |stat| per site).
+- **`pathway_enrichment` had lost its `overlap` column.**  gseapy >= 1.1
+  returns no `Overlap` in background mode (the default) and the normaliser
+  dropped missing columns silently; the unit tests mocked the old schema.
+  `overlap` (`"k/n"`) is now derived from `Genes` plus the library term
+  sizes, with explicit `n_overlap` / `n_term` columns, and unexpected schema
+  changes raise.
+- **Two-sided ORA now tests depletion.**  `min_overlap=2` was applied before
+  Fisher's test, so sets with 0-1 hits -- the most depleted -- were never
+  tested and the BH denominator depended on the hits.  `ora()` filters on
+  the hit-independent restricted set size (`min_set_size=5`, new); the
+  `min_overlap` default is 0 and setting it with `alternative="two-sided"`
+  warns.  Skip counts are in `result.attrs`.
+- `gsea()` leading edge used weight 1 regardless of `weight`.
+- `gsea()` no longer caps set size by default (`max_set_size=None`; fgsea's
+  500 is a gene-level heuristic that silently skipped 4 of the 9 shipped
+  site-set libraries, incl. the negative control).  Skipped sets are logged
+  and listed in `result.attrs["skipped_sets"]`.
+- `canonicalise_site_ids` / `parse_alphaphos_key` accept the empty-gene keys
+  `collapse_sites` emits (`P12345||S10|M1`) and log how many keys were dropped.
+- `pathway_gsea`: `size` (ambiguous) replaced by `n_set` (ranked term size)
+  and `n_leading_edge`; a run in which *every* library fails now raises
+  instead of returning an empty table.
+- `pathway_enrichment`: foreground genes missing from a caller-supplied
+  background are reported (they were silently dropped by gseapy).
+- `score_against_ev3` rejects a duplicated kinase index; the directional AUC
+  averages tied ranks as its docstring claimed.
+- `kinase_activity` docstring: there is no `p_value` column (decoupler 2.x
+  returns BH-adjusted p only -- verified against a manual univariate fit +
+  BH, so the `fdr` column is correctly named); `seed` is unused.
+
+### Added -- `alphaphos.enrichment`
+
+- `docs/benchmark/e2e_egf_hela.py`: end-to-end run of the default pipeline
+  (read → collapse → filter → observed-only limma → kinase activity → Enrichr
+  ORA / GSEA → site-level ORA / GSEA) on both engines' searches of the EGF
+  HeLa series, with a cross-engine comparison (benchmark report §11: 8/8
+  known EGF kinases recovered by both, kinase-score Spearman 0.92).
+
+- `library_redundancy(libraries, background=None, min_jaccard=0)`: pairwise
+  Jaccard overlap between sets of a library -- the "redundancy report" the
+  module docstring promised but never implemented.
+- Live validation against gseapy 1.3.1 / decoupler 2.2.0 / OmniPath on the
+  EGF HeLa result: site-level `gsea` == `gseapy.prerank` (ES to 4e-14, NES
+  within 0.1%); `kinase_activity` ranks MAPK1/MAPK3/MAP2K*/RPS6KA1/AKT1 up;
+  Enrichr ORA finds ErbB signalling among the up-hits.
+
+### Changed -- `alphaphos.enrichment`
+
+- The two gene-level wrappers share `enrichment/_gene_keys.py` (default
+  libraries, key/gene extraction, gseapy import) instead of duplicated code.
+- Docs: `enrichment/index.md` now lists the site-level engines and states
+  that the PTM DB parquet is external (only the GMT libraries ship).
+
 ### Fixed -- `alphaphos.stats` review
 
 - **Integer-coded covariates were fit as a linear trend.** `covariates=["batch"]`

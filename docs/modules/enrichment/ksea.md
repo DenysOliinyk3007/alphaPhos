@@ -61,7 +61,7 @@ one with the largest `|log2fc|` is kept.
 | `min_substrates` | `5` | Minimum substrates observed per kinase to test. | Decoupler convention; raise to be stricter. |
 | `organism` | `"human"` | For OmniPath fetch. | `"mouse"`, `"rat"`. Ignored for `ptm_db` / BYO. |
 | `fdr_method` | `"bh"` | Currently only BH supported (applied internally by decoupler). | -- (API forward-compat). |
-| `seed` | `42` | Reproducibility seed. | Any int. |
+| `seed` | `42` | Unused -- ULM / MLM are deterministic; kept for backward compatibility. | -- |
 | `cache_path` | `None` | OmniPath fetch cache (parquet). | Any path -- first fetch writes here, subsequent runs read from it. |
 | `key_column` | `None` | Column carrying site keys if not the index. | Any column name. |
 

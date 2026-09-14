@@ -48,8 +48,10 @@ logger = logging.getLogger(__name__)
 
 
 # Regex for alphaphos site keys: Protein|Gene|<AA><pos>|M<mult>
-# Only accepts S / T / Y as the phospho residue.
-_ALPHAPHOS_KEY_RE = re.compile(r"^([^|]+)\|([^|]+)\|([STY])(\d+)\|M(\d+)$")
+# Only accepts S / T / Y as the phospho residue.  The gene field may be
+# empty (collapse / FragPipe emit "" when no gene is annotated) -- same rule
+# as alphaphos.preprocess.anndata._KEY_RE.
+_ALPHAPHOS_KEY_RE = re.compile(r"^([^|]+)\|([^|]*)\|([STY])(\d+)\|M(\d+)$")
 
 
 @dataclass(frozen=True)
@@ -168,16 +170,31 @@ def canonicalise_site_ids(
     Returns
     -------
     list of str
-        Canonical ``Protein_AApos`` IDs, in input order.
+        Canonical ``Protein_AApos`` IDs, in input order.  The output may
+        contain duplicates (multiplicity variants of one site); ORA
+        de-duplicates internally, :func:`gsea` requires unique ids.
     """
     out: list[str] = []
+    n_dropped = 0
+    examples: list[str] = []
     for k in keys:
         parsed = parse_alphaphos_key(k)
         if parsed is None:
             if not drop_unparseable:
                 out.append(str(k))
+            else:
+                n_dropped += 1
+                if len(examples) < 3:
+                    examples.append(str(k))
             continue
         out.append(parsed.canonical_site_id)
+    if n_dropped:
+        logger.warning(
+            "canonicalise_site_ids: dropped %d unparseable key(s) (e.g. %s); pass "
+            "drop_unparseable=False to keep them verbatim.",
+            n_dropped,
+            examples,
+        )
     return out
 
 

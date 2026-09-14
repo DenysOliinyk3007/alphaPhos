@@ -101,7 +101,9 @@ A `pd.DataFrame`, sorted by `fdr` ascending within each `direction` + `library` 
 | `direction` | str | `"up"` / `"down"` (or `"both"` if `direction="both"`). |
 | `library` | str | Enrichr library slug (which panel this term came from). |
 | `term` | str | Pathway / term name. |
-| `overlap` | str | `"k/n"` -- hits in the term / term size. |
+| `overlap` | str | `"k/n"` -- foreground genes in the term / term size (`"k/?"` if the library could not be re-read). |
+| `n_overlap` | int | Foreground genes in the term (from `genes`). |
+| `n_term` | float | Term size in the library; `NaN` when unavailable. gseapy's background mode returns no `Overlap`, so both counts are derived by alphaPhos. |
 | `p_value` | float | Nominal p from the hypergeometric test. |
 | `fdr` | float | BH-adjusted q within this library × direction. |
 | `odds_ratio` | float | Fisher odds ratio for the term. |

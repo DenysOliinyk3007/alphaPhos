@@ -523,3 +523,42 @@ review §3) and is not an alphaPhos property; alphaPhos is faithful to each repo
   on this report, not the search itself; re-searching two-step may change the site set.
 - `Protein.Sites` is per protein-group member; `Genes` is `;`-joined in group order.
   `read_diann` keys sites by the leading accession and first gene, as for Spectronaut.
+
+
+## 11. End-to-end run, both engines (2026-09-14)
+
+`docs/benchmark/e2e_egf_hela.py` runs the full default pipeline — read → `collapse_sites`
+(engine defaults: `condition` strategy, MS2 for Spectronaut, MS1 for DIA-NN) →
+`filter_by_completeness` → `diff_exp_limma_observed_only` (+ impute-all limma for
+comparison) → `kinase_activity` (OmniPath, ULM on moderated t) → `pathway_enrichment`
+(Enrichr KEGG + Hallmark, phosphoproteome background) → `pathway_gsea` (Hallmark) →
+site-level `ora` / `gsea` on the shipped PTM libraries — on both searches of the six raw
+files, then compares the biology. Requires the `[enrichment]` extra and network access.
+
+| | Spectronaut | DIA-NN |
+| --- | --- | --- |
+| PSM rows → site×mult | 620,293 → 34,279 | 176,652 → 22,256 |
+| quant column (default) | `FG.MS2Quantity` | `Ms1.Area` |
+| ≥3 valid in one condition | 17,628 | 17,265 |
+| observed-only limma: tested / sig @5% FDR (up/down) | 11,955 / 1,976 (1,260/716) | 13,112 / 1,458 (1,210/248) |
+| on/off detection (on in EGF / on in control) | 3,092 / 2,581 | 2,405 / 1,748 |
+| impute-all limma: sig, of which imputed-driven | 2,675 / 840 (31%) | 2,137 / 642 (30%) |
+| kinases tested; known EGF kinases up @5% FDR | 231; **8/8** | 231; **8/8** |
+| top-10 kinases | EGF, MAPKAPK2, MAP2K3, MAPKAPK3, BRAF, MAP2K6, PRKACA, DUSP1, DUSP8, MAP3K8 | EGF, DUSP1, MAP2K3, DUSP8, BRAF, PTPN7, DUSP16, MAPKAPK2, MAP2K1, KSR1 |
+| pathway ORA terms @10% FDR (top) | 65 (ErbB, Insulin, MAPK signalling) | 57 (ErbB, MAPK, Mitotic spindle) |
+| site ORA | Ochoa top quartile, activates/inhibits activity, induces PPI enriched; Ochoa bottom quartile **depleted** | same pattern |
+
+Cross-engine: kinase activity scores Spearman **0.92** over 212 shared kinases (6 of the
+top 10 shared); 45 KEGG/Hallmark terms significant in both (19 SN-only, 12 DIA-NN-only);
+site-ORA log2 fold-enrichment Pearson 0.93; Hallmark GSEA NES Spearman 0.62 (Hallmark GSEA
+on gene-collapsed phospho data is weak in both — 1–2 terms at 25% FDR).
+
+Two observations worth keeping in mind when reading such runs:
+
+- **EGFR autophosphorylation sites (Y1172, Y1197, Y1110, Y727/Y869) are on/off events**,
+  not limma hits: they are unquantified in unstimulated cells, so
+  `diff_exp_limma_observed_only` correctly reports them in the detection table
+  (`on_in_treatment`) and only the impute-all path gives them a p-value — driven by
+  imputed values.
+- ~30% of impute-all hits are imputed-driven in **both** engines; the observed-only flow
+  removes them without losing the kinase / pathway signal (8/8 known kinases either way).

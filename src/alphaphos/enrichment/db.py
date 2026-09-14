@@ -76,7 +76,8 @@ REQUIRED_COLUMNS: tuple[str, ...] = (
 # real users -- surprise-substituting a 1000-row test DB for a 500k-row
 # real DB would silently break their analysis.
 DEFAULT_DB_PATH = _resources.external("ptm_functional_db.parquet")
-# Only meaningful from a git checkout (tests/ is not packaged).
+# Only meaningful from a git checkout (tests/ is not packaged); from an
+# installed wheel the path does not exist and load_ptm_db raises FileNotFoundError.
 TEST_FIXTURE_PATH = Path(__file__).resolve().parents[3] / "tests" / "data" / "ptm_db_mini.parquet"
 
 
