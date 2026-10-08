@@ -29,11 +29,14 @@ Single-call entry point
 
     import alphaphos as ap
 
-    # Given an AnnData that has run through ap.score_kinases() so that
-    # adata.varm carries the sites x kinases prediction matrix.
+    # Given an AnnData that has run through ap.score_kinases().  Build the
+    # [0, 1] input (Yaffe percentile / 100, kinases with confident substrates
+    # among the sites of interest) and run:
+    matrix = ap.signalome.prediction_matrix_from_adata(adata, sites=significant_sites)
     result = ap.signalome.build_signalome(
-        adata.varm["kinase_score_ser_thr"],
-        kinase_substrates=my_reference_network,   # {kinase: [substrate_site_ids]}
+        matrix,
+        substrate_support_cutoff=0.9,             # top-10 % percentile = substrate
+        kinase_substrates=my_reference_network,   # optional {kinase: [substrate_site_ids]}
     )
     result.site_assignments   # DataFrame -- per-site module_id + top_kinase + ...
     result.module_table       # DataFrame -- module x kinase % shares
@@ -45,7 +48,11 @@ Single-call entry point
 
 from __future__ import annotations
 
-from alphaphos.signalome._orchestrator import SignalomeResult, build_signalome
+from alphaphos.signalome._orchestrator import (
+    SignalomeResult,
+    build_signalome,
+    prediction_matrix_from_adata,
+)
 from alphaphos.signalome.assignments import (
     build_module_assignments,
     select_kinase_substrates,
@@ -74,6 +81,7 @@ from alphaphos.signalome.protein_resolution import (
 __all__ = [
     # High-level entry point
     "build_signalome",
+    "prediction_matrix_from_adata",
     "SignalomeResult",
     # Per-stage functions
     "cluster_sites",

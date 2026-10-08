@@ -79,3 +79,14 @@ DEFAULT_MAX_APPROX_SAMPLES_PER_CLUSTER = 200
 DEFAULT_NETWORK_CORRELATION_THRESHOLD = 0.5
 DEFAULT_SUBSTRATE_SUPPORT_CUTOFF = 0.5
 NEAR_CONSTANT_VARIANCE_TOLERANCE = 1e-12
+
+# prediction_matrix_from_adata(): a kinase is "informative" for a site set when
+# it is the top-ranked kinase of at least this many sites.  (A percentile
+# cutoff alone cannot discriminate: by construction every kinase has ~10 % of
+# any site set at percentile >= 0.9.)  DEFAULT_CONFIDENT_CUTOFF only defines
+# which cells count as substrates downstream (substrate_support_cutoff).
+DEFAULT_CONFIDENT_CUTOFF = 0.9
+DEFAULT_MIN_TOP_SITES = 5
+# build_signalome warns when the substrate cutoff admits more than this
+# fraction of matrix cells -- the module x kinase table is then ~uniform.
+MAX_SUBSTRATE_DENSITY_WARN = 0.30

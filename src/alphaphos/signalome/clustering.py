@@ -6,11 +6,23 @@ Two-stage design (mirrors PhosPy's signalome clustering, MIT clean-room):
    Euclidean distance of site kinase-prediction profiles.  Deterministic
    given the same input matrix.  O(N^2) memory + O(N^2 log N) time — the
    scaling limit for the whole subpackage.
-2. **Module-count selection**: score each candidate ``k in {2..max_modules}``
-   by the median within-cluster Pearson correlation of the raw site profiles;
-   pick the smallest ``k`` whose median cluster-correlation is
-   >= ``primary_threshold``.  If none reaches primary, fall back to
-   ``fallback_threshold``.  If neither is reached, use ``max_modules``.
+2. **Module-count selection** (PhosPy's rule, kept for parity): score each
+   candidate ``k in {2..max_modules}`` by the per-cluster median within-cluster
+   Pearson correlation of the site profiles; among the ``k`` whose *smallest*
+   cluster median reaches ``primary_threshold``, pick the one with the highest
+   *mean* cluster median (ties -> smaller ``k``).  If none reaches primary, retry
+   with ``fallback_threshold``; if neither is reached, use ``max_modules``.
+   Because within-cluster correlation grows with ``k``, this rule tends to
+   select the largest admissible ``k`` (a 3-block toy matrix yields
+   ``k = max_modules``); when you have a prior on the number of modules, pass
+   ``requested_module_count`` -- PhosR's ``module_res`` is user-set for the
+   same reason.
+
+Sites whose profile is entirely NaN (the kinase library rejected them) carry
+no information: they are excluded from the tree and labelled ``0``
+(``module 0`` = unassigned downstream) instead of being median-filled into a
+spurious "average" cluster that would consume a module slot and bias the
+module-count selection.
 
 Scale-aware correlation backend (``scoring_mode``):
 
@@ -23,10 +35,9 @@ Scale-aware correlation backend (``scoring_mode``):
 - ``"auto"`` -- pick ``"exact"`` for N <= max_exact_sites, else
   ``"sampled"``.  Emits a warning when auto-approximation kicks in.
 
-Score preconditioning: NaN cells filled with the column median (or 0.0 if
-the column is entirely NaN).  This is the same behaviour PhosPy uses; it
-keeps the Ward linkage well-defined on datasets with missing kinase-score
-cells (e.g. sites the kinase library rejected).
+Score preconditioning: remaining NaN cells (a site with *some* kinase scores
+missing) are filled with the column median (or 0.0 if the column is entirely
+NaN), as PhosPy does, so the Ward linkage stays well-defined.
 """
 
 from __future__ import annotations
@@ -107,7 +118,7 @@ class SignalomeClusteringResult:
     """Combined output of :func:`cluster_sites`."""
 
     labels: np.ndarray
-    """1-indexed integer array, shape (n_sites,).  0 reserved for un-clustered sites."""
+    """1-indexed integer array, shape (n_sites,).  0 = un-clustered (all-NaN profile)."""
 
     module_count: int
     selection: ModuleCountSelectionResult
@@ -384,7 +395,7 @@ def select_module_count(
     max_samples_per_cluster: int = DEFAULT_MAX_APPROX_SAMPLES_PER_CLUSTER,
     seed: int = 0,
 ) -> ModuleCountSelectionResult:
-    """Pick the smallest ``k`` whose median cluster correlation meets threshold.
+    """Select ``k`` by PhosPy's threshold-then-max-mean rule (see module docstring).
 
     If ``requested_module_count`` is set, that ``k`` is used directly (still
     returns candidate scores for the requested count for diagnostics).
@@ -568,8 +579,21 @@ def cluster_sites(
     -------
     SignalomeClusteringResult
     """
-    values_prep = precondition_scores(prediction_matrix.to_numpy(dtype=float, copy=True))
+    raw = prediction_matrix.to_numpy(dtype=float, copy=True)
+    n_sites = int(raw.shape[0])
+    # Sites with no score at all cannot be placed; keep them out of the tree.
+    informative = np.isfinite(raw).any(axis=1) if raw.size else np.zeros(n_sites, dtype=bool)
+    n_uninformative = int((~informative).sum())
+    if n_uninformative:
+        logger.info(
+            "cluster_sites: %d / %d sites have an all-NaN profile; labelled 0 (unassigned) "
+            "and excluded from clustering.",
+            n_uninformative,
+            n_sites,
+        )
+    values_prep = precondition_scores(raw[informative])
     linkage_matrix = build_ward_tree(values_prep)
+    n_clustered = int(values_prep.shape[0])
     selection = select_module_count(
         values_prep,
         linkage_matrix,
@@ -582,13 +606,17 @@ def cluster_sites(
         max_samples_per_cluster=max_samples_per_cluster,
         seed=seed,
     )
-    n_sites = int(prediction_matrix.shape[0])
-    zero_indexed = cut_labels(linkage_matrix, n_clusters=selection.module_count, n_sites=n_sites)
+    zero_indexed = cut_labels(
+        linkage_matrix, n_clusters=selection.module_count, n_sites=n_clustered
+    )
     # Convention: module_id 0 is reserved for "unassigned" downstream; shift
     # cluster labels to 1..k so 0 remains reserved.
-    labels = zero_indexed + 1
+    labels = np.zeros(n_sites, dtype=int)
+    labels[informative] = zero_indexed + 1
     provenance = {
         "n_sites": n_sites,
+        "n_sites_clustered": n_clustered,
+        "n_sites_all_nan": n_uninformative,
         "n_kinases": int(prediction_matrix.shape[1]),
         "module_count": int(selection.module_count),
         "selection_reason": selection.selection_reason,
