@@ -48,8 +48,10 @@ def derive_protein_modules(
     -----
     Two proteins get the same module_id iff they have sites in exactly
     the same set of clusters, regardless of how many sites per cluster.
-    Module IDs are assigned in the order the unique patterns first
-    appear when iterating proteins in their input order.
+    Cluster label 0 (unassigned sites) does not count as participation;
+    a protein whose sites are all unassigned gets module_id 0.  Module IDs
+    are assigned in the order the unique patterns first appear when
+    iterating proteins in **sorted** order (``pd.crosstab`` sorts them).
     """
     aligned = site_to_protein.copy()
     aligned.index = pd.Index(aligned.index.astype(str))
@@ -63,14 +65,19 @@ def derive_protein_modules(
 
     proteins = pd.Index(aligned.tolist(), dtype=object)
     # crosstab rows = clusters, columns = proteins, cell = count of sites
-    membership = pd.crosstab(site_clusters, proteins)
+    membership = pd.crosstab(pd.Series(site_clusters.to_numpy(), name="cluster"), proteins)
     membership = (membership > 0).astype(int)
+    # Label 0 = unassigned: not a cluster, must not create a "module".
+    membership = membership.loc[membership.index.astype(int) != 0]
 
     pattern_to_module: dict[tuple[int, ...], int] = {}
     assignments: dict[str, int] = {}
     next_module_id = 1
     for protein in membership.columns:
         pattern = tuple(int(v) for v in membership.loc[:, protein].tolist())
+        if not any(pattern):
+            assignments[str(protein)] = 0
+            continue
         if pattern not in pattern_to_module:
             pattern_to_module[pattern] = next_module_id
             next_module_id += 1
@@ -151,7 +158,7 @@ def extract_site_metadata(
         site_key_values = site_keys.to_numpy()
 
     if gene_column in var.columns:
-        genes = var[gene_column].astype(str).fillna("").to_numpy()
+        genes = var[gene_column].fillna("").astype(str).to_numpy()
     else:
         genes = np.array([""] * len(site_keys), dtype=object)
 

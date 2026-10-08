@@ -10,6 +10,40 @@ While in `0.x`, breaking API changes may appear in any MINOR bump (`0.1 → 0.2`
 
 ## [Unreleased]
 
+### Fixed -- `alphaphos.signalome` review
+
+- **All-NaN sites no longer distort clustering.**  Sites the kinase library
+  rejected were median-filled into identical "average" profiles, formed their
+  own cluster, consumed a module slot and changed the auto-selected k
+  (synthetic: k 10 -> 8).  They are now excluded from the Ward tree and get
+  `module_id` 0 (the reserved "unassigned" value); proteins with only such
+  sites get module 0 too.  `provenance["n_sites_all_nan"]` reports them.
+- `provenance["n_modules"]` counted proteins, not modules (1,019 vs 131 on
+  real data); `n_proteins_assigned` was added alongside the corrected value.
+- `build_signalome` validates its input upfront (DataFrame, non-empty,
+  numeric, unique site ids) instead of failing after clustering with an
+  obscure broadcast error, and **warns when the matrix is not on a [0, 1]
+  scale or when `substrate_support_cutoff` admits > 30 % of cells** -- both
+  of which made the module x kinase table uniform with the previously
+  documented input (raw log2 PWM scores, all 311 kinases, cutoff 0.5).
+- `extract_site_metadata` turned a missing gene into the string `"nan"`.
+- Docstrings: the module-count rule is PhosPy's threshold-then-max-mean rule
+  (which favours the largest admissible k), not "smallest k above threshold";
+  protein module ids follow sorted-protein order.
+
+### Added -- `alphaphos.signalome`
+
+- `prediction_matrix_from_adata(adata, pool, metric="percentile", sites=None,
+  min_top_sites=5)`: builds the intended `build_signalome` input -- Yaffe
+  percentile / 100 on the chosen sites, restricted to the kinases that are
+  the top-ranked kinase of at least `min_top_sites` sites (a percentile cutoff
+  cannot select kinases: every kinase has ~10 % of any site set at
+  percentile >= 0.9 by construction).  Pair with
+  `substrate_support_cutoff=0.9`.
+- `build_signalome(min_module_share_percent=None)`: the expanded view's
+  "regulated module" cutoff defaults to `max(1, 200 / n_kinases)` (twice the
+  uniform share) instead of a fixed 1 %.
+
 ### Fixed -- `alphaphos.kinase` review
 
 - **`import alphaphos` no longer reconfigures `sys.stdout` / `sys.stderr`.**

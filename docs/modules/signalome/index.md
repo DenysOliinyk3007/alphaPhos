@@ -48,7 +48,8 @@ tables:
                                      │
                                      ▼
     ┌──────────────────────────────────────────────────────────────┐
-    │ 1. Precondition scores (fill NaN with column median)         │
+    │ 1. Drop all-NaN sites (module 0); fill remaining NaN with    │
+    │    the column median                                          │
     └──────────────────────────────────────────────────────────────┘
                                      │
                                      ▼
@@ -64,6 +65,8 @@ tables:
     │    Pick k that maximises mean-median-correlation among k's    │
     │    where every cluster has median >= primary_threshold (0.5). │
     │    Fall back to threshold=0.1 if none pass primary.           │
+    │    NB: this favours the largest admissible k -- pass          │
+    │    requested_module_count when you have a prior (see below).  │
     │    Scale-aware: "exact" for n<=5000, "sampled" otherwise.     │
     └──────────────────────────────────────────────────────────────┘
                                      │
@@ -117,8 +120,16 @@ available as a single call, [`build_signalome`](#build_signalome).
 #### `build_signalome`
 
 ```python
+matrix = ap.signalome.prediction_matrix_from_adata(
+    adata,                             # after ap.score_kinases(adata)
+    pool="ser_thr",                    # or "tyrosine"
+    metric="percentile",               # Yaffe percentile / 100 -> [0, 1]; "score" = raw log2 (not recommended)
+    sites=None,                        # optional subset, e.g. significant sites of a contrast
+    min_top_sites=5,                   # keep kinases that are the top-ranked kinase of >= 5 sites
+)
 result = ap.build_signalome(
-    prediction_matrix,                # DataFrame (sites x kinases) -- Yaffe PSSM scores or similar
+    matrix,                            # DataFrame (sites x kinases) on a [0, 1] scale
+    substrate_support_cutoff=0.9,      # cell > cutoff = substrate (0.9 = top-10 % percentile)
     kinase_substrates=None,            # {kinase: [substrate_site_id, ...]}; auto-derived if None
     site_to_protein=None,              # optional; auto-derived from alphaPhos site keys
     site_metadata=None,                # optional; auto-derived from alphaPhos site keys
@@ -132,9 +143,42 @@ result = ap.build_signalome(
     network_correlation_threshold=0.5,
     network_policy="signed",           # "signed" | "positive_only" | "absolute"
     assignment_policy="cutoff_binary", # or "weighted_top"
+    min_module_share_percent=None,     # None -> max(1, 200 / n_kinases): twice the uniform share
     seed=0,
 ) -> SignalomeResult
 ```
+
+#### What to feed it — and why it matters
+
+The pipeline is faithful to PhosR / PhosPy, but PhosR runs on a **[0, 1] kinase–substrate
+score matrix over a few dozen kinases with curated substrates**. Feeding it the raw
+`varm["kinase_score_ser_thr"]` (log2 PWM scores, −19…+13, all 311 kinases) is
+mechanically fine and scientifically empty: on the EGF HeLa series (1,832 regulated sites)
+the module × kinase table had a **maximum share of 0.6–3.8 % per module** (uniform = 0.32 %),
+the kinase network had **17,000 edges among 311 kinases**, and the expanded view 40,000
+rows. `substrate_support_cutoff=0.5` means nothing on a log2 scale.
+
+`prediction_matrix_from_adata` builds the intended input: the Yaffe **percentile / 100**
+(the per-site ranking metric that is comparable across kinases) restricted to the kinases
+that are the **top-ranked kinase of at least `min_top_sites` of your sites**. (A percentile
+cutoff alone cannot select kinases: by construction every kinase has ~10 % of any site set at
+percentile ≥ 0.9.) Use `substrate_support_cutoff=0.9` with it — a cell above 0.9 means the
+site is in that kinase's top-10 % of the reference phosphoproteome. On the EGF HeLa regulated
+sites this keeps 116 kinases (`min_top_sites=5`) or 51 (`min_top_sites=10`); modules then
+rank biologically coherent pairs on top (ERK5/ERK2, JNK1/JNK2, p70S6K/MAPKAPK5, CK2A1/CDC7,
+MAPKAPK2/3, the p38 family) and the network shrinks from 17k to 0.7–2.7k edges. Expect the
+percent shares to stay spread out (max 4–16 % per module): PWM substrate sets overlap
+heavily, so read the module table as a *ranking* of kinases per module, not as a
+partition.
+`build_signalome` warns when the matrix leaves [0, 1] or when the cutoff admits > 30 % of
+cells. Sites with an all-NaN profile (rejected by the kinase library) are labelled module 0
+instead of being median-filled into a spurious cluster.
+
+**Module count.** The automatic rule maximises the mean within-cluster correlation among
+the k whose weakest cluster passes the threshold — a quantity that grows with k, so it tends
+to return `max_modules` (a 3-block toy matrix yields k = 10). Treat the automatic k as an
+upper bound and pass `requested_module_count` when you have a prior, exactly as PhosR's
+`module_res` is user-set.
 
 Returns a frozen `SignalomeResult` with:
 
@@ -160,12 +204,16 @@ adata = ap.collapse_sites(psm_df, condition_df=cond)
 adata = ap.filter_by_completeness(adata, min_valid_frac=2/3)
 adata = ap.impute_hybrid(adata)
 adata = ap.add_kinase_windows(adata, fasta_path="resources/fastas/human.fasta")
-ap.score_kinases(adata)  # populates adata.varm["kinase_score_ser_thr"]
+ap.score_kinases(adata)  # populates adata.varm["kinase_percentile_ser_thr"] (+ raw scores)
+
+# Restrict to the regulated sites and the kinases that have confident substrates among them.
+res = ap.diff_exp_limma_observed_only(adata, condition_column="condition", comparison=("EGF", "ctrl"))[0]
+matrix = ap.signalome.prediction_matrix_from_adata(adata, sites=res.index[res["fdr"] < 0.05])
 
 # Run signalome.  If you have a curated substrate network (OmniPath / PhosphoSitePlus),
 # pass it via kinase_substrates=.  Otherwise the pipeline derives one by thresholding
-# the prediction matrix at substrate_support_cutoff (default 0.5).
-result = ap.build_signalome(adata.varm["kinase_score_ser_thr"])
+# the [0, 1] matrix at substrate_support_cutoff (0.9 = top-10 % percentile).
+result = ap.build_signalome(matrix, substrate_support_cutoff=0.9, requested_module_count=6)
 
 # What the modules look like
 print(result.module_table.head())
