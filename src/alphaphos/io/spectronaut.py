@@ -52,14 +52,24 @@ import pandas as pd
 import pyarrow.parquet as pq
 
 from alphaphos.constants import (
+    COL_CHANNEL,
     COL_EG_IS_DECOY,
+    COL_EG_PRECURSOR_ID,
     COL_EG_QVALUE,
+    COL_FG_ID,
     COL_PG_QVALUE,
+    COL_R_FILENAME,
 )
 from alphaphos.io.contaminants import DEFAULT_CONTAMINANT_PREFIXES, filter_contaminants
 from alphaphos.io.schemas import (
     REQUIRED_COLUMNS,
     all_needed_columns,
+)
+from alphaphos.io.silac import (
+    derive_channel,
+    describe_channels,
+    detect_multichannel,
+    validate_label_channels,
 )
 
 logger = logging.getLogger(__name__)
@@ -77,6 +87,7 @@ DEFAULT_IO_SETTINGS: dict[str, Any] = {
     "contaminant_prefixes": DEFAULT_CONTAMINANT_PREFIXES,
     "eg_qvalue_max": None,  # drop EG.Qvalue > threshold if set
     "pg_qvalue_max": None,  # drop PG.Qvalue > threshold if set
+    "label_channels": None,  # None -> silac.DEFAULT_LABEL_CHANNELS (Lys/Arg triplex)
 }
 
 
@@ -118,6 +129,8 @@ def resolve_io_settings(advanced: dict[str, Any] | None) -> dict[str, Any]:
     prefixes = settings["contaminant_prefixes"]
     if not isinstance(prefixes, (tuple, list)) or not all(isinstance(x, str) for x in prefixes):
         raise ValueError("contaminant_prefixes must be a tuple / list of strings")
+    if settings["label_channels"] is not None:
+        settings["label_channels"] = validate_label_channels(settings["label_channels"])
 
     return settings
 
@@ -237,6 +250,54 @@ def _decoy_mask(series: pd.Series) -> np.ndarray:
 # ---------------------------------------------------------------------------
 
 
+def _assign_channels(
+    df: pd.DataFrame,
+    label_channels: dict[str, str] | None,
+) -> dict[str, int] | None:
+    """Add the derived channel column in place; return per-channel row counts.
+
+    Returns ``None`` for a single-channel report, which is left untouched.
+
+    Raises
+    ------
+    ValueError
+        If the report has several rows per run and precursor but no ``FG.Id``.
+        That is the signature of a multi-channel search exported without the
+        one column that identifies the channel: the rows are real measurements
+        of different channels, but nothing distinguishes them, so collapse
+        would sum light, medium and heavy into a single number.
+    """
+    tags = detect_multichannel(df, label_channels)
+    if tags:
+        df[COL_CHANNEL] = derive_channel(df[COL_FG_ID], label_channels)
+        counts = describe_channels(df[COL_CHANNEL])
+        logger.info(
+            "Multi-channel report: label tags %s -> channels %s.",
+            sorted(tags),
+            counts,
+        )
+        return counts
+
+    if COL_FG_ID in df.columns:
+        return None  # FG.Id exported, no label tags in it -> genuinely single-channel
+
+    key = [COL_R_FILENAME, COL_EG_PRECURSOR_ID]
+    if not set(key).issubset(df.columns) or df.empty:
+        return None
+    n_dup_rows = int(df.duplicated(subset=key, keep=False).sum())
+    if n_dup_rows:
+        raise ValueError(
+            f"{n_dup_rows} of {len(df)} rows share a (run, precursor) key but the "
+            f"report has no {COL_FG_ID!r} column, so they cannot be told apart. "
+            "This is what a multi-channel (SILAC) search looks like when exported "
+            f"without {COL_FG_ID!r} -- the only Spectronaut column that carries "
+            "channel identity. Re-export the report with it included; "
+            "EG.PrecursorId and EG.ModifiedSequence have the label stripped and "
+            "EG.Workflow only says LABEL / LABEL_FREE."
+        )
+    return None
+
+
 def read_psm(
     path: str | Path,
     *,
@@ -351,9 +412,14 @@ def read_psm(
         n_after_contam = len(df)
         logger.info("Dropped contaminants: %d rows remaining.", n_after_contam)
 
+    # ------- multi-channel (SILAC) channel assignment -------
+    channel_counts = _assign_channels(df, settings["label_channels"])
+
     # ------- stamp lineage -------
     df.attrs["source_path"] = str(p)
     df.attrs["engine"] = engine
+    if channel_counts is not None:
+        df.attrs["channels"] = channel_counts
     df.attrs["n_rows_loaded"] = n_loaded
     if n_after_decoys is not None:
         df.attrs["n_rows_after_decoys"] = n_after_decoys

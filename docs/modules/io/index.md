@@ -9,6 +9,13 @@ returns data in a form ready for the collapse or downstream pipeline:
 | DIA-NN | [`read_diann`](diann.md) | PSM `pd.DataFrame` | DIA data processed with DIA-NN &ge;1.9. |
 | FragPipe | [`read_fragpipe_sites`](fragpipe.md) | site-level `AnnData` (already collapsed) | FragPipe's DIA workflow (IonQuant + PTM-Prophet). |
 
+## Multi-channel (SILAC)
+
+Labelled Spectronaut reports need `FG.Id` in the export: it is the only column
+carrying channel identity. `read_spectronaut` then adds a `Channel` column and
+`collapse_sites` treats each run x channel as a sample. A labelled report
+exported without `FG.Id` raises. See [`silac.md`](silac.md).
+
 ## PSM DataFrame schema (Spectronaut / DIA-NN)
 
 Both `read_spectronaut` and `read_diann` return a **PSM-level `pd.DataFrame`** ready for

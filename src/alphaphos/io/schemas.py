@@ -25,6 +25,8 @@ from alphaphos.constants import (
     COL_EG_PTM_ASSAY_PROB,
     COL_EG_PTM_LOC_PROBS,
     COL_EG_QVALUE,
+    COL_EG_WORKFLOW,
+    COL_FG_ID,
     COL_PEP_PEPTIDE_POSITION,
     COL_PG_GENES,
     COL_PG_PROTEIN_GROUPS,
@@ -88,6 +90,11 @@ OPTIONAL_COLUMNS: dict[str, tuple[str, ...]] = {
         COL_EG_IS_DECOY,
         COL_EG_QVALUE,
         COL_PG_QVALUE,
+        # Multi-channel (SILAC). FG.Id is the only carrier of channel identity;
+        # without it a labelled report is indistinguishable from a label-free
+        # one and its channels collapse into one number (see io.silac).
+        COL_FG_ID,
+        COL_EG_WORKFLOW,
     ),
     "Diann": (
         DIANN_SITE_OCCUPANCY_PROBS,  # per-site loc probs (much better than joint)

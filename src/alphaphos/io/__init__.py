@@ -6,6 +6,10 @@ Currently supported:
 - DIA-NN main reports (``read_diann``)
 - FragPipe DIA site-abundance files (``read_fragpipe_sites``)
 
+Multi-channel (SILAC) Spectronaut reports are handled by
+:mod:`alphaphos.io.silac`, which turns the ``FG.Id`` label tags into a channel
+name. ``read_spectronaut`` applies it automatically.
+
 Spectronaut and DIA-NN readers normalize to a common canonical dotted
 column schema that :func:`alphaphos.collapse_sites` consumes. The
 FragPipe reader is different: FragPipe already emits site-level matrices,
@@ -37,6 +41,11 @@ from alphaphos.io.fragpipe import (
     read_fragpipe_sites,
     resolve_fragpipe_io_settings,
 )
+from alphaphos.io.silac import (
+    DEFAULT_LABEL_CHANNELS,
+    derive_channel,
+    detect_multichannel,
+)
 from alphaphos.io.spectronaut import (
     DEFAULT_IO_SETTINGS,
     resolve_io_settings,
@@ -59,4 +68,7 @@ __all__ = [
     "get_default_contaminants_fasta",
     "parse_fasta_accessions",
     "DEFAULT_CONTAMINANT_PREFIXES",
+    "DEFAULT_LABEL_CHANNELS",
+    "derive_channel",
+    "detect_multichannel",
 ]

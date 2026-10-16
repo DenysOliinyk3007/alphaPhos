@@ -24,8 +24,11 @@ import pandas as pd
 from alphaphos.constants import (
     LAYER_INTENSITY_LOG2,
     LAYER_LOCALIZATION,
+    OBS_CHANNEL,
     OBS_PHOSPHO_SELECTIVITY_PCT,
+    OBS_RUN,
     OBS_SAMPLE,
+    SAMPLE_CHANNEL_SEP,
     UNS_ALPHAPHOS,
     UNS_SOURCE_ATTRS,
     VAR_CLASSI_WILSON_LB,
@@ -34,7 +37,9 @@ from alphaphos.constants import (
     VAR_MAX_LOC_PROB,
     VAR_MEAN_LOC_PROB,
     VAR_MIN_LOC_PROB,
+    VAR_N_CLASSI_RUNS,
     VAR_N_CLASSI_SAMPLES,
+    VAR_N_RUNS_DETECTED,
     VAR_N_SAMPLES_DETECTED,
 )
 
@@ -48,6 +53,39 @@ except ImportError:  # pragma: no cover - anndata is a hard dep
 _NULL_LOGGER = logging.getLogger(__name__)
 
 
+def _run_grid_counts(
+    is_classI: np.ndarray,
+    intensity_observed: np.ndarray,
+    sample_runs: pd.Series,
+    obs_index: pd.Index,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Reduce per-sample Class-I / detection masks to per-run counts.
+
+    Both masks are ``(n_samples, n_sites)``. A run counts once for a site if
+    ANY of its channels satisfies the condition, because the run is the unit
+    that carries one independent localisation assay.
+
+    Returns ``(k, n)``: Class-I-and-quantified runs, and quantified runs.
+    """
+    runs = sample_runs.reindex(obs_index)
+    if runs.isna().any():
+        missing = runs.index[runs.isna()].tolist()
+        raise ValueError(f"sample_runs is missing an entry for sample(s): {missing[:5]}")
+
+    codes, _ = pd.factorize(runs, sort=True)
+    n_runs = int(codes.max()) + 1 if len(codes) else 0
+    n_sites = is_classI.shape[1]
+
+    classI_by_run = np.zeros((n_runs, n_sites), dtype=bool)
+    observed_by_run = np.zeros((n_runs, n_sites), dtype=bool)
+    both = is_classI & intensity_observed
+    for i, code in enumerate(codes):
+        classI_by_run[code] |= both[i]
+        observed_by_run[code] |= intensity_observed[i]
+
+    return classI_by_run.sum(axis=0).astype(int), observed_by_run.sum(axis=0).astype(int)
+
+
 def assemble_anndata(
     site_quant: pd.DataFrame,
     site_loc: pd.DataFrame,
@@ -56,6 +94,7 @@ def assemble_anndata(
     condition_df: pd.DataFrame | None = None,
     settings: dict[str, Any],
     stats: dict[str, Any],
+    sample_runs: pd.Series | None = None,
     selectivity: pd.DataFrame | None = None,
     decision_table: pd.DataFrame | None = None,
     source_attrs: dict[str, Any] | None = None,
@@ -139,6 +178,11 @@ def assemble_anndata(
 
     obs = pd.DataFrame(index=site_quant.columns.astype(str))
     obs.index.name = OBS_SAMPLE
+    if sample_runs is not None:
+        obs[OBS_RUN] = sample_runs.reindex(obs.index).to_numpy()
+        obs[OBS_CHANNEL] = [
+            s.split(SAMPLE_CHANNEL_SEP, 1)[1] if SAMPLE_CHANNEL_SEP in s else "" for s in obs.index
+        ]
     if condition_df is not None:
         cdf = condition_df.copy()
         if OBS_SAMPLE not in cdf.columns:
@@ -183,11 +227,18 @@ def assemble_anndata(
     from alphaphos.preprocess.classI_wilson import wilson_lower_bound
 
     intensity_observed = ~np.isnan(X)
-    k_wilson = (is_classI & intensity_observed).sum(axis=0).astype(int)
-    var[VAR_CLASSI_WILSON_LB] = wilson_lower_bound(
-        k_wilson,
-        var[VAR_N_SAMPLES_DETECTED].to_numpy(),
-    )
+    if sample_runs is None:
+        k_wilson = (is_classI & intensity_observed).sum(axis=0).astype(int)
+        n_wilson = var[VAR_N_SAMPLES_DETECTED].to_numpy()
+    else:
+        # Multi-channel: one localisation assay per RUN is shared by that run's
+        # channels, so counting channels as independent observations would
+        # inflate n without adding evidence. Reduce both masks to the run grid
+        # (a run counts once if ANY of its channels qualifies) before counting.
+        k_wilson, n_wilson = _run_grid_counts(is_classI, intensity_observed, sample_runs, obs.index)
+        var[VAR_N_RUNS_DETECTED] = n_wilson
+        var[VAR_N_CLASSI_RUNS] = k_wilson
+    var[VAR_CLASSI_WILSON_LB] = wilson_lower_bound(k_wilson, n_wilson)
 
     adata = ad.AnnData(X=X, obs=obs, var=var)
     adata.layers[LAYER_INTENSITY_LOG2] = X.copy()
