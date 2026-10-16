@@ -64,6 +64,7 @@ nav:
       - alphaphos.io.spectronaut: modules/io/spectronaut.md
       - alphaphos.io.diann: modules/io/diann.md
       - alphaphos.io.fragpipe: modules/io/fragpipe.md
+      - alphaphos.io.silac (SILAC): modules/io/silac.md
     - Preprocess:
       - Overview: modules/preprocess/index.md
       - alphaphos.preprocess.collapse: modules/preprocess/collapse.md

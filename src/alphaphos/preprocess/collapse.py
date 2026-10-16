@@ -62,9 +62,12 @@ except ImportError:  # pragma: no cover
 
 from alphaphos._version import __version__ as _alphaphos_version
 from alphaphos.constants import (
+    COL_CHANNEL,
     COL_EG_PTM_LOC_PROBS,
+    COL_R_FILENAME,
     OBS_CONDITION,
     OBS_SAMPLE,
+    SAMPLE_CHANNEL_SEP,
 )
 from alphaphos.preprocess._collapse.masking import (
     VALID_STRATEGIES,
@@ -253,6 +256,72 @@ def resolve_settings(advanced: dict[str, Any] | None) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+def _expand_channels_to_samples(
+    data: pd.DataFrame,
+    logger: logging.Logger,
+) -> tuple[pd.DataFrame, pd.Series | None]:
+    """Fold a multi-channel report's channel into the sample id.
+
+    A SILAC channel is a separate sample, not a separate feature: light,
+    medium and heavy come from different biological material measured in one
+    run. Rewriting ``R.FileName`` to ``run::channel`` is what makes the rest
+    of the pipeline correct without special-casing every stage.
+
+    Returns the (possibly rewritten) frame and a ``sample -> run`` Series,
+    or ``(data, None)`` when the report is single-channel.
+    """
+    if COL_CHANNEL not in data.columns:
+        return data, None
+
+    runs = data[COL_R_FILENAME].astype(str)
+    offenders = sorted(set(runs[runs.str.contains(SAMPLE_CHANNEL_SEP, regex=False)]))
+    if offenders:
+        raise ValueError(
+            f"Run name(s) contain {SAMPLE_CHANNEL_SEP!r}, which alphaPhos uses to join "
+            f"run and channel into a sample id: {offenders[:3]}. Rename the runs."
+        )
+
+    data = data.copy()
+    channels = data[COL_CHANNEL].astype(str)
+    data[COL_R_FILENAME] = runs + SAMPLE_CHANNEL_SEP + channels
+    sample_runs = pd.Series(runs.to_numpy(), index=data[COL_R_FILENAME].to_numpy())
+    sample_runs = sample_runs[~sample_runs.index.duplicated()]
+    sample_runs.index.name = OBS_SAMPLE
+
+    logger.info(
+        "Multi-channel collapse: %d run(s) x %d channel(s) -> %d samples.",
+        runs.nunique(),
+        channels.nunique(),
+        len(sample_runs),
+    )
+    return data, sample_runs
+
+
+def _check_condition_df_samples(
+    condition_df: pd.DataFrame | None,
+    sample_runs: pd.Series,
+) -> None:
+    """Fail early when ``condition_df`` was written against runs, not channels.
+
+    In a SILAC design the condition belongs to the channel, so ``sample`` must
+    name ``run::channel``. Passing bare run names is the obvious first mistake
+    and otherwise surfaces as every sample silently losing its condition.
+    """
+    if condition_df is None:
+        return
+    given = set(condition_df[OBS_SAMPLE].astype(str))
+    if given & set(sample_runs.index):
+        return
+    if given & set(sample_runs.to_numpy()):
+        example = f"{sample_runs.index[0]}"
+        raise ValueError(
+            "condition_df 'sample' values name runs, but this is a multi-channel "
+            "report where a sample is one run x one channel and the condition "
+            f"belongs to the channel. Use ids like {example!r} "
+            f"(run + {SAMPLE_CHANNEL_SEP!r} + channel)."
+        )
+
+
 def collapse_sites(
     data: pd.DataFrame,
     *,
@@ -354,6 +423,15 @@ def collapse_sites(
         raise KeyError(f"condition_df is missing required columns: {sorted(missing)}")
 
     stats: dict[str, Any] = {"n_psms_loaded": len(data)}
+
+    # -- Pre-stage 0: multi-channel (SILAC). A sample is one run x one channel,
+    # so fold the channel into R.FileName and every downstream stage -- pivot,
+    # masking, aggregation -- treats channels as the separate samples they are.
+    data, sample_runs = _expand_channels_to_samples(data, logger)
+    if sample_runs is not None:
+        stats["n_channels"] = int(data[COL_CHANNEL].nunique())
+        stats["n_runs"] = int(sample_runs.nunique())
+        _check_condition_df_samples(condition_df, sample_runs)
 
     # -- Selectivity: per-sample phospho fraction from RAW PSMs (before any filter).
     selectivity = compute_selectivity(data)
@@ -490,6 +568,7 @@ def collapse_sites(
         condition_df=condition_df,
         settings=settings,
         stats=stats,
+        sample_runs=sample_runs,
         selectivity=selectivity,
         decision_table=decision_table,
         source_attrs=source_attrs,

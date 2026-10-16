@@ -36,6 +36,20 @@ COL_PG_PROTEIN_GROUPS = "PG.ProteinGroups"
 # Spectronaut's "auto" (Settings) quant column name.
 COL_CANONICAL_QUANT = "EG.TotalQuantity (Settings)"
 
+# Multi-channel (SILAC) columns. FG.Id is the ONLY Spectronaut column that
+# carries channel identity: EG.PrecursorId and EG.ModifiedSequence have the
+# label stripped, and EG.Workflow only says LABEL / LABEL_FREE.
+COL_FG_ID = "FG.Id"
+COL_EG_WORKFLOW = "EG.Workflow"
+
+# EG.Workflow values.
+WORKFLOW_LABELED = "LABEL"
+WORKFLOW_LABEL_FREE = "LABEL_FREE"
+
+# DERIVED, not read from the report: the channel name that io.silac assigns
+# from the FG.Id label tags. Present only for multi-channel reports.
+COL_CHANNEL = "Channel"
+
 
 # ---------------------------------------------------------------------------
 # DIA-NN input columns
@@ -128,6 +142,13 @@ VAR_N_CLASSI_SAMPLES = "n_classI_samples"
 VAR_FRACTION_CLASSI = "fraction_classI"
 VAR_CLASSI_WILSON_LB = "classI_wilson_lb"
 
+# Multi-channel (SILAC) only. Localisation is assigned once per RUN, not per
+# channel, so the Class-I evidence count must be taken on the run grid --
+# counting 6 runs x 3 channels as 18 independent observations makes the Wilson
+# lower bound anti-conservative (18/18 -> 0.871 vs the true 6/6 -> 0.670).
+VAR_N_RUNS_DETECTED = "n_runs_detected"
+VAR_N_CLASSI_RUNS = "n_classI_runs"
+
 
 # ---------------------------------------------------------------------------
 # AnnData .obs columns (public output schema)
@@ -136,6 +157,14 @@ VAR_CLASSI_WILSON_LB = "classI_wilson_lb"
 OBS_SAMPLE = "sample"
 OBS_CONDITION = "condition"
 OBS_PHOSPHO_SELECTIVITY_PCT = "phospho_selectivity_pct"
+
+# Multi-channel (SILAC) only: a sample is one run x one channel, and these two
+# obs columns record which is which.
+OBS_RUN = "run"
+OBS_CHANNEL = "channel"
+
+# Joins run and channel into the sample id, e.g. "run_E2::heavy".
+SAMPLE_CHANNEL_SEP = "::"
 
 
 # ---------------------------------------------------------------------------

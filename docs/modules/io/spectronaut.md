@@ -100,6 +100,14 @@ adata = ap.collapse_sites(psm, condition_df=conditions)
   collapse all live in [`collapse_sites`](../preprocess/collapse.md) so they can be
   tuned by strategy without re-parsing the raw report.
 
+## Multi-channel (SILAC)
+
+A labelled report needs `FG.Id` in the export: it is the only column carrying
+channel identity. The reader then adds a `Channel` column and `collapse_sites`
+treats each run x channel as a sample. A labelled report exported WITHOUT
+`FG.Id` raises rather than summing its channels together. See
+[`silac.md`](silac.md).
+
 ## Known caveats
 
 - `EG.PTMAssayProbability` (peptide-level assay confidence) is **not** used as a filter

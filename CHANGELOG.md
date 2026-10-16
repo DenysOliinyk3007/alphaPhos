@@ -10,6 +10,75 @@ While in `0.x`, breaking API changes may appear in any MINOR bump (`0.1 → 0.2`
 
 ## [Unreleased]
 
+### Added -- `alphaphos.io.silac`: multi-channel (SILAC) support
+
+- **`read_spectronaut` now reads multi-channel reports.**  Spectronaut encodes
+  the metabolic label as a residue tag inside `FG.Id`
+  (`...PGPAQPGPR[Arg10]_.2`); **no other column carries it** -- `EG.PrecursorId`
+  and `EG.ModifiedSequence` have the label stripped, and `EG.Workflow` only
+  says LABEL / LABEL_FREE (its LABEL_FREE rows carry label tags too).  `FG.Id`
+  and `EG.Workflow` were added to the Spectronaut schema, and the reader
+  derives a `Channel` column plus `df.attrs["channels"]` row counts.  The
+  default plex is the Lys/Arg triplex (no tag -> light, Arg6/Lys4 -> medium,
+  Arg10/Lys8 -> heavy); override with
+  `advanced={"label_channels": {...}}`.  A precursor carrying tags from two
+  channels raises.
+- **A labelled report exported without `FG.Id` now raises.**  Previously it was
+  read with no warning at all: the 2-3 rows per (run, precursor) survived
+  indistinguishable and `collapse_sites` summed light, medium and heavy into
+  one number per run (6 samples where there should be 18).
+- **`collapse_sites` treats a channel as a sample.**  The channel is folded
+  into the sample id (`run::channel`), so pivoting, masking and aggregation
+  all operate per channel without special-casing; `obs` gains `run` and
+  `channel`.  A `condition_df` naming runs rather than channels raises, since
+  in a SILAC design the condition belongs to the channel.
+- **Class-I evidence is counted on the RUN grid.**  Spectronaut assigns the
+  site once per channel group -- 0 of 101,076 groups in the reference dataset
+  differ between channels on localisation probability, assay probability,
+  protein PTM locations or q-value -- so the channels of a run carry no
+  independent localisation evidence.  Counting them separately inflates the
+  Wilson/Jeffreys denominator and makes the bound anti-conservative (18/18 ->
+  0.871 against the true 6/6 -> 0.670; 12/18 -> 0.437 against 4/6 -> 0.286).
+  New `var` columns `n_runs_detected` and `n_classI_runs` (multi-channel only)
+  back `classI_wilson_lb`, so `strategy="wilson"` and
+  `wilson_threshold_sensitivity` stay correct with no change at the call site.
+  `n_samples_detected` still counts the channel grid, because quantification
+  really is per channel.
+- `docs/modules/io/silac.md`: export requirements, the plex definition, the
+  run-grid rationale, the paired-design recipe
+  (`diff_exp_limma(condition_column="channel", covariates=["run"])`), and what
+  the reference dataset does and does not validate.
+
+### Known limitations -- SILAC
+
+- Spectronaut only; DIA-NN multi-channel is not wired up.
+- **No precursor-level ratio output.**  Site-level ratios must not be formed by
+  dividing the collapsed channels: 64.7% of sites carry more than one
+  precursor and in 75.5% of those the channels do not cover the same
+  precursors, so dividing per-channel sums puts different precursors in the
+  numerator and denominator.  Use the blocking-factor design instead.
+- **No normalisation step.**  Channels are never mixed at exactly 1:1:1, and
+  the offset reads as a global fold change on top of the biology (reference
+  dataset: median log2 H/L -0.25 uncorrected, +0.012 after per-sample median
+  centring).  Median-centre by hand before testing.
+- No label-incorporation or arginine-to-proline conversion QC.
+
+### Validated -- SILAC
+
+- The reference dataset is an EGF time course (light unstimulated, medium
+  5 min, heavy 10 min, 1:1:1, six runs), and the expected biology comes through
+  with the right sign, magnitude and ORDER: RPS6 S235 / S236 / S240 rise
+  +2.0 to +2.1 at 5 min and +3.3 to +3.4 at 10 min, and the ERK feedback site
+  SOS1 S1134 rises +2.14 then +3.05.  A monotonic rise across three channels
+  is only possible if channels are assigned correctly, kept separate and
+  quantified per channel, so this checks collapse directly.  Fold changes at
+  5 and 10 min correlate at Spearman 0.59, and 173 of 344 sites up > 2x at
+  10 min are already up > 2x at 5 min.
+- Global motif enrichment among induced sites is weak and should not be read as
+  confirmation: proline-directed 48.8% vs 44.8% background (OR 1.18, p = 0.16),
+  no basophilic signal, and the only significant term is a depletion of the
+  acidic CK2 motif (OR 0.72, p = 0.018).
+
 ## [0.24.0] - 2026-10-16
 
 ### Upgrade notes -- defaults that change results
