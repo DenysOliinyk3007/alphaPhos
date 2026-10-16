@@ -4,7 +4,7 @@ Landing page for new users.  Read this first: it inventories the public
 API and walks a decision tree from raw MS output to publication-ready
 tables and figures.
 
-Version-tied to **alphaPhos 0.22.0** (July 2026); check `ap.__version__`
+Version-tied to **alphaPhos 0.24.0** (October 2026); check `ap.__version__`
 on a newer release.  Per-module deep dives live under
 [`docs/modules/`](modules/); an alpha-tester onboarding note is at
 [`docs/alpha-tester-guide.md`](alpha-tester-guide.md); the "why these

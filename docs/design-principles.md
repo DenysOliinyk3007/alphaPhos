@@ -205,7 +205,7 @@ Every alphaPhos function that mutates the AnnData stamps its parameters and resu
 
 ## 4. What's still rough
 
-Honest inventory of gaps as of 0.22.0. None of these block the alpha; some will block the beta.
+Honest inventory of gaps as of 0.24.0. None of these block the alpha; some will block the beta.
 
 - **`viz` submodule is a stub**. `alphaphos.viz` exists but doesn't ship reusable plotters. Publication-quality volcano, heatmap, PCA scatter, KSEA dotplot, and enrichment dotplot are all coming — right now users build these themselves against the DE results. `ap.qc.generate_dashboard` covers the exploratory-plot side; deliberate figure design is manual.
 - **Memory scaling beyond `n = 500` is not validated**. `impute_knn_site_based` becomes expensive; PIMMS-DAE stays bounded but hasn't been stress-tested at n = 1000+. If you're running a study that big, run once at a subsample first and confirm before committing.

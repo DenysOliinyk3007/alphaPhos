@@ -43,7 +43,7 @@ To verify:
 
 ```python
 import alphaphos as ap
-print(ap.__version__)   # should print '0.22.0' or newer
+print(ap.__version__)   # should print '0.24.0' or newer
 ```
 
 **Optional extras** (skip for the quickstart; needed for deep-learning imputation, kinase enrichment, UMAP, and the QC dashboard):

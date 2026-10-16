@@ -2,7 +2,7 @@
 
 **Python-native phosphoproteomics analysis toolkit for DIA workflows and large-cohort studies.** Empirically-derived defaults, scale-aware filtering and imputation, and full scanpy / AnnData interoperability.
 
-**Status:** alpha (v0.23.0). Core science modules (IO → collapse → filter → impute → DE → enrichment → dimred → signalome) are populated and tested (800+ unit tests, CI green on Windows + Linux, Python 3.10–3.13). API is stable enough for real analyses but may still change in minor bumps. Send feedback: see [`docs/alpha-tester-guide.md`](docs/alpha-tester-guide.md).
+**Status:** alpha (v0.24.0). Core science modules (IO → collapse → filter → impute → DE → enrichment → dimred → signalome) are populated and tested (1,050+ unit tests, CI green on Windows + Linux, Python 3.10–3.13). API is stable enough for real analyses but may still change in minor bumps. Send feedback: see [`docs/alpha-tester-guide.md`](docs/alpha-tester-guide.md).
 
 ## Start here
 

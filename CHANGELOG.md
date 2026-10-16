@@ -10,6 +10,37 @@ While in `0.x`, breaking API changes may appear in any MINOR bump (`0.1 → 0.2`
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-10-16
+
+### Upgrade notes -- defaults that change results
+
+This release changes several defaults so the out-of-the-box result is the
+correct one.  Each is restorable:
+
+- **Differential expression uses limma-trend.**  Results shift slightly
+  (EGF HeLa: 1,782 -> 1,842 sites at 5 % FDR).  Restore the constant prior
+  with `advanced={"trend": False}`.
+- **`predict_kinases` ranks by percentile**, not raw log2 PWM score -- raw
+  scores are not comparable across kinases.  Restore with `metric="score"`.
+- **Integer-coded covariates raise** instead of being fit as a linear trend.
+  Pass `.astype(str)` for a factor, `.astype(float)` for a continuous
+  covariate.
+- **`advanced={"robust": True}` raises `NotImplementedError`**: inmoose 0.9.1
+  does not implement the Phipson 2016 robust prior and neither does alphaPhos.
+- **Duplicate site ids raise in `gsea()`** instead of silently inflating the
+  universe.  Aggregate first (keep the largest |stat| per site).
+- **`ora()` tests depletion**: `min_overlap` defaults to 0 and the new
+  `min_set_size=5` filters on the hit-independent restricted set size.
+- **`gsea()` no longer caps set size** (`max_set_size=None`); fgsea's 500 is a
+  gene-level heuristic that skipped 4 of the 9 shipped site-set libraries.
+- **Signalome module ids changed**: all-NaN sites are excluded from the Ward
+  tree and take `module_id` 0, which also changes the auto-selected k.
+- **KSEA wrappers read site keys from the index** (`id_col=None`, new default)
+  and raise when every pool fails instead of returning an empty dict.
+- **Kinase provenance moved** from `uns["alphaphos_kinase"]` to
+  `uns["alphaphos"]["kinase_scores"]`.
+- **`import alphaphos` no longer reconfigures `sys.stdout` / `sys.stderr`.**
+
 ### Fixed -- `alphaphos.signalome` review
 
 - **All-NaN sites no longer distort clustering.**  Sites the kinase library
