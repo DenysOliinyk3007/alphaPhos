@@ -578,11 +578,11 @@ def diff_exp_limma_contrasts(
     dict[str, pandas.DataFrame]
         One entry per contrast, insertion order preserved.  Columns::
 
-            log2fc / estimate  se  t_stat  p_value  fdr  ave_expr [ df_moderated ]
+            log2fc / estimate  se  t_stat  p_value  fdr  ave_expr [ df_moderated  prior_variance ]
 
-        ``joint=True`` results carry a ``df_moderated`` column; the
-        ``.attrs["prior_variance"]`` / ``prior_df`` fields record the
-        joint EB prior estimated across all features.  ``joint=False``
+        ``joint=True`` results carry ``df_moderated`` and ``prior_variance``
+        columns (the joint EB prior, per feature under limma-trend);
+        ``.attrs["prior_df"]`` / ``["trend"]`` record the rest of the prior.  ``joint=False``
         results match :func:`diff_exp_limma`'s columns exactly (log2fc,
         se, t_stat, p_value, fdr, B, ave_expr).
     """
@@ -693,7 +693,6 @@ def diff_exp_limma_contrasts(
         )
         r.attrs["treatment"] = trt
         r.attrs["control"] = ctrl
-        r.attrs["prior_variance"] = prior.prior_variance
         r.attrs["prior_df"] = prior.prior_df
         r.attrs["trend"] = prior.trend
         finalized[name] = r

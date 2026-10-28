@@ -8,7 +8,7 @@ Thanks for trying alphaPhos while it's still alpha. This page is short on purpos
 
 ## What you're testing
 
-alphaPhos 0.24.0 — a Python-native phosphoproteomics analysis package built for DIA workflows and large-cohort studies. Core science modules (IO → collapse → filter → impute → DE → enrichment) are populated and tested; polish (visualization, error messages, docs) is uneven.
+alphaPhos 0.25.0 — a Python-native phosphoproteomics analysis package built for DIA workflows and large-cohort studies. Core science modules (IO → collapse → filter → impute → DE → enrichment) are populated and tested; publication figures ship in `ap.viz`; polish (error messages, docs) is uneven.
 
 The public API you should try is inventoried in [`how-to-use-alphaphos.md`](how-to-use-alphaphos.md). The design choices (why these defaults, why these gates) are explained in [`design-principles.md`](design-principles.md). The 30-minute smoke test is [`quickstart.md`](quickstart.md).
 

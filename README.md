@@ -2,7 +2,7 @@
 
 **Python-native phosphoproteomics analysis toolkit for DIA workflows and large-cohort studies.** Empirically-derived defaults, scale-aware filtering and imputation, and full scanpy / AnnData interoperability.
 
-**Status:** alpha (v0.24.0). Core science modules (IO → collapse → filter → impute → DE → enrichment → dimred → signalome) are populated and tested (1,050+ unit tests, CI green on Windows + Linux, Python 3.10–3.13). API is stable enough for real analyses but may still change in minor bumps. Send feedback: see [`docs/alpha-tester-guide.md`](docs/alpha-tester-guide.md).
+**Status:** alpha (v0.25.0). Core science modules (IO → collapse → filter → impute → DE → enrichment → dimred → signalome → figures) are populated and tested (1,130+ unit tests, CI green on Windows + Linux, Python 3.10–3.13). API is stable enough for real analyses but may still change in minor bumps. Send feedback: see [`docs/alpha-tester-guide.md`](docs/alpha-tester-guide.md).
 
 ## Start here
 
@@ -27,6 +27,7 @@ Optional extras (each gated at call time — install only what you need):
 | `[enrichment]` | `decoupler`, `gseapy`, `omnipath` | KSEA, pathway ORA / GSEA |
 | `[dimred]` | `umap-learn` | `ap.dimred.umap` (t-SNE works without) |
 | `[qc]` | `bokeh`, `plotly`, `kaleido` | `ap.generate_dashboard`, QC v2 panels |
+| `[viz]` | `plotly`, `kaleido` | `ap.viz` figures and static PDF / SVG export |
 | `[pimms]` | `pimms-learn` (torch + fastai) | `ap.impute_pimms` deep-learning imputation |
 | `[all]` | all of the above | one-shot install |
 | `[dev,docs]` | `ruff`, `pytest`, `mkdocs-material`, … | contributing |
@@ -66,6 +67,7 @@ The full quickstart walks through filter → completeness → differential expre
 - **Dimensionality reduction** — PCA (standard / NIPALS / PPCA), t-SNE, UMAP; same shared API
 - **Cross-species** — mouse ↔ human orthology (`map_to_human`, validated on full SwissProt)
 - **QC** — Bokeh dashboard + composable Plotly panels
+- **Figures** — `ap.viz`: volcano, PCA / UMAP / t-SNE, per-sample intensity boxes, single-site replicate plot, heatmap, KSEA bar, enrichment dot plot, threshold retention curve; one house style, colourblind-audited palettes
 - **Advisor** — `recommend_pipeline` inspects your AnnData and prints a scale-aware recipe
 
 Full module inventory + per-function reference: [`docs/how-to-use-alphaphos.md`](docs/how-to-use-alphaphos.md) §1.

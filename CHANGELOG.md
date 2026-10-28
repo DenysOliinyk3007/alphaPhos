@@ -10,6 +10,57 @@ While in `0.x`, breaking API changes may appear in any MINOR bump (`0.1 → 0.2`
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-10-28
+
+### Upgrade notes -- changes that can break existing code
+
+- **`prior_variance` moved from `attrs` to a column** in `diff_exp_anova` and
+  `diff_exp_limma_contrasts(joint=True)` results.  Read
+  `result["prior_variance"]` instead of `result.attrs["prior_variance"]`.
+- **A SILAC (labelled) Spectronaut report exported without `FG.Id` raises**
+  instead of silently summing light, medium and heavy into one value.
+- **For a labelled report, `condition_df` must name channels** (`run::channel`),
+  not runs.
+
+### Added -- `alphaphos.viz`: publication-style figures
+
+- **New `ap.viz` module** (optional `[viz]` extra: `plotly`, `kaleido`).  Each
+  builder takes an alphaPhos result as-is and returns a Plotly figure:
+  `volcano` (DE table), `embedding` (PCA / UMAP / t-SNE from `obsm`),
+  `intensity_distribution` (one box per sample, for loading / normalisation
+  checks), `site_abundance` (one site across groups with every replicate),
+  `heatmap` (z-scored or raw, clustered), `kinase_activity_bar` (KSEA),
+  `enrichment_dotplot` (site-set `ora` / `gsea` and gene-level
+  `pathway_enrichment` / `pathway_gsea`), `retention_curve`
+  (`wilson_threshold_sensitivity` or any sweep).  `save_figure` writes one
+  format chosen by suffix (`.html` self-contained, `.pdf` / `.svg` / `.png`).
+- **One house style for all of them**, kept in `ap.viz.style`: `plotly_white`,
+  a black outline on every mark, colourblind-audited palettes keyed by group
+  count (condition, embedding, volcano, heatmap, diverging), individual points
+  for groups under n = 100, height 600 with width growing in 300 px steps to
+  1800, tick labels over 20 characters shortened to their distinguishing token,
+  annotations instead of legends.
+- **The volcano's y-axis is always -log10 FDR**, never the nominal p-value, so
+  the dashed line at `fdr_threshold` is exactly where significance starts.
+- **Every categorical fill is light enough to carry black replicate points**
+  (L\* ≥ 34.5): the near-black `#001219` of the earlier palette draft is
+  replaced, and the sets were re-audited (colourblind ΔE ≥ 11.3 for 2-8 groups;
+  2-4 groups also survive grayscale printing).
+- `ap.viz` imports without plotly; the builders raise with an install hint.
+
+### Fixed -- per-feature EB prior moved out of `attrs` (breaking)
+
+- **`prior_variance` is now a column**, not `result.attrs["prior_variance"]`,
+  in `diff_exp_anova`, `diff_exp_limma_contrasts(joint=True)` and the
+  `stats.linear_model.moderated_t_test` / `moderated_f_test` they wrap.  Under the limma-trend default it is one
+  value per site, and an array in `attrs` had two faults: it did not follow rows
+  through sorting or filtering (silently misaligned), and it made **every**
+  `result.nsmallest(...)` / `nlargest(...)` raise `ValueError: The truth value
+  of an array ... is ambiguous` (pandas compares `attrs` inside `concat`).
+  Without a trend the column holds the one constant prior.  `attrs` now carry
+  scalars only (`prior_df`, `trend`, ...).  Migrate reads of
+  `attrs["prior_variance"]` to `result["prior_variance"]`.
+
 ### Added -- `alphaphos.io.silac`: multi-channel (SILAC) support
 
 - **`read_spectronaut` now reads multi-channel reports.**  Spectronaut encodes
