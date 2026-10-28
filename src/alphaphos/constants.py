@@ -22,6 +22,8 @@ from __future__ import annotations
 # ---------------------------------------------------------------------------
 
 COL_R_FILENAME = "R.FileName"
+# Spectronaut's own condition annotation; rarely set, kept when present.
+COL_R_CONDITION = "R.Condition"
 COL_EG_PRECURSOR_ID = "EG.PrecursorId"
 COL_PEP_PEPTIDE_POSITION = "PEP.PeptidePosition"
 COL_EG_PTM_ASSAY_PROB = "EG.PTMAssayProbability"

@@ -31,6 +31,13 @@ Public API
 """
 
 from alphaphos.proteome.collapse import collapse_proteome
+from alphaphos.proteome.contaminants import (
+    contaminant_fraction,
+    drop_contaminant_proteins,
+    protein_contaminant_mask,
+)
+from alphaphos.proteome.detect import ReportFormat, detect_report_format
+from alphaphos.proteome.io_diann_short import read_diann_pg_matrix
 from alphaphos.proteome.io_long import read_spectronaut_long
 from alphaphos.proteome.io_short import read_spectronaut_short
 from alphaphos.proteome.pairing import phospho_over_proteome
@@ -38,6 +45,12 @@ from alphaphos.proteome.pairing import phospho_over_proteome
 __all__ = [
     "read_spectronaut_short",
     "read_spectronaut_long",
+    "read_diann_pg_matrix",
+    "detect_report_format",
+    "ReportFormat",
     "collapse_proteome",
     "phospho_over_proteome",
+    "contaminant_fraction",
+    "drop_contaminant_proteins",
+    "protein_contaminant_mask",
 ]

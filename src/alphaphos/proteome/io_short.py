@@ -4,10 +4,13 @@ Format expectation
 ------------------
 - Two identifier columns: ``PG_ProteinGroups`` and ``PG_Genes``
   (semicolon-joined group members allowed, e.g. ``P1;P2;P3``).
-- One quantitative column per run named
-  ``[<index>]_<runname>_raw_PG_Quantity`` (or ``.PG.Quantity`` in some
-  Spectronaut exports).  Values are **raw linear intensity**; the reader
-  log2-transforms them (positive values only; zeros and negatives → NaN).
+- One quantitative column per run.  Spectronaut writes
+  ``[<index>] <runname>.raw.PG.Quantity``; exports re-saved with
+  underscores read ``[<index>]_<runname>_raw_PG_Quantity``.  Both are
+  accepted.  Values are **raw linear intensity**; the reader log2-transforms
+  them (positive values only; zeros and negatives → NaN).
+- Identifier columns are accepted dotted (``PG.ProteinGroups``, as
+  Spectronaut writes them) or underscored, and come out underscored.
 - Non-matching columns (e.g. ``PG_UniProtIds``) are propagated to
   ``adata.var`` verbatim.
 
@@ -35,14 +38,14 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Matches: [<n>]_<runname>_raw_PG_Quantity   (accepts both '_' and '.' in the
-# trailing PG_Quantity marker; Spectronaut has historically shipped both).
+# Matches "[<n>] <run>.raw.PG.Quantity" (as Spectronaut writes it) and
+# "[<n>]_<run>_raw_PG_Quantity" (the same export re-saved with underscores).
 _QUANT_COL_RE = re.compile(
     r"""
     ^\[(?P<idx>\d+)\]           # leading [N]
-    _
+    [ _]                        # space (Spectronaut) or underscore
     (?P<run>.+?)                # run name (non-greedy)
-    _raw
+    [_.]raw
     [_.]                        # separator
     PG
     [_.]                        # separator
@@ -55,6 +58,8 @@ _QUANT_COL_RE = re.compile(
 # that doesn't match _QUANT_COL_RE and isn't in this list is still copied to
 # .var as-is, but these are the ones we always expect.
 _METADATA_COLS_EXPECTED = ("PG_ProteinGroups", "PG_Genes")
+# Index of .var in every protein-level AnnData alphaPhos builds.
+PG_INDEX = "PG_ProteinGroups"
 
 
 def read_spectronaut_short(
@@ -101,6 +106,7 @@ def read_spectronaut_short(
     """
     path = Path(path)
     df, fmt = _read_report(path)
+    df = df.rename(columns=_normalise_metadata_name)
 
     quant_cols, meta_cols = _classify_columns(df.columns)
     logger.info(
@@ -110,19 +116,18 @@ def read_spectronaut_short(
         len(quant_cols),
         meta_cols,
     )
-
     if not quant_cols:
         raise ValueError(
-            f"No columns matching the pattern '[N]_<runname>_raw_PG_Quantity' "
-            f"were found in {path.name}. Got {len(df.columns)} columns; first few: "
-            f"{list(df.columns[:5])}"
+            f"No columns matching '[N] <run>.raw.PG.Quantity' were found in {path.name}. "
+            f"Got {len(df.columns)} columns; first few: {list(df.columns[:5])}"
         )
+    if PG_INDEX not in df.columns:
+        raise ValueError(f"{path.name} has no PG.ProteinGroups column.")
 
     # Build sample-name → column-name map from the quant col regex.
     sample_to_col: dict[str, str] = {}
     for col in quant_cols:
-        m = _QUANT_COL_RE.match(col)
-        run = m.group("run")
+        run = _QUANT_COL_RE.match(col).group("run")
         if run in sample_to_col:
             raise ValueError(
                 f"Duplicate run name after parsing: {run!r} appears in both "
@@ -130,23 +135,55 @@ def read_spectronaut_short(
             )
         sample_to_col[run] = col
 
-    samples = list(sample_to_col.keys())
+    quant = df[list(sample_to_col.values())].set_axis(list(sample_to_col), axis=1)
+    var = df[list(meta_cols)]
+    return _build_protein_adata(
+        quant,
+        var,
+        condition_df=condition_df,
+        reader="short",
+        fmt=fmt,
+        path=path,
+        caller="read_spectronaut_short",
+    )
 
-    # Assemble the (n_samples, n_proteins) log2 matrix.
-    quant = df[[sample_to_col[s] for s in samples]].to_numpy(
-        dtype=np.float64
-    )  # (n_proteins, n_samples)
-    with np.errstate(invalid="ignore", divide="ignore"):
-        # log2 of non-positive → NaN (matches how phospho path treats missing)
-        quant_log2 = np.where(quant > 0, np.log2(quant, where=quant > 0), np.nan)
+
+def _normalise_metadata_name(col: object) -> str:
+    """``PG.ProteinGroups`` (as Spectronaut writes it) -> ``PG_ProteinGroups``."""
+    col = str(col)
+    if _QUANT_COL_RE.match(col):
+        return col
+    return "PG_" + col[3:] if col.startswith("PG.") else col
+
+
+def _build_protein_adata(
+    quant: pd.DataFrame,
+    var: pd.DataFrame,
+    *,
+    condition_df: pd.DataFrame | None,
+    reader: str,
+    fmt: str,
+    path: Path,
+    caller: str,
+) -> ad.AnnData:
+    """Protein-level AnnData from a (proteins x runs) linear-intensity table.
+
+    Shared by the short readers so every engine yields the same layout:
+    log2 ``.X`` (non-positive -> NaN), ``layers["intensity_log2"]``, ``.var``
+    indexed by ``PG_ProteinGroups``, ``.obs`` indexed by run and joined with
+    ``condition_df``, provenance in ``.uns["alphaphos_proteome"]``.
+    """
+    samples = [str(c) for c in quant.columns]
+    values = quant.to_numpy(dtype=np.float64)  # (n_proteins, n_samples)
+    # log2 of non-positive → NaN (matches how phospho path treats missing);
+    # NaN-filled `out` so cells skipped by `where` are NaN, not uninitialised.
+    quant_log2 = np.log2(values, out=np.full_like(values, np.nan), where=values > 0)
     X = quant_log2.T  # (n_samples, n_proteins)
 
-    # Build var (per-protein metadata).
-    var = df[list(meta_cols)].copy()
-    var.index = df["PG_ProteinGroups"].astype(str)
-    var.index.name = "PG_ProteinGroups"
+    var = var.copy()
+    var.index = var[PG_INDEX].astype(str)
+    var.index.name = PG_INDEX
 
-    # Build obs (per-sample metadata).
     obs = pd.DataFrame(index=pd.Index(samples, name="sample"))
     n_matched, n_unmatched_cond, unmatched_samples = 0, 0, []
     if condition_df is not None:
@@ -159,8 +196,7 @@ def read_spectronaut_short(
         n_unmatched_cond = len(cdf.index.difference(obs.index))
         obs = obs.join(cdf)  # unmatched samples get NaN in condition columns
 
-    # Assemble AnnData (deferred import so alphaphos.proteome package can be
-    # imported at top-level without anndata being installed).
+    # Deferred so alphaphos.proteome imports without anndata installed.
     import anndata as ad
 
     adata = ad.AnnData(X=X, obs=obs, var=var)
@@ -169,7 +205,7 @@ def read_spectronaut_short(
     n_missing = int(np.isnan(adata.X).sum())
     total = int(adata.X.size)
     adata.uns["alphaphos_proteome"] = {
-        "reader": "short",
+        "reader": reader,
         "format": fmt,
         "path": str(path),
         "stats": {
@@ -184,16 +220,18 @@ def read_spectronaut_short(
     }
     if unmatched_samples:
         logger.warning(
-            "read_spectronaut_short: %d/%d samples in the report have no row in "
-            "condition_df (their .obs values will be NaN). First few: %s",
+            "%s: %d/%d samples in the report have no row in condition_df "
+            "(their .obs values will be NaN). First few: %s",
+            caller,
             len(unmatched_samples),
             adata.n_obs,
             unmatched_samples[:5],
         )
     if n_unmatched_cond:
         logger.warning(
-            "read_spectronaut_short: %d rows in condition_df have no matching "
-            "sample in the report and were dropped from .obs.",
+            "%s: %d rows in condition_df have no matching sample in the report "
+            "and were dropped from .obs.",
+            caller,
             n_unmatched_cond,
         )
     return adata

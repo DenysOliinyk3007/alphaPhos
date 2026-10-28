@@ -375,3 +375,13 @@ def test_progress_callback_reports_bytes_without_changing_the_result(tmp_path, f
     total = calls[-1][1]
     assert len(calls) > 1 and done == sorted(done)
     assert {t for _, t in calls} == {total} and calls[-1] == (total, total)
+
+
+def test_r_condition_is_kept_when_present():
+    # The EGF fixture carries Spectronaut's R.Condition: "+" for EGF runs, "-" for controls.
+    psm = read_psm(EGF_MINI)
+    per_run = psm.groupby("R.FileName", observed=True)["R.Condition"].first()
+    assert isinstance(psm["R.Condition"].dtype, pd.CategoricalDtype)
+    assert {run: cond for run, cond in per_run.items() if "withEGF" in run or "woEGF" in run} == {
+        run: ("+" if "withEGF" in run else "-") for run in per_run.index
+    }

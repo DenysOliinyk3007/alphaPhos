@@ -22,6 +22,14 @@ While in `0.x`, breaking API changes may appear in any MINOR bump (`0.1 → 0.2`
 - **RT drift still cannot run on reader output**: `read_spectronaut` does not
   keep `EG.ApexRT`.  Its cardio test maps the raw export's columns by hand.
 
+### Fixed -- `read_spectronaut_short` failed on real Spectronaut exports
+
+- Spectronaut writes `PG.ProteinGroups` and `[1] <run>.raw.PG.Quantity`; the
+  reader only accepted the underscored `[1]_<run>_raw_PG_Quantity` form of
+  re-saved test fixtures, so every real short report raised `ValueError`.  Both
+  spellings are now accepted (dotted identifier columns come out underscored,
+  as before).  Tested on a header copied from a real export.
+
 ### Added
 
 - **`read_spectronaut(..., progress=callback)`** reports
@@ -34,6 +42,19 @@ While in `0.x`, breaking API changes may appear in any MINOR bump (`0.1 → 0.2`
   intensity from contaminants, from `compute_contaminant_fraction_per_sample`.
   The dashed line is the flag threshold from the table's provenance; when no
   run reaches it, the line is left out and a note says all runs are below it.
+- **`read_spectronaut` keeps `R.Condition`** when the report has it (as a
+  category), for prefilling a condition table.  Collapse ignores it.
+- **`ap.proteome.read_diann_pg_matrix`**: DIA-NN `report.pg_matrix.tsv` →
+  the same protein-level AnnData as `read_spectronaut_short`.  Run names are
+  the raw-file names without path or extension, matching `ap.read_diann`.
+- **`ap.proteome.detect_report_format(path)`**: engine (Spectronaut / DIA-NN)
+  and layout (short / long) from the header alone.
+- **Protein-level contaminants**: `ap.proteome.contaminant_fraction(adata)`
+  (same columns as the precursor metric, so `ap.viz.contaminant_fraction`
+  plots it) and `ap.proteome.drop_contaminant_proteins(adata)`.
+- **`ap.io.contaminants.contaminant_mask`**: the one definition of a
+  contaminant protein group, now shared by `filter_contaminants` and the
+  protein-level functions (each distinct group is evaluated once).
 
 ## [0.25.0] - 2026-10-28
 
