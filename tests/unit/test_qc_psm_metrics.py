@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import alphaphos as ap
 from alphaphos.qc.psm_metrics import (
     DEFAULT_INTENSITY_COLUMN,
     DEFAULT_PRECURSOR_COLUMN,
@@ -269,7 +270,8 @@ class TestPsmCountsQueueIntegration:
 @pytest.mark.skipif(not _HAS_CARDIO_INPUTS, reason="cardio parquet or queue not shipped")
 class TestPsmCountsCardio:
     def test_cardio_end_to_end(self):
-        psm = pd.read_parquet(CARDIO_PSM)
+        # Through the reader, as in real use: it normalises the raw column names.
+        psm = ap.read_spectronaut(CARDIO_PSM, advanced={"drop_contaminants": False})
         queue = load_acquisition_queue(CARDIO_QUEUE)
         counts = compute_psm_counts_per_sample(psm, acquisition_queue=queue)
         # 76 samples
@@ -479,7 +481,8 @@ class TestContaminantFractionQueueIntegration:
 @pytest.mark.skipif(not _HAS_CARDIO_INPUTS, reason="cardio parquet or queue not shipped")
 class TestContaminantFractionCardio:
     def test_cardio_end_to_end(self):
-        psm = pd.read_parquet(CARDIO_PSM)
+        # Through the reader, as in real use: it normalises the raw column names.
+        psm = ap.read_spectronaut(CARDIO_PSM, advanced={"drop_contaminants": False})
         contam = compute_contaminant_fraction_per_sample(psm)
         # 76 samples
         assert contam.shape[0] == 76
@@ -511,7 +514,15 @@ class TestContaminantFractionCardio:
 @pytest.mark.skipif(not _HAS_CARDIO_INPUTS, reason="cardio parquet or queue not shipped")
 class TestCardioIntegration:
     def test_cardio_end_to_end(self):
-        psm = pd.read_parquet(CARDIO_PSM)
+        # read_spectronaut does not keep EG.ApexRT, so this one reads the raw
+        # (underscore-named) export and maps its columns to the reader's names.
+        psm = pd.read_parquet(CARDIO_PSM).rename(
+            columns={
+                "R_FileName": "R.FileName",
+                "EG_PrecursorId": "EG.PrecursorId",
+                "EG_ApexRT": "EG.ApexRT",
+            }
+        )
         queue = load_acquisition_queue(CARDIO_QUEUE)
         drift = compute_retention_time_drift(psm, acquisition_queue=queue)
         # 76 samples in the PSM

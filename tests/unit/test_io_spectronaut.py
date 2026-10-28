@@ -354,3 +354,24 @@ class TestErrorHandling:
             f.write("\t".join(row) + "\n")
         with pytest.raises(ValueError, match="missing required column"):
             read_psm(tsv, advanced={"drop_contaminants": False})
+
+
+EGF_MINI = Path(__file__).resolve().parents[1] / "data" / "egf_mini.tsv"
+
+
+@pytest.mark.parametrize("fmt", ["tsv", "parquet"])
+def test_progress_callback_reports_bytes_without_changing_the_result(tmp_path, fmt):
+    if fmt == "tsv":
+        path = EGF_MINI
+    else:
+        path = tmp_path / "egf_mini.parquet"
+        pd.read_csv(EGF_MINI, sep="\t", low_memory=False).to_parquet(path)
+
+    calls: list[tuple[int, int]] = []
+    tracked = read_psm(path, progress=lambda done, total: calls.append((done, total)))
+    pd.testing.assert_frame_equal(read_psm(path), tracked)
+
+    done = [d for d, _ in calls]
+    total = calls[-1][1]
+    assert len(calls) > 1 and done == sorted(done)
+    assert {t for _, t in calls} == {total} and calls[-1] == (total, total)

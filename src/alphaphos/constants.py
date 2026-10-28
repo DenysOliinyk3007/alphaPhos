@@ -31,6 +31,8 @@ COL_EG_QVALUE = "EG.Qvalue"
 COL_PG_QVALUE = "PG.Qvalue"
 COL_PG_GENES = "PG.Genes"
 COL_PG_PROTEIN_GROUPS = "PG.ProteinGroups"
+# Not read by read_spectronaut today; only the RT-drift QC metric uses it.
+COL_EG_APEX_RT = "EG.ApexRT"
 
 # Canonical quant slot the collapse pipeline consumes. Also happens to be
 # Spectronaut's "auto" (Settings) quant column name.

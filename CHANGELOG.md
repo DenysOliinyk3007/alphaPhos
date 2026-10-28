@@ -10,6 +10,31 @@ While in `0.x`, breaking API changes may appear in any MINOR bump (`0.1 → 0.2`
 
 ## [Unreleased]
 
+### Fixed -- raw-report QC metrics failed on reader output
+
+- **`ap.qc.compute_*` (contaminant fraction, PSM counts, run TIC, RT drift)
+  defaulted to underscore column names** (`R_FileName`,
+  `EG_TotalQuantity_(Settings)`, ...) from an earlier reader schema, so called
+  with defaults on a `read_spectronaut` result they raised `KeyError`.  The
+  defaults are now the dotted names the reader returns.  The cardio integration
+  tests had read the raw parquet directly, which hid the mismatch; they now go
+  through the reader.
+- **RT drift still cannot run on reader output**: `read_spectronaut` does not
+  keep `EG.ApexRT`.  Its cardio test maps the raw export's columns by hand.
+
+### Added
+
+- **`read_spectronaut(..., progress=callback)`** reports
+  `callback(bytes_done, bytes_total)` while the file is read, ending at
+  100 %.  It wraps the same single `read_csv` / `read_parquet` call in a
+  byte-counting file object, so the parsed result is identical (tested on TSV
+  and parquet).  For parquet the total is the compressed size of the columns
+  actually read.
+- **`ap.viz.contaminant_fraction`**: bar per run of the % of precursor
+  intensity from contaminants, from `compute_contaminant_fraction_per_sample`.
+  The dashed line is the flag threshold from the table's provenance; when no
+  run reaches it, the line is left out and a note says all runs are below it.
+
 ## [0.25.0] - 2026-10-28
 
 ### Upgrade notes -- changes that can break existing code
