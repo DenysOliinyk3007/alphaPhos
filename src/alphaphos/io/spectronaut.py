@@ -60,6 +60,7 @@ from alphaphos.constants import (
     COL_PG_QVALUE,
     COL_R_FILENAME,
 )
+from alphaphos.io._progress import ProgressCallback, open_counting, parquet_bytes_to_read
 from alphaphos.io.contaminants import DEFAULT_CONTAMINANT_PREFIXES, filter_contaminants
 from alphaphos.io.schemas import (
     REQUIRED_COLUMNS,
@@ -302,6 +303,7 @@ def read_psm(
     path: str | Path,
     *,
     advanced: dict[str, Any] | None = None,
+    progress: ProgressCallback | None = None,
 ) -> pd.DataFrame:
     """Read a Spectronaut Normal-report PSM file.
 
@@ -316,6 +318,13 @@ def read_psm(
         Path to a ``.parquet`` or ``.tsv``/``.txt`` Spectronaut Normal report.
     advanced : dict, optional
         Overrides for :data:`DEFAULT_IO_SETTINGS`. Unknown keys raise.
+    progress : callable, optional
+        ``progress(bytes_done, bytes_total)``, called from the reading thread
+        as the file is consumed and once more at ``bytes_done == bytes_total``
+        when the read finishes.  For a TSV the total is the file size; for
+        parquet it is the compressed size of the columns actually read.  The
+        parsed result is identical with or without it; the filters applied
+        after the read are not covered.
 
     Returns
     -------
@@ -360,16 +369,30 @@ def read_psm(
     n_dropped_cols = n_total_cols - len(raw_cols_to_read)
 
     # ------- load, materializing only the pruned column set -------
-    if p.suffix.lower() == ".parquet":
-        df = pd.read_parquet(p, columns=raw_cols_to_read)
-    elif p.suffix.lower() in (".tsv", ".txt"):
-        df = pd.read_csv(
-            p, sep="\t", usecols=raw_cols_to_read, low_memory=False, encoding="utf-8-sig"
-        )
-    else:
+    suffix = p.suffix.lower()
+    if suffix not in (".parquet", ".tsv", ".txt"):
         raise ValueError(
             f"Unsupported file extension {p.suffix!r}; expected .parquet, .tsv, or .txt"
         )
+    if progress is None:
+        source = p
+    else:
+        total = (
+            parquet_bytes_to_read(p, raw_cols_to_read) if suffix == ".parquet" else p.stat().st_size
+        )
+        source = open_counting(p, total, progress)
+    try:
+        if suffix == ".parquet":
+            df = pd.read_parquet(source, columns=raw_cols_to_read)
+        else:
+            df = pd.read_csv(
+                source, sep="\t", usecols=raw_cols_to_read, low_memory=False, encoding="utf-8-sig"
+            )
+    finally:
+        if progress is not None:
+            source.close()
+    if progress is not None:
+        progress(total, total)
 
     n_loaded = len(df)
 

@@ -15,6 +15,7 @@ Typical use::
     ap.viz.site_abundance(adata, site_key)           # replicates behind a hit
     ap.viz.embedding(adata, basis="pca")             # after ap.dimred.pca
     ap.viz.kinase_activity_bar(ksea)
+    ap.viz.contaminant_fraction(ap.qc.compute_contaminant_fraction_per_sample(raw_psm))
     ap.viz.save_figure(fig, "figure_2a.pdf")         # one format, from the suffix
 
 Requires ``plotly`` (and ``kaleido`` for static export): install with
@@ -27,6 +28,7 @@ from alphaphos.viz._base import save_figure
 from alphaphos.viz.differential import volcano, volcano_categories
 from alphaphos.viz.enrichment import enrichment_dotplot, kinase_activity_bar
 from alphaphos.viz.filtering import retention_curve
+from alphaphos.viz.qc import contaminant_fraction
 from alphaphos.viz.samples import embedding, heatmap, intensity_distribution, site_abundance
 
 __all__ = [
@@ -41,4 +43,5 @@ __all__ = [
     "kinase_activity_bar",
     "enrichment_dotplot",
     "retention_curve",
+    "contaminant_fraction",
 ]

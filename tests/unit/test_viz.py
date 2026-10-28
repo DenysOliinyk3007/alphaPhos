@@ -97,6 +97,20 @@ GENE_ORA_SPLIT = pd.DataFrame(
 )
 
 
+def _make_contam(fractions) -> pd.DataFrame:
+    total = np.full(len(fractions), 1e7)
+    df = pd.DataFrame(
+        {
+            "contaminant_fraction": fractions,
+            "contaminant_intensity": np.asarray(fractions) * total,
+            "total_intensity": total,
+        },
+        index=[f"20260101_QE_run_R{i}" for i in range(len(fractions))],
+    )
+    df.attrs["provenance"] = {"flag_fraction_threshold": 0.1}
+    return df
+
+
 def _builders():
     adata = _make_adata()
     de = _make_de()
@@ -113,6 +127,7 @@ def _builders():
         "kinase_activity_bar": lambda: ap.viz.kinase_activity_bar(KSEA),
         "enrichment_dotplot": lambda: ap.viz.enrichment_dotplot(GENE_ORA_SPLIT),
         "retention_curve": lambda: ap.viz.retention_curve(sweep, chosen=0.75),
+        "contaminant_fraction": lambda: ap.viz.contaminant_fraction(_make_contam([0.002, 0.3])),
     }
 
 
@@ -289,3 +304,11 @@ def test_viz_imports_without_plotly():
         [sys.executable, "-c", code], capture_output=True, text=True, check=True, env=env
     )
     assert out.stdout.strip() == "ok"
+
+
+@pytest.mark.parametrize(("fractions", "line"), [([0.002, 0.3], True), ([0.002, 0.004], False)])
+def test_contaminant_threshold_line_only_when_exceeded(fractions, line):
+    fig = ap.viz.contaminant_fraction(_make_contam(fractions))
+    assert list(fig.data[0].y) == pytest.approx([f * 100 for f in fractions])
+    assert (len(fig.layout.shapes) == 1) is line
+    assert ("below" not in fig.layout.annotations[0].text) is line

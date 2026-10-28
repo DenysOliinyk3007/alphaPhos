@@ -20,14 +20,21 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 
+from alphaphos.constants import (
+    COL_CANONICAL_QUANT,
+    COL_EG_APEX_RT,
+    COL_EG_PRECURSOR_ID,
+    COL_PG_PROTEIN_GROUPS,
+    COL_R_FILENAME,
+)
+
 if TYPE_CHECKING:
     from typing import Any
 
-# Default column names -- match the alphaPhos convention after
-# read_spectronaut() (dots → underscores).
-DEFAULT_SAMPLE_COLUMN = "R_FileName"
-DEFAULT_RT_COLUMN = "EG_ApexRT"
-DEFAULT_PRECURSOR_COLUMN = "EG_PrecursorId"
+# Default column names: the dotted names read_spectronaut() returns.
+DEFAULT_SAMPLE_COLUMN = COL_R_FILENAME
+DEFAULT_RT_COLUMN = COL_EG_APEX_RT
+DEFAULT_PRECURSOR_COLUMN = COL_EG_PRECURSOR_ID
 
 # Empirically-sane defaults.  Users override per-study.
 DEFAULT_MIN_SAMPLES_PER_PRECURSOR = 3
@@ -37,14 +44,13 @@ DEFAULT_OFFSET_FLAG_THRESHOLD_MIN = 1.0  # minutes
 # below the cohort median" -- catches the C8-style catastrophic
 # injection failures while ignoring normal cohort spread.
 DEFAULT_DEPTH_FLAG_Z = -3.0
-DEFAULT_PROTEIN_COLUMN = "PG_ProteinGroups"
+DEFAULT_PROTEIN_COLUMN = COL_PG_PROTEIN_GROUPS
 
 # TIC (Total Ion Current) proxy at the precursor level.  Spectronaut's
 # "EG.TotalQuantity (Settings)" column carries the precursor's total
-# intensity (sum-of-fragments after Spectronaut's processing).  Post-
-# read_spectronaut it becomes "EG_TotalQuantity_(Settings)".  DIA-NN
+# intensity (sum-of-fragments after Spectronaut's processing).  DIA-NN
 # users should override to "Precursor.Quantity".
-DEFAULT_INTENSITY_COLUMN = "EG_TotalQuantity_(Settings)"
+DEFAULT_INTENSITY_COLUMN = COL_CANONICAL_QUANT
 
 # Contaminant-fraction QC threshold.  Phospho enrichment protocols
 # typically clear well below 10% contaminant intensity; anything above
@@ -223,8 +229,8 @@ def compute_psm_counts_per_sample(
         adds ``injection_order`` to the output; join is exact-match on
         the sample identifier.
     sample_column, precursor_column, protein_column
-        Column names in ``psm_df``.  Defaults follow ``read_spectronaut``
-        post-normalisation (dots → underscores).
+        Column names in ``psm_df``.  Defaults are the dotted names
+        ``read_spectronaut`` returns (``R.FileName``, ...).
     flag_z_threshold
         A sample is flagged (``is_flagged=True``) when its
         ``depth_z_score < flag_z_threshold``.  Default -3.0.  Flags only
@@ -236,9 +242,9 @@ def compute_psm_counts_per_sample(
 
     - ``n_psms`` : int, total PSM rows for this sample (fragment-level,
       may double-count when Spectronaut emits per-fragment rows)
-    - ``n_unique_precursors`` : int, unique ``EG_PrecursorId`` --
+    - ``n_unique_precursors`` : int, unique ``EG.PrecursorId`` --
       the honest identification-depth metric
-    - ``n_unique_proteins`` : int, unique ``PG_ProteinGroups``
+    - ``n_unique_proteins`` : int, unique ``PG.ProteinGroups``
     - ``depth_z_score`` : float, MAD-based z-score of
       ``n_unique_precursors`` vs cohort median
     - ``is_flagged`` : bool
@@ -360,7 +366,7 @@ def compute_run_tic_per_sample(
     )
     # One intensity per (sample, precursor).  Spectronaut may emit
     # multiple fragment rows for a single precursor -- they share the
-    # precursor's EG_TotalQuantity, so ``.first()`` is safe.
+    # precursor's EG.TotalQuantity, so ``.first()`` is safe.
     per_precursor = (
         core.groupby([sample_column, precursor_column], observed=True)[intensity_column]
         .first()
@@ -450,7 +456,7 @@ def compute_contaminant_fraction_per_sample(
         search engine did not prefix-tag contaminants.
 
     A precursor is contaminant when **every** protein in its
-    ``PG_ProteinGroups`` matches (A) or (B), by default.  Ambiguous
+    ``PG.ProteinGroups`` matches (A) or (B), by default.  Ambiguous
     precursors mapped to a contaminant *and* a real protein are kept
     as non-contaminant.  Set ``require_all_contaminant=False`` to
     count them as contaminant instead (more aggressive).
@@ -465,8 +471,8 @@ def compute_contaminant_fraction_per_sample(
     acquisition_queue
         Optional queue from :func:`alphaphos.qc.load_acquisition_queue`.
     sample_column, precursor_column, protein_column, intensity_column
-        Column names.  Defaults follow the ``read_spectronaut``
-        post-normalisation schema (dots -> underscores).
+        Column names.  Defaults are the dotted names ``read_spectronaut``
+        returns (``R.FileName``, ``EG.TotalQuantity (Settings)``, ...).
     contaminant_prefixes
         Prefixes marking a contaminant.  ``None`` (default) uses
         :data:`alphaphos.io.contaminants.DEFAULT_CONTAMINANT_PREFIXES`.
