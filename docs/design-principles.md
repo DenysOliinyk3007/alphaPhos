@@ -205,9 +205,9 @@ Every alphaPhos function that mutates the AnnData stamps its parameters and resu
 
 ## 4. What's still rough
 
-Honest inventory of gaps as of 0.24.0. None of these block the alpha; some will block the beta.
+Honest inventory of gaps as of 0.25.0. None of these block the alpha; some will block the beta.
 
-- **`viz` submodule is a stub**. `alphaphos.viz` exists but doesn't ship reusable plotters. Publication-quality volcano, heatmap, PCA scatter, KSEA dotplot, and enrichment dotplot are all coming — right now users build these themselves against the DE results. `ap.qc.generate_dashboard` covers the exploratory-plot side; deliberate figure design is manual.
+- **QC panels predate the `ap.viz` style**. `ap.viz` (0.25) ships the publication figures — volcano, PCA / UMAP / t-SNE, heatmap, KSEA bar, enrichment dot plot, per-site replicate plot. The QC dashboard (`ap.qc.generate_dashboard`, Bokeh) and the QC v2 Plotly panels still use an older palette and are not yet migrated to `ap.viz.style`.
 - **Memory scaling beyond `n = 500` is not validated**. `impute_knn_site_based` becomes expensive; PIMMS-DAE stays bounded but hasn't been stress-tested at n = 1000+. If you're running a study that big, run once at a subsample first and confirm before committing.
 - **Error messages are inconsistent in quality**. Some are polished (`Wilson_threshold must be a float or "auto", got ...`); others let a Python stack trace bubble up. An audit is on the pre-beta list; feedback from you on which ones you hit is genuinely useful.
 - **`dose_response.fit_dose_response` requires the optional `curve_curator` dependency**. Not installed by default. Not blocking for standard DIA phospho DE workflows.

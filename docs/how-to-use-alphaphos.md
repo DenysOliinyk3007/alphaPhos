@@ -4,7 +4,7 @@ Landing page for new users.  Read this first: it inventories the public
 API and walks a decision tree from raw MS output to publication-ready
 tables and figures.
 
-Version-tied to **alphaPhos 0.24.0** (October 2026); check `ap.__version__`
+Version-tied to **alphaPhos 0.25.0** (October 2026); check `ap.__version__`
 on a newer release.  Per-module deep dives live under
 [`docs/modules/`](modules/); an alpha-tester onboarding note is at
 [`docs/alpha-tester-guide.md`](alpha-tester-guide.md); the "why these
@@ -41,6 +41,7 @@ Every name below is accessible as `ap.<name>` (top level) or
 | **Signalome (module + kinase network)** | `ap.signalome.*` | `build_signalome`, `SignalomeResult`, per-stage helpers (`cluster_sites`, `derive_protein_modules`, `build_module_assignments`, `build_module_table`, `build_kinase_network`, `build_expanded_table`, `extract_site_metadata`, `extract_site_to_protein`) |
 | **Cross-species** | `ap.orthology` | `map_to_human` (validated on mouse SwissProt) |
 | **QC** | `ap.` top | `generate_dashboard` (Bokeh HTML report; optional `bokeh` dep) |
+| **Figures** *(new in 0.25)* | `ap.viz` | `volcano`, `embedding`, `intensity_distribution`, `site_abundance`, `heatmap`, `kinase_activity_bar`, `enrichment_dotplot`, `retention_curve`, `save_figure`; constants + layout helpers in `ap.viz.style` (optional `[viz]` extra) |
 | **PhosPy-EV validation harness** | `ap.enrichment.*` | `load_ev2`, `load_ev3`, `ev3_expectations_for_condition`, `score_against_ev3`, `build_kinase_substrate_library` |
 
 Everything in this table is stable public API.  Anything else (dunder-

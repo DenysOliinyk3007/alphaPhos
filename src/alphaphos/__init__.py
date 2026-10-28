@@ -24,7 +24,7 @@ Typical usage::
 
 See :func:`collapse_sites` for the settings dict; see
 :mod:`alphaphos.preprocess`, :mod:`alphaphos.kinase`, :mod:`alphaphos.qc`,
-:mod:`alphaphos.enrichment`, :mod:`alphaphos.dose_response`, and :mod:`alphaphos.io`
+:mod:`alphaphos.enrichment`, :mod:`alphaphos.dose_response`, :mod:`alphaphos.viz`, and :mod:`alphaphos.io`
 for domain-specific tooling.
 """
 
@@ -32,7 +32,7 @@ for domain-specific tooling.
 # Expose the top-tier enrichment namespace so callers can write
 # ``ap.enrichment.kinase_activity(...)`` / ``ap.enrichment.ora(...)`` /
 # ``ap.enrichment.gsea(...)`` directly.
-from alphaphos import dimred, enrichment, orthology, proteome, qc, signalome, stats
+from alphaphos import dimred, enrichment, orthology, proteome, qc, signalome, stats, viz
 from alphaphos._version import __version__
 from alphaphos.io.diann import (
     DEFAULT_DIANN_IO_SETTINGS,
@@ -148,6 +148,7 @@ __all__ = [
     "dimred",
     "proteome",
     "qc",
+    "viz",
     "signalome",
     "SignalomeResult",
     "build_signalome",

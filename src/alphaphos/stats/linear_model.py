@@ -266,6 +266,18 @@ def contrasts_fit(
 # ---------------------------------------------------------------------------
 
 
+def _per_feature(prior_variance: float | np.ndarray, n_features: int) -> np.ndarray:
+    """Broadcast the EB prior variance to one value per feature.
+
+    Under limma-trend it is per-feature, so it is returned as a row-aligned
+    column rather than stored in ``attrs``: attrs don't follow rows through
+    sorting or filtering, and an array in attrs makes pandas' attrs
+    comparison in ``concat`` (reached from every ``nsmallest`` / ``nlargest``)
+    raise.
+    """
+    return np.broadcast_to(np.asarray(prior_variance, dtype=np.float64), (n_features,)).copy()
+
+
 def moderated_t_test(
     contrast_fit: ContrastFit,
     *,
@@ -299,6 +311,11 @@ def moderated_t_test(
             fdr          -- BH-adjusted p across features
             ave_expr     -- (attached as .attrs; caller can join if wanted)
             df_moderated -- moderated degrees of freedom
+            prior_variance -- the feature's EB prior variance s0^2 (constant
+                              unless the prior follows a trend)
+
+        ``.attrs`` carries only scalars (``prior_df``, ``trend``,
+        ``contrast_name``).
     """
     from scipy.stats import false_discovery_control
 
@@ -308,6 +325,7 @@ def moderated_t_test(
     if prior is None:
         prior = fit_prior(fit, trend=trend)
     sigma_sq_mod, df_mod = moderate_variance(fit.sigma_sq, residual_df=fit.df_residual, prior=prior)
+    prior_variance = _per_feature(prior.prior_variance, n_features)
 
     idx = pd.Index(var_names) if var_names is not None else None
     results: dict[str, pd.DataFrame] = {}
@@ -344,10 +362,10 @@ def moderated_t_test(
                 "p_value": p,
                 "fdr": fdr,
                 "df_moderated": df_mod,
+                "prior_variance": prior_variance,
             },
             index=idx,
         )
-        df.attrs["prior_variance"] = prior.prior_variance
         df.attrs["prior_df"] = prior.prior_df
         df.attrs["trend"] = prior.trend
         df.attrs["contrast_name"] = name
@@ -462,11 +480,11 @@ def moderated_f_test(
             "fdr": fdr,
             "df_between": df_between,
             "df_moderated": df_mod,
+            "prior_variance": _per_feature(prior.prior_variance, n_features),
         },
         index=idx,
     )
     result.attrs["method"] = "moderated_anova"
-    result.attrs["prior_variance"] = prior.prior_variance
     result.attrs["prior_df"] = prior.prior_df
     result.attrs["trend"] = prior.trend
     result.attrs["n_contrasts"] = n_contrasts

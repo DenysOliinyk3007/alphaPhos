@@ -299,7 +299,7 @@ class TestTrendPrior:
         r = diff_exp_limma_contrasts(a, condition_column="condition", contrasts={"c": ("B", "A")})[
             "c"
         ]
-        pv = np.asarray(r.attrs["prior_variance"])
+        pv = r["prior_variance"].to_numpy()
         assert r.attrs["trend"] is True
         assert pv.shape == (a.n_vars,)
         lo, hi = a.X.mean(0) < 16, a.X.mean(0) > 24
@@ -311,7 +311,20 @@ class TestTrendPrior:
             a, condition_column="condition", contrasts={"c": ("B", "A")}, advanced={"trend": False}
         )["c"]
         assert r.attrs["trend"] is False
-        assert np.ndim(r.attrs["prior_variance"]) == 0
+        assert r["prior_variance"].nunique() == 1
+
+    def test_trended_prior_is_a_row_aligned_column(self):
+        # A per-feature prior in attrs went stale on sort/filter, and made every
+        # nsmallest / nlargest raise (pandas compares attrs inside concat).
+        a = _trend_adata()
+        an = diff_exp_anova(a, condition_column="condition")
+        cr = diff_exp_limma_contrasts(a, condition_column="condition", contrasts={"c": ("B", "A")})
+        for r in (an, cr["c"]):
+            assert not any(isinstance(v, np.ndarray) for v in r.attrs.values())
+            top = r.nsmallest(5, "fdr")
+            pd.testing.assert_series_equal(
+                top["prior_variance"], r.loc[top.index, "prior_variance"]
+            )
 
     def test_small_n_spline_fallbacks(self):
         rng = np.random.default_rng(0)
@@ -352,7 +365,7 @@ class TestTrendPrior:
             )
         np.testing.assert_allclose(
             np.asarray(fc.s2_prior).ravel(),
-            np.asarray(cr["BvA"].attrs["prior_variance"]),
+            cr["BvA"]["prior_variance"].to_numpy(),
             rtol=1e-8,
         )
         assert float(np.asarray(fc.df_prior).ravel()[0]) == pytest.approx(

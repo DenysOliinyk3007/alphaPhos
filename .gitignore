@@ -130,3 +130,7 @@ docs/Spectronaut-20-Manual.pdf
 # ambiguous to redistribute (Biognosys-licensed binary); keep local-only.
 # Re-extract via docs/decompiled/extract_rscript.py if needed.
 docs/decompiled/
+
+# Third-party source checkouts (e.g. ClaireKoenig PhosphoproteomicsAtlas) kept for
+# reference only -- not part of the package or the repo.
+external/
