@@ -312,3 +312,18 @@ def test_contaminant_threshold_line_only_when_exceeded(fractions, line):
     assert list(fig.data[0].y) == pytest.approx([f * 100 for f in fractions])
     assert (len(fig.layout.shapes) == 1) is line
     assert ("below" not in fig.layout.annotations[0].text) is line
+
+
+def test_contaminant_figure_takes_the_protein_level_table():
+    # ap.proteome.contaminant_fraction returns the precursor metric's columns,
+    # so the same figure plots a protein-level report.
+    x = np.log2([[300.0, 100.0], [100.0, 300.0]])
+    adata = ad.AnnData(
+        X=x,
+        obs=pd.DataFrame(index=["run_A1", "run_A2"]),
+        var=pd.DataFrame(
+            {"PG_ProteinGroups": ["P12345", "Cont_P00761"]}, index=["P12345", "Cont_P00761"]
+        ),
+    )
+    fig = ap.viz.contaminant_fraction(ap.proteome.contaminant_fraction(adata))
+    assert list(fig.data[0].y) == pytest.approx([25.0, 75.0])

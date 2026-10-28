@@ -31,6 +31,7 @@ from alphaphos.constants import (
     COL_PG_GENES,
     COL_PG_PROTEIN_GROUPS,
     COL_PG_QVALUE,
+    COL_R_CONDITION,
     COL_R_FILENAME,
     DIANN_GENES,
     DIANN_GLOBAL_PG_Q_VALUE,
@@ -95,6 +96,8 @@ OPTIONAL_COLUMNS: dict[str, tuple[str, ...]] = {
         # one and its channels collapse into one number (see io.silac).
         COL_FG_ID,
         COL_EG_WORKFLOW,
+        # Spectronaut's own condition annotation, for prefilling a condition table.
+        COL_R_CONDITION,
     ),
     "Diann": (
         DIANN_SITE_OCCUPANCY_PROBS,  # per-site loc probs (much better than joint)

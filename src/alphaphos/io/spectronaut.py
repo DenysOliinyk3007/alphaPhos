@@ -58,6 +58,7 @@ from alphaphos.constants import (
     COL_EG_QVALUE,
     COL_FG_ID,
     COL_PG_QVALUE,
+    COL_R_CONDITION,
     COL_R_FILENAME,
 )
 from alphaphos.io._progress import ProgressCallback, open_counting, parquet_bytes_to_read
@@ -216,6 +217,9 @@ def _coerce_dtypes(df: pd.DataFrame) -> pd.DataFrame:
     for col in (COL_EG_QVALUE, COL_PG_QVALUE):
         if col in df.columns and df[col].dtype == object:
             df[col] = pd.to_numeric(df[col], errors="coerce")
+    # One label repeated on every row of a run: a category costs ~1 byte per row.
+    if COL_R_CONDITION in df.columns:
+        df[COL_R_CONDITION] = df[COL_R_CONDITION].astype("category")
     return df
 
 

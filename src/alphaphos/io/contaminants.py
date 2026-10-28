@@ -32,6 +32,7 @@ from collections.abc import Iterable
 from importlib.resources import files
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)
@@ -165,6 +166,41 @@ def _is_contaminant_protein(
     return accession in accession_set
 
 
+def contaminant_mask(
+    protein_groups: pd.Series,
+    *,
+    contaminants_fasta: str | Path | None = None,
+    prefix_patterns: tuple[str, ...] = DEFAULT_CONTAMINANT_PREFIXES,
+    require_all_contaminant: bool = True,
+) -> np.ndarray:
+    """True for each ``;``-separated protein group that counts as a contaminant.
+
+    The single definition of "contaminant" used by :func:`filter_contaminants`
+    and by the protein-level QC, so precursor and protein views agree.  A
+    group is a contaminant when every member (``require_all_contaminant``,
+    default) or any member matches a prefix or the FASTA accessions.  Missing
+    or empty groups are not contaminants.
+    """
+    if contaminants_fasta is None:
+        contaminants_fasta = get_default_contaminants_fasta()
+    accession_set = parse_fasta_accessions(contaminants_fasta)
+
+    def _is_contaminant_group(value: object) -> bool:
+        if value is None or (isinstance(value, float) and pd.isna(value)):
+            return False
+        proteins = [p for p in str(value).split(";") if p.strip()]
+        if not proteins:
+            return False
+        flags = (_is_contaminant_protein(p, accession_set, prefix_patterns) for p in proteins)
+        return all(flags) if require_all_contaminant else any(flags)
+
+    # Evaluate each distinct group once: a report repeats a group on every
+    # precursor row.
+    groups = pd.Series(protein_groups)
+    flags = {g: _is_contaminant_group(g) for g in groups.drop_duplicates()}
+    return groups.map(flags).fillna(False).to_numpy(dtype=bool)
+
+
 def filter_contaminants(
     df: pd.DataFrame,
     *,
@@ -220,30 +256,22 @@ def filter_contaminants(
             )
         return df
 
-    if contaminants_fasta is None:
-        contaminants_fasta = get_default_contaminants_fasta()
-    accession_set = parse_fasta_accessions(contaminants_fasta)
-
-    def _row_is_contaminant(value: object) -> bool:
-        if value is None or (isinstance(value, float) and pd.isna(value)):
-            return False
-        proteins = [p for p in str(value).split(";") if p.strip()]
-        if not proteins:
-            return False
-        flags = (_is_contaminant_protein(p, accession_set, prefix_patterns) for p in proteins)
-        return all(flags) if require_all_contaminant else any(flags)
-
-    mask = df[protein_groups_column].map(_row_is_contaminant)
+    mask = contaminant_mask(
+        df[protein_groups_column],
+        contaminants_fasta=contaminants_fasta,
+        prefix_patterns=prefix_patterns,
+        require_all_contaminant=require_all_contaminant,
+    )
     n_dropped = int(mask.sum())
     if verbose:
         logger.info(
             "filter_contaminants: dropped %d / %d rows (%.2f%%) "
-            "[require_all=%s, fasta_accessions=%d, prefixes=%s]",
+            "[require_all=%s, fasta=%s, prefixes=%s]",
             n_dropped,
             len(df),
             100 * n_dropped / max(len(df), 1),
             require_all_contaminant,
-            len(accession_set),
+            contaminants_fasta or "bundled",
             prefix_patterns,
         )
     return df.loc[~mask].reset_index(drop=True)
