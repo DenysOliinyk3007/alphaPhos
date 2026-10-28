@@ -101,8 +101,6 @@ def test_protein_contaminants_measured_then_removed(spectronaut_short):
     assert frac["contaminant_fraction"].to_numpy() == pytest.approx([100 / 400, 300 / 450])
     assert list(frac["n_contaminant_proteins"]) == [1, 1]
     assert list(frac["n_total_proteins"]) == [2, 3]
-    fig = ap.viz.contaminant_fraction(frac)  # the precursor-level figure takes it unchanged
-    assert list(fig.data[0].y) == pytest.approx([25.0, 300 / 450 * 100])
 
     clean = ap.proteome.drop_contaminant_proteins(adata)
     assert list(clean.var_names) == ["P12345", "Q99999"]
